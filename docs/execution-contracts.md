@@ -143,6 +143,101 @@ is authorized before reading, and its record ID must equal its directory
 name. Unparseable, unmigratable, or invalid run files raise an actionable
 error naming the path and cause instead of silently dropping history.
 
+## Worker lifecycle (Step 4C)
+
+Work runs in daemon threads outside request handlers; only the allowlisted
+`demo.*` adapters may execute, and unknown node types fail deterministically
+as `unsupported_node_type`. Every mutation goes through `RunStore`, so
+request, recovery, and worker paths share the serialized writer.
+
+- New runs start from a workflow (`POST /api/runs/start`): node runs are
+  created queued with content identities over upstream computation identities,
+  then driven in topological order. Existing nonterminal runs resume the same
+  way; terminal runs reject resume.
+- Attempts come from record plus structured event history
+  (`max(node, events) + 1`): fresh nodes start at 1, post-recovery retries
+  continue past voided numbers.
+- Failures mark the node failed, skip the transitive downstream closure as
+  `dependency_skipped`, and fail the run; `demo.review` pauses with a pending
+  review that `POST /api/runs/review` approves (resume driving) or rejects
+  (fail like any failure).
+- Cancellation is cooperative: queued/parked work transitions immediately,
+  running adapters observe a flag, repeated or post-terminal cancels are
+  idempotent, and the cancel call waits only a bounded join.
+- Outputs stage under `runs/<id>/staging/<node>/attempt-<n>/` and promote
+  atomically to `runs/<id>/artifacts/` only on success; failed, cancelled,
+  or interrupted staging is quarantined, never promoted, and prior history
+  is never deleted. Staging reservation and input resolution run inside the
+  node-attempt failure boundary, so a setup containment refusal produces a
+  structured node failure with downstream skips and a terminal failed run
+  without following symlinks.
+- `GET /api/runs/events` streams `text/event-stream` progress with `after`
+  replay for reconnects.
+- Unexpected adapter crashes fail the node as `adapter_crash` and are filed
+  to the date-folder/hour-file fault log; unhandled request faults are filed
+  there too.
+
+### Promotion containment and atomicity (Step 4C repairs)
+
+Every staged output validates before anything is read or moved: a canonical
+relative path with no empty, dot, parent, drive, or root segments; source
+and destination resolved inside their expected roots with symlinked files
+and path components rejected; unique declared ports and destinations; every
+required manifest output emitted; no reserved `complete/` prefix; existing
+regular-file sources only. Worker-owned assembly, artifact, and quarantine
+directories are reserved before use and refuse symlinked components; an
+adapter must never precreate the assembly directory, and an occupied attempt
+directory fails the node instead of overwriting history. Validated files
+assemble in a `complete/` directory that renames into
+`artifacts/<node>/attempt-<n>/` with one atomic `os.replace`. A
+cancellation or crash after promotion quarantines the unreferenced attempt
+to the first free `*-uncommitted` name (never overwriting a symlink or
+earlier quarantine) or removes it by a contained non-symlink operation when
+no free name exists, before the terminal record transition, so the final
+tree never holds unreferenced attempts. Recovery additionally moves any
+final attempt directory no successful record references into the first free
+`*-orphaned` quarantine name, removing it only when quarantine cannot
+complete.
+
+### Recovery, resume, and cancellation accounting (Step 4C repairs)
+
+`POST /api/runs/recover` runs worker-level recovery: leftover attempt
+staging quarantines first to the first free `*-interrupted` name (or is
+safely removed when quarantine cannot complete), records reconcile through
+the Step 4B path, and
+every reconciled run with schedulable queued work resumes driving while
+runs parked on valid reviews stay parked. Cancellation before execution
+records `attempt: 0` with no start timestamp; cancellation during execution
+keeps the positive attempt and start time. Repeated or post-terminal
+cancellation is idempotent. The execution-count predicate
+`counts_as_execution(state, attempt)` requires the record attempt and
+returns False for queued, skipped,
+reused, and attempt-0 cancelled records, and True for running, waiting,
+succeeded, failed, and positively-attempted cancelled records.
+
+### Workflow identity scope and adapter manifest (Step 4C repairs)
+
+The workflow identity covers node types, ports, parameter values, and edge
+endpoints only. Edge IDs, node labels, descriptions, canvas positions, and
+list insertion order never affect it; endpoint, topology, parameter, or port
+changes always do. One authoritative `DemoNodeManifest` per adapter declares
+its version and required versus optional input and output ports
+(`DEMO_NODES` is the single source of truth). Run construction validates
+every workflow node against it (unknown ports, direction mismatches, missing
+required input/output declarations, and disconnected required inputs fail
+the start), persists declared outputs on each node run, and promotion
+accepts only outputs declared by both the workflow node and the manifest
+while rejecting a successful result that omits a required output.
+Downstream inputs resolve to the exact promoted artifact bytes recorded on
+the run.
+
+### Workflow identity scope (Step 4C repairs)
+
+The workflow identity covers node types, ports, parameter values, and edge
+endpoints only. Edge IDs, node labels, descriptions, canvas positions, and
+list insertion order never affect it; endpoint, topology, parameter, or port
+changes always do.
+
 The scheduler (`brainlearn_core.scheduler`) is pure dependency logic:
 `topological_order` returns a deterministic execution order; `ready_node_ids`
 returns queued nodes whose dependencies all completed (`succeeded` or

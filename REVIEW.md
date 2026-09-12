@@ -1,82 +1,71 @@
-# BrainLearn implementation review
+# BrainLearn monitored implementation review
 
 Review date: 2026-09-12
 
 ## Current review
 
-Scope: final monitoring review of Step 4B run persistence, pure scheduling,
-authenticated run endpoints, and restart recovery.
+Scope: fifth monitoring review of the uncommitted Step 4C worker lifecycle and
+the fourth-review staging-boundary repair.
 
-Status: **approved**. All findings from both Step 4B monitoring reviews are
-resolved. Independent probes reject the original security, identity,
-scheduling, and concurrency failures, and the complete repository baseline
-passes.
+Status: **approved**. The staging setup failure now terminates the affected node
+and run safely, all earlier Step 4C findings remain repaired, and the complete
+repository gate passes. Step 4C may be committed. Step 4 remains open for cache,
+canvas interaction, fixture demonstration, and run UI work in Steps 4D and 4E.
 
-Step 4A remains approved in commit `25bf419`.
+Step 4A is approved in commit `25bf419`. Step 4B is approved in commit
+`91b9d2e`.
 
-## Approved behavior
+## Final repair independently verified
 
-- Run records persist atomically at
-  `<project-root>/runs/<run-id>/run.json` under the exact authorized project
-  root.
-- Run IDs, discovered directory names, and embedded record IDs agree.
-  Discovery ignores symlinked directories and files, resolves and authorizes
-  candidates before reading, and surfaces corrupt records with their cause.
-- Authenticated create, open, save, list, and recover endpoints provide
-  actionable 400, 403, 404, and 409 responses.
-- Process-wide per-run locks serialize create, save, and recovery mutations
-  across request handlers and future worker threads using `RunStore`.
-  Duplicate creates cannot both succeed, and stale writes cannot replace a
-  terminal record.
-- Terminal run history is immutable and rejected writes preserve its file
-  byte-for-byte.
-- The pure scheduler validates unknown references, duplicate edges, cycles,
-  missing graph-node states, and unknown downstream sources while producing
-  deterministic topological order, ready-node sets, and transitive downstream
-  closures.
-- Restart recovery reconciles every nonterminal run, resets interrupted work
-  to queued attempt zero, preserves voided attempts structurally, invalidates
-  dependent reviews transitively, preserves independent pending reviews, and
-  can reconcile queued, running, waiting, or all-completed aggregates.
+A direct probe created a valid queued `demo.copy` run, planted `staging/` as a
+symlink to an external sentinel directory, and started the existing run. The API
+returned 200, the worker recorded structured failure, the node and run both
+reached `failed`, and the external sentinel remained byte-identical. No output
+was written through the symlink. The regression test also proves downstream
+skip propagation and absence of successful artifacts.
 
-The lock guarantee is intentionally in-process. Step 4C workers must perform
-all persisted mutations through `RunStore` in the service process. Introducing
-a separate writer process requires a cross-process lock or transactional
-store before that process may write run records.
+Staging reservation and input resolution now execute inside the node-attempt
+failure boundary. Quarantine is called only when a staging path was initialized.
 
-Nonterminal records already containing failed or cancelled nodes remain for
-Step 4C to resolve. The worker owns failure/cancellation authorship, dependency
-skip propagation, and the corresponding terminal run transition.
+## Step 4C behavior approved
 
-## Independent probes
+- Allowlisted demonstration workers execute outside FastAPI request handlers and
+  persist mutations through `RunStore`.
+- Deterministic scheduling, positive attempt assignment, failure propagation,
+  review pause/resume, structured SSE events, and terminal run authorship work.
+- Cancellation distinguishes never-started attempt 0 from executed attempts,
+  remains idempotent, and does not publish partial artifacts.
+- Restart recovery quarantines interrupted staging and unreferenced final
+  attempts, preserves valid reviews, and resumes schedulable work monotonically.
+- Output promotion validates paths, symlinks, manifest ports, required outputs,
+  unique destinations, and containment before one atomic attempt rename.
+- Post-promotion cancellation and persistence failures remove or quarantine
+  unreferenced attempts without modifying external sentinel targets.
+- One adapter manifest controls versions, required/optional ports, and handlers;
+  real relay coverage proves exact upstream artifact bytes reach downstream.
+- Unexpected request and adapter failures are captured by the local fault log
+  without request bodies or authentication tokens.
 
-The final monitor reproduced the previously failing cases:
-
-- an unknown downstream source now raises and names `ghost`;
-- an external symlinked run directory is ignored;
-- a valid record stored under the wrong run directory raises with both IDs;
-- overlapping terminal and stale saves finish with terminal history retained;
-- the full focused test suite also covers symlinked run files, invalid
-  directory names, mixed known/unknown sources, and duplicate create races.
-
-## Verification
-
-The complete baseline passed:
+## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 31 files already formatted.
-- `uv run mypy`: passed for 15 source files.
-- `uv run pytest -q`: 184 passed, with 2 upstream deprecation warnings.
+- `uv run ruff format --check .`: 37 files clean.
+- `uv run mypy packages/core/src packages/server/src`: passed for 18 source files.
+- `uv run pytest -q`: 232 passed; two warnings are upstream Starlette/AnyIO
+  deprecations and none originate in BrainLearn code.
+- Focused repair group: 6 passed, covering staging symlink failure, blocked
+  post-promotion quarantine, blocked orphan quarantine, missing required output,
+  disconnected required input, and omitted required adapter output.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
-- `npm --prefix apps/web run test`: 24 passed across 5 files.
+- `npm --prefix apps/web test -- --run`: 24 passed in 5 files.
 - `npm --prefix apps/web run build`: passed; 1,837 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
-- `git diff --check`: passed.
+- `git diff --check`: passed before this approval update.
 
 ## Next assignment
 
-Step 4C is ready. Follow the ordered worker-lifecycle assignment in
-`docs/implementation-plan.md`. Keep execution outside request handlers, route
-all writes through `RunStore`, use only allowlisted internal demonstration
-adapters, and stop for monitoring review before Step 4D.
+Proceed only with Step 4D cache and invalidation as specified in
+`docs/implementation-plan.md`. Do not begin Step 4E UI interaction work in the
+same work unit. Keep the Step 4 heading unchecked until the complete 4E gate is
+reviewed.

@@ -224,12 +224,15 @@ class ProjectStore:
         new_validation = validate_workflow(workflow, NODE_REGISTRY_BY_ID)
         # Keep the most recent semantically valid persisted graph in the
         # recovery file. Work-in-progress saves may be invalid, but an invalid
-        # graph must never replace the last-valid recovery copy.
+        # graph must never replace the last-valid recovery copy. Filesystem
+        # errors propagate so an unreadable previous graph fails the save
+        # instead of silently overwriting the only copy.
+        previous_text = workflow_path.read_text(encoding="utf-8")
         try:
-            previous_raw = json.loads(workflow_path.read_text(encoding="utf-8"))
+            previous_raw = json.loads(previous_text)
             previous_graph = Workflow.model_validate(migrate_workflow_dict(previous_raw))
             previous_valid = validate_workflow(previous_graph, NODE_REGISTRY_BY_ID).valid
-        except (OSError, ValueError):
+        except ValueError:
             previous_graph = None
             previous_valid = False
         if previous_graph is not None and previous_valid:

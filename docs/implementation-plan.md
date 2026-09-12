@@ -103,21 +103,31 @@ Goal: execute deterministic demonstration nodes without claiming scientific proc
 - [x] Define run, node-run, artifact, environment, event, and failure schemas.
 - [x] Create content identities from inputs, parameters, implementation version, environment, seeds, and relevant settings.
 - [x] Implement topological scheduling and explicit dependency states.
-- [ ] Run workers outside the API request lifecycle.
-- [ ] Stream progress and events to the UI.
-- [ ] Implement cancellation and service-restart recovery.
-- [ ] Write outputs atomically and keep partial files out of successful artifact records.
+- [x] Run workers outside the API request lifecycle.
+- [x] Stream progress and events to the UI.
+- [x] Implement cancellation and service-restart recovery.
+- [x] Write outputs atomically and keep partial files out of successful artifact records.
 - [ ] Implement cache reuse and downstream invalidation.
 - [ ] Add non-scientific fixture nodes for copy, delay, failure, branching, and review pause.
+- [ ] Support smooth existing-node dragging and palette-to-canvas drag-and-drop with click and keyboard fallbacks.
+- [ ] Add reduced-motion-aware transitions for discrete canvas, inspector, viewport, and run-state changes.
+- [ ] Persist safe per-instance node presentation customization separately from scientific parameters and manifest identity.
 - [ ] Display run status, logs, artifacts, cached status, and actionable failures in the run drawer.
 
-Completion gate: a branched fixture workflow runs, reuses its cache on the second run, invalidates only affected descendants after a parameter change, survives service restart, and cancels without producing successful partial artifacts.
+Completion gate: a branched fixture workflow can be assembled by click, keyboard, or drag-and-drop; node movement is continuous and persists as one undoable action; presentation customization survives save/open without changing computation identity; the workflow runs, reuses its cache on the second run, invalidates only affected descendants after a parameter change, survives service restart, and cancels without producing successful partial artifacts.
 
-## [ ] Step 5 — BIDS EEG import and signal inspection
+## [ ] Step 5 — Curated dataset access, BIDS EEG import, and signal inspection
 
-Goal: introduce the first real scientific dependency with no signal transformation.
+Goal: acquire a pinned public dataset safely from the UI and introduce the first real scientific dependency with no signal transformation.
 
-- [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum.
+- [ ] Define a versioned curated-dataset manifest with provider, immutable snapshot, modality, size, access class, license, citation, checksums, and compatible templates.
+- [ ] Implement an OpenNeuro-first public BIDS dataset source behind a provider-neutral Python interface; defer DANDI to NWB work and restrict PhysioNet automation to open-access records.
+- [ ] Add a searchable dataset library and details panel showing size, disk requirement, version, license, citation, limitations, and workflow compatibility before download.
+- [ ] Download through the local Python service into the authorized project with persisted progress, bounded retry, cancellation/resume, disk-space checks, checksum verification, and atomic finalization.
+- [ ] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
+- [ ] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
+- [ ] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
+- [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
 - [ ] Add MNE-Python and MNE-BIDS as an optional, pinned EEG dependency group.
 - [ ] Record upstream versions, licenses, citations, and installation status in node metadata.
 - [ ] Implement BIDS EEG discovery and essential metadata validation.
@@ -128,7 +138,7 @@ Goal: introduce the first real scientific dependency with no signal transformati
 - [ ] Provide errors for unsupported formats and incomplete metadata.
 - [ ] Add an independently reviewed direct-MNE reference script.
 
-Completion gate: BrainLearn and the reference script identify the same recordings, channels, sampling frequency, events, and selected summary values on the pinned fixture. Source files remain unchanged.
+Completion gate: the GUI discovers a curated public EEG dataset, shows its license/citation/size, downloads and verifies an immutable snapshot into the project, safely cancels/resumes, and reopens it offline. BrainLearn and the reference script identify the same recordings, channels, sampling frequency, events, and selected summary values on the pinned fixture. Source files remain unchanged.
 
 Scientific review required before checking this step.
 
@@ -279,87 +289,74 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 4B monitoring review | Changes requested | Full baseline reproduced: Ruff and formatting passed (31 files), strict mypy passed (15 files), pytest 156 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed, audit found 0 vulnerabilities, and `git diff --check` passed. Direct probes found terminal history writable; running/all-queued records unreconciled; dependent reviews preserved after their running prerequisite is reset; malformed run files silently omitted; `ready_node_ids` accepting an unknown graph dependency when a state exists; authorized descendants accepted as project roots; and interrupted attempt numbers retained only in message text. Repair criteria are in `REVIEW.md`; Step 4B remains open. | Uncommitted; monitoring review failed |
 | 2026-09-12 | Step 4B second monitoring review | Changes requested | All six prior findings verified repaired and full baseline reproduced: Ruff and formatting passed (31 files), strict mypy passed (15 files), pytest 175 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed, audit found 0 vulnerabilities, and `git diff --check` passed. Controlled probes found discovery following an external run-directory symlink and accepting a directory/record-ID mismatch; overlapping terminal and stale saves restoring the nonterminal record; and `downstream_ids` silently ignoring an unknown source. Three focused repairs are specified in `REVIEW.md`; Step 4B remains open. | Uncommitted; monitoring review failed |
 | 2026-09-12 | Step 4B final monitored gate | Complete | Reviewer independently reproduced unknown-source rejection, external symlink exclusion, directory/record-ID mismatch rejection, and terminal-wins concurrent saving; focused tests also cover symlinked files, invalid directory names, mixed unknown sources, and duplicate-create races. Full gate: `uv run pytest -q` 184 passed; frontend 24 passed in 5 files; Ruff, Ruff format (31 files), strict mypy (15 files), ESLint, Prettier, production build (1,837 modules), production audit (0 vulnerabilities), and `git diff --check` passed. In-process locking is approved provided Step 4C workers write only through `RunStore`; a separate writer process requires cross-process coordination. Scheduling is approved; Step 4 remains open for 4C–4E. | Monitored review complete |
+| 2026-09-12 | 500 diagnosis + fault logger | Verified; monitoring pending | Reproduced an HTTP 500 from `POST /api/projects/open` on unreadable project files (`PermissionError` unmapped); the new date-folder/hour-file fault log (`<log-dir>/YYYY-MM-DD/HH.log` with UTC time, request line, full traceback, no tokens/bodies) captured cause and location. Fixed by mapping `PermissionError`→403 on project create/open/save-as and failing closed in `save_project` when the previous graph is unreadable. New `tests/test_error_log.py` (5 tests) and 403 regression tests. Full baseline with Step 4C below. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4C worker lifecycle | Verified; monitoring pending | Daemon-thread driver outside request handlers; allowlisted `demo.delay/copy/fail/review` adapters only (unknown types fail as `unsupported_node_type`); every mutation via `RunStore` locks; fresh attempts from record+event history; topological driving with downstream skip propagation and run fail/cancel authorship; review pause/resume endpoint with 409 conflicts; cooperative cancellation (parked + running, idempotent, bounded join); staging→atomic promotion with quarantine and no history deletion; SSE `GET /api/runs/events` with `after` replay; adapter crashes filed to the fault log. `tests/test_worker.py` (16 tests: chains, failure/skip, cancel bounds, review paths, restart resume, reconnect, quarantine). `docs/execution-contracts.md` extended. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 36 files clean; `mypy` 18 files clean; `uv run pytest -q` 207 passed; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Step 4 heading left unchecked; cache/UI/branching excluded per slice boundary. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4C review repairs (6 findings) | Verified; monitoring pending | Promotion preflights every output (canonical relative paths, declared/unique ports and destinations, containment + symlink checks, existing sources, reserved-prefix and occupied-destination rejection) and commits one atomic rename, with post-promotion cancel removing the unreferenced attempt dir; worker-level recovery quarantines interrupted staging and auto-resumes schedulable runs while parking valid reviews (attempt>1 + partial-file test); cancelled-before-start keeps attempt 0 without start time while mid-execution cancels keep both (queued/waiting/running/downstream/repeated tests); workflow identity excludes edge IDs with invariance/sensitivity tests; typed `ArtifactRecord` children with zero BrainLearn-owned pytest warnings. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 37 files clean; `mypy` 18 files clean; `uv run pytest -q` 219 passed; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cancellation/recovery and atomic-output bullets plus Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4C second-review repairs (4 findings) | Verified; monitoring pending | Worker-owned assembly/artifact/quarantine paths reserved with symlink refusal (sentinel tests for node/attempt/quarantine targets); post-promotion crash window quarantines unreferenced attempts and recovery reconciles orphaned final attempts; cancel race test proves promotion ran via a post-promotion flag hook; one authoritative `DemoNodeManifest` validates workflow ports at construction with persisted declared outputs, required inputs, and an upstream-bytes relay test; attempt-aware `counts_as_execution(state, attempt)`. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 37 files clean; `mypy` 18 files clean; `uv run pytest -q` 226 passed with zero BrainLearn-owned warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cancellation/recovery and atomic-output bullets plus Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4C monitoring review | Changes requested | Full baseline reproduced: Ruff and format passed (36 files), strict mypy passed (18 files), pytest 207 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Pytest emitted 3 BrainLearn-owned Pydantic serializer warnings. Direct probes found output path traversal occurring before validation; partial multi-output promotion surviving a later failure; restart recovery neither quarantining interrupted staging nor automatically resuming schedulable work; cancellation assigning fabricated attempts to never-started nodes; and presentation-only edge IDs changing workflow identity. Six focused repairs are specified in `REVIEW.md`; cancellation/recovery and atomic-output bullets reopened. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4C live application smoke | Verified with known limitations | Launched the current Vite and FastAPI worktree; UI created `/private/tmp/brainlearn-ui-smoke-project`, added/inspected a filter node, validated through the API, and saved. Live `demo.delay -> demo.copy` execution succeeded with attempts 1, seven ordered SSE events, and a `live-ok` artifact; capabilities reported Darwin/arm64. Live guards returned 401 without authentication, 403 for an untrusted Origin, and 404 for a missing run. Runtime reproduced the Pydantic artifact warning. `Run workflow` is intentionally disabled until Step 4E; the recovered-draft banner incorrectly remains after successful create/save and is recorded for that UI slice. | No checklist change; Step 4C repairs still required |
+| 2026-09-12 | Canvas/customization/dataset roadmap | Planned | Diagnosed controlled-canvas movement lacking `onNodesChange` and registry click-only insertion lacking palette drop coordinates. Added Step 4E gates for continuous node movement, exact-position palette drag/drop with accessible fallbacks, reduced-motion-aware transitions, and presentation customization isolated from scientific identity. Expanded Step 5 with an OpenNeuro-first curated dataset library, provider-neutral Python retrieval, license/citation/version display, persisted progress/cancel/resume, atomic verified downloads, secure extraction/redirect policy, offline import, and mock-provider/integration tests. Detailed acceptance and security gates are in `docs/ui-dataset-roadmap.md`; `PROPOSAL.md` updated. `git diff --check` passed. | Planned only; no completion boxes checked and active Step 4C assignment unchanged |
+| 2026-09-12 | Step 4C second monitoring review | Changes requested | All six first-review repairs were inspected and the full gate passed: Ruff and format (37 files), strict mypy (18 files), pytest 219 passed with only 2 upstream warnings, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Direct probes still escaped through symlinked `artifacts/<node>` and adapter-precreated `staging/complete`; an unreferenced final attempt survived recovery; `demo.copy` accepted artifact port `output` when the workflow declared only `out`; and `counts_as_execution(cancelled)` contradicted the new valid attempt-0 cancellation state. The cancellation-race test sets the flag before promotion and does not exercise its name. Four focused repairs are specified in `REVIEW.md`. | Uncommitted; monitoring review failed |
+
+| 2026-09-12 | Step 4C third monitoring review | Changes requested | Full gate reproduced: Ruff and format passed (37 files), strict mypy passed (18 files), pytest 226 passed with only 2 upstream deprecation warnings, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Direct construction probes accepted `demo.copy` without its required output and `demo.relay` with a disconnected required input. A post-promotion persistence-failure probe with a symlinked quarantine target preserved the external sentinel but left an unreferenced successful artifact inside a terminal failed run. Legacy split adapter maps remain, and `counts_as_execution` still defaults the attempt so ambiguous cancelled-state calls are accepted. Three focused repairs are specified in `REVIEW.md`. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4C third-review repairs (3 findings) | Verified; monitoring pending | Fail-safe quarantine uses first-free `*-uncommitted`/`*-orphaned`/`*-interrupted` names with contained non-symlink removal fallback for promoted, orphaned, and staging trees (sentinel-preserving); `DemoNodeManifest.outputs` is now `dict[str,bool]` with required outputs enforced at construction, connection, and success time and legacy `DEMO_ADAPTERS`/`DEMO_OUTPUT_PORTS` removed; `counts_as_execution(state, attempt)` requires attempt and rejects negatives. New tests: blocked-quarantine post-promotion cleanup, orphan with blocked target, missing required output, disconnected required input, success-time omission. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 37 files clean; `mypy` 18 files clean; `uv run pytest -q` 231 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cancellation/recovery and atomic-output bullets plus Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+
+| 2026-09-12 | Step 4C fourth monitoring review | Changes requested | The three third-review repairs were independently reproduced and the full gate passed: Ruff and format (37 files), strict mypy (18 files), pytest 231 passed with only 2 upstream deprecation warnings, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. A new direct probe planted `staging/` as a symlink: containment preserved the external sentinel, but setup raised before `_execute_node` entered its failure boundary and `_drive` only logged it, leaving both node and run permanently `running`. One focused repair is specified in `REVIEW.md`. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4C fourth-review repair (staging boundary) | Verified; monitoring pending | Moved staging reservation and input resolution inside the node-attempt `try` with `staging: Path \| None` guard so setup containment failures produce structured node failure, downstream skips, and terminal failed run without touching symlink targets; uninitialized staging is never quarantined. New test plants `staging/` symlink and proves sentinel unchanged, no artifacts, and node/run failed. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 37 files clean; `mypy` 18 files clean; `uv run pytest -q` 232 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cancellation/recovery and atomic-output bullets plus Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+
+| 2026-09-12 | Step 4C final monitored gate | Complete | Reviewer reproduced the staging-root symlink failure: API start returned normally, node and run reached structured `failed`, the external sentinel was byte-identical, and no successful artifact appeared. All earlier repair probes remained covered. Full gate: Ruff and format passed (37 files), strict mypy passed (18 files), pytest 232 passed with only 2 upstream deprecation warnings, focused repair group 6 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Cancellation/recovery and atomic-output items are approved; Step 4 remains open for 4D–4E. | Monitored review complete |
 
 ## Next assignment
 
-Read `AGENTS.md`, `REVIEW.md`, and this plan before acting. Step 4A is approved
-in `25bf419`. The worktree currently contains uncommitted Step 4B plus a repair
-row claiming the three findings from the second monitoring review are fixed.
+Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`, and this plan
+before acting. Step 4A is approved in `25bf419`; Step 4B is approved in
+`91b9d2e`; Step 4C is approved by the final monitored gate above. Preserve all
+completion-log history and the UI/dataset roadmap.
 
-### Immediate action — submit Step 4B repairs for review
+### Step 4D — content-addressed cache and downstream invalidation
 
-1. Inspect the shared worktree and preserve every existing change. Do not
-   rewrite the monitoring rows or remove prior evidence.
-2. Confirm the repair implementation covers all three current findings:
-   discovered run paths cannot follow symlinked directories or files and must
-   match their directory ID; create/save/recovery share per-run serialization;
-   and downstream queries reject unknown source IDs.
-3. Confirm deterministic tests cover directory and file symlinks, invalid and
-   mismatched run-directory IDs, terminal-versus-stale concurrent saves,
-   duplicate concurrent creates, unknown-only sources, and mixed
-   known/unknown sources.
-4. Run the full repository verification baseline and report exact counts. The
-   latest unreviewed row reports 184 Python tests and 24 frontend tests; do not
-   copy those numbers without reproducing them.
-5. Leave the scheduling bullet and Step 4 heading unchecked. Stop and request
-   monitoring review. Do not commit and do not begin Step 4C.
+Implement only this cache slice. Do not start the Step 4E canvas or run-drawer
+work in the same work unit.
 
-Step 4B remains limited to `packages/core` scheduler/contracts,
-`packages/server` run persistence and endpoints, their focused tests and
-fixtures, `docs/execution-contracts.md`, `REVIEW.md`, and this plan. Do not add
-worker execution, cache storage, scientific dependencies, UI run controls, or
-arbitrary command execution.
+1. Define the versioned cache-entry contract before storage code. Bind each
+   entry to the existing node content identity, node implementation version,
+   environment identity, seed, settings, input identities, and immutable output
+   metadata. Document what can and cannot be reused across platforms.
+2. Store cache entries inside the authorized project using atomic writes and
+   worker-owned path containment. Never follow symlinks, overwrite prior cache
+   history, trust a record without verifying its files, or place large bytes in
+   JSON. Choose an explicit project-local layout and add recovery rules for
+   interrupted cache publication.
+3. Before executing a ready node, look up its exact content identity. Reuse only
+   a complete entry whose artifact paths, sizes, and SHA-256 values verify.
+   Materialize or reference outputs without mutating the immutable cache entry;
+   record node state `cache_reused`, attempt 0, typed artifacts, and a structured
+   `cache_reused` event.
+4. Treat missing, corrupt, incomplete, incompatible, or unsafe entries as cache
+   misses with actionable diagnostics where appropriate. Never silently accept
+   partial results and never delete valid prior outputs during a miss.
+5. Publish a cache entry only after successful atomic output promotion and run
+   record persistence. Failure, cancellation, review pause, and zero-output
+   control nodes must not create misleading reusable entries.
+6. Prove invalidation through identities: an unchanged second run reuses eligible
+   nodes; changing one parameter, input identity, implementation version,
+   environment, seed, or relevant setting invalidates that node and exactly its
+   transitive descendants while independent branches remain reusable.
+7. Add deterministic tests for cache hit/miss, exact artifact verification,
+   corrupt metadata/files, symlink and traversal refusal, interrupted publish,
+   concurrent identical runs, attempt/event semantics, independent branches,
+   and every declared invalidation input. Keep scientific processing out of
+   this slice.
+8. Update `docs/execution-contracts.md` and append exact verification evidence.
+   Check only the cache/invalidation bullet after its behavior and full baseline
+   pass. Leave the Step 4 heading unchecked and request monitoring review before
+   committing.
 
-### Step 4C — Worker lifecycle after monitored approval
+### Following work after monitored Step 4D approval
 
-Begin this slice only after the monitor approves and commits Step 4B.
-
-1. Define a bounded worker protocol and lifecycle service. Work must execute
-   outside FastAPI request handlers. Use an allowlisted registry of internal
-   demonstration-node functions; never accept shell commands, module paths, or
-   arbitrary Python from API payloads.
-2. Route every run mutation through the Step 4B serialized writer path. Assign
-   a fresh positive attempt when queued work starts, using structured event
-   history to remain monotonic after restart.
-3. Drive nodes in deterministic topological order. Start only ready queued
-   nodes; propagate failed/cancelled prerequisites to the transitive downstream
-   closure as `dependency_skipped`; author the run-level failed or cancelled
-   transition that Step 4B deliberately deferred.
-4. Append gapless structured events for run/node start, success, failure,
-   dependency skip, review pause/resume, recovery, and cancellation. Provide a
-   one-way local progress stream to the UI, preferring SSE unless bidirectional
-   transport is demonstrably required.
-5. Implement cooperative cancellation for queued and running work. Cancellation
-   must reach a terminal state after a bounded wait and remain idempotent when
-   requested repeatedly or after completion.
-6. Stage every output beneath its run directory and atomically promote it only
-   after node success. Failed, cancelled, or interrupted attempts must leave no
-   successful `ArtifactRecord`; clean or quarantine temporary files without
-   deleting prior successful history.
-7. Recover service interruptions through the approved Step 4B recovery path,
-   then resume schedulable work with fresh attempts while preserving valid
-   pending reviews.
-8. Add deterministic demonstration adapters needed to exercise lifecycle
-   behavior only: short delay, controlled failure, and small file copy are
-   sufficient here. Full branching/review/cache demonstration remains Step 4E.
-9. Test state transitions, ordering, concurrent API requests, restart during
-   work, cancellation before and during work, failure propagation, event-stream
-   reconnect, attempt monotonicity, and atomic artifact promotion. Avoid tests
-   that merely mirror implementation details.
-10. Update `docs/execution-contracts.md`, add exact verification evidence to the
-    completion log, check only the Step 4 worker/stream/cancellation/artifact
-    bullets whose complete behavior passes, and request monitoring review.
-    Leave the Step 4 heading unchecked and stop before Step 4D.
-
-### Remaining Step 4 order
-
-1. **Step 4D — Cache and invalidation:** reuse content-addressed outputs and
-   invalidate only descendants affected by input, parameter, implementation,
-   environment, seed, or setting changes.
-2. **Step 4E — Demonstration gate:** complete the non-scientific branching,
-   failure, review-pause, and cache fixtures; display run state, logs,
-   artifacts, cache state, and actionable failures; execute the full Step 4
-   completion gate.
-
-Every slice ends with exact command results and a monitoring review. The Step
-4 heading remains unchecked until the complete branched-workflow gate passes.
+Step 4E repairs continuous existing-node dragging, adds exact-coordinate palette
+drop with click/keyboard fallbacks, implements reduced-motion-aware transitions,
+persists presentation customization outside scientific identity, completes the
+branching/failure/review/cache fixture, and connects the run drawer. Follow
+`docs/ui-dataset-roadmap.md`. Step 5A then implements the curated OpenNeuro-first
+dataset library and secure local download lifecycle.

@@ -1,11 +1,14 @@
 """FastAPI application serving the local BrainLearn user interface."""
 
 import json
+import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Literal
 
 import uvicorn
 from brainlearn_core import (
+    RUN_TERMINAL_STATES,
     NodeManifest,
     ProjectManifest,
     RunRecord,
@@ -15,14 +18,17 @@ from brainlearn_core import (
 )
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from brainlearn_server.auth import get_session_token, require_session_token
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
+from brainlearn_server.error_log import ErrorLoggingMiddleware, error_log_dir
 from brainlearn_server.project_store import ProjectStore
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
 from brainlearn_server.run_store import RunStore
 from brainlearn_server.security import HostOriginValidationMiddleware
+from brainlearn_server.worker import ReviewConflictError, WorkerService, build_run_record
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 EXAMPLE_PATH = REPOSITORY_ROOT / "examples" / "eeg-first-look.workflow.json"
@@ -122,6 +128,7 @@ class RunResponse(BaseModel):
 
 store = ProjectStore()
 runs = RunStore(store)
+workers = WorkerService(runs)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -136,6 +143,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization", "X-BrainLearn-Token"],
 )
+app.add_middleware(ErrorLoggingMiddleware)
 
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -200,6 +208,8 @@ def create_project(
         )
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _project_response(
@@ -215,6 +225,8 @@ def open_project(
         path, manifest, workflow = store.open_project(payload.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _project_response(
@@ -249,6 +261,8 @@ def save_project_as(
         )
     except FileExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _project_response(
@@ -320,7 +334,7 @@ def recover_runs(
     payload: RunRecoverRequest, _auth: None = Depends(require_session_token)
 ) -> list[RunResponse]:
     try:
-        records = runs.recover_runs(payload.path)
+        records = workers.recover_project(payload.path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -330,8 +344,131 @@ def recover_runs(
     return [RunResponse(path=payload.path, run_id=record.id, run=record) for record in records]
 
 
+class RunStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    workflow: Workflow | None = None
+    run_id: str | None = None
+    seed: int = 0
+
+
+class RunCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+
+
+class RunReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    node_run_id: str = Field(min_length=1)
+    decision: Literal["approved", "rejected"]
+    note: str = ""
+
+
+@app.post("/api/runs/start", response_model=RunResponse)
+def start_run(
+    payload: RunStartRequest, _auth: None = Depends(require_session_token)
+) -> RunResponse:
+    if (payload.workflow is None) == (payload.run_id is None):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of 'workflow' (new run) or 'run_id' (resume).",
+        )
+    try:
+        if payload.workflow is not None:
+            record = workers.runs.create_run(
+                payload.path, build_run_record(payload.workflow, seed=payload.seed)
+            )
+            started = workers.start_existing(payload.path, record.id)
+        else:
+            started = workers.start_existing(payload.path, payload.run_id or "")
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=started.id, run=started)
+
+
+@app.post("/api/runs/cancel", response_model=RunResponse)
+def cancel_run(
+    payload: RunCancelRequest, _auth: None = Depends(require_session_token)
+) -> RunResponse:
+    try:
+        record = workers.cancel_run(payload.path, payload.run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=record.id, run=record)
+
+
+@app.post("/api/runs/review", response_model=RunResponse)
+def review_run(
+    payload: RunReviewRequest, _auth: None = Depends(require_session_token)
+) -> RunResponse:
+    try:
+        record = workers.review_node(
+            payload.path, payload.run_id, payload.node_run_id, payload.decision, payload.note
+        )
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=record.id, run=record)
+
+
+@app.get("/api/runs/events")
+def run_events(
+    path: str, run_id: str, after: int = -1, _auth: None = Depends(require_session_token)
+) -> StreamingResponse:
+    try:
+        runs.get_run(path, run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    def _stream() -> Iterator[str]:
+        last = after
+        deadline = time.monotonic() + 30.0
+        while True:
+            try:
+                record = runs.get_run(path, run_id)
+            except (FileNotFoundError, ValueError, PermissionError):
+                break
+            for event in record.events:
+                if event.seq > last:
+                    yield f"data: {event.model_dump_json()}\n\n"
+                    last = event.seq
+            if record.state in RUN_TERMINAL_STATES:
+                break
+            if time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
 def run() -> None:
     token_preview = get_session_token()[:6] + "…"
     print(f"BrainLearn session token (keep local): {get_session_token()}")
     print(f"Token preview for log redaction checks: {token_preview}")
+    print(f"Fault logs (date folder, hour file): {error_log_dir()}")
     uvicorn.run("brainlearn_server.app:app", host="127.0.0.1", port=8000, reload=False)

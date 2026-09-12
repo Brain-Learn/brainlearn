@@ -284,3 +284,57 @@ def test_create_refuses_to_overwrite_existing_work(client: TestClient, tmp_path:
         headers=AUTH_HEADERS,
     )
     assert duplicate.status_code == 409
+
+
+def _make_unreadable(path: Path) -> None:
+    import os
+
+    if os.name == "nt":
+        pytest.skip("POSIX file permissions do not apply on Windows")
+    path.chmod(0o000)
+
+
+def test_open_reports_forbidden_for_unreadable_project_files(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project_dir = tmp_path / "locked"
+    workflow = _example_workflow()
+    assert (
+        client.post(
+            "/api/projects/create",
+            json={"path": str(project_dir), "name": "Locked", "workflow": workflow},
+            headers=AUTH_HEADERS,
+        ).status_code
+        == 200
+    )
+    _make_unreadable(project_dir / PROJECT_MANIFEST_FILENAME)
+    _make_unreadable(project_dir / WORKFLOW_FILENAME)
+
+    response = client.post(
+        "/api/projects/open", json={"path": str(project_dir)}, headers=AUTH_HEADERS
+    )
+    assert response.status_code == 403
+    assert "Permission denied" in response.json()["detail"]
+
+
+def test_save_reports_forbidden_for_unreadable_project_files(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project_dir = tmp_path / "locked-save"
+    workflow = _example_workflow()
+    assert (
+        client.post(
+            "/api/projects/create",
+            json={"path": str(project_dir), "name": "Locked", "workflow": workflow},
+            headers=AUTH_HEADERS,
+        ).status_code
+        == 200
+    )
+    _make_unreadable(project_dir / WORKFLOW_FILENAME)
+
+    response = client.post(
+        "/api/projects/save",
+        json={"path": str(project_dir), "workflow": workflow},
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 403

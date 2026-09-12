@@ -74,9 +74,22 @@ NODE_EXECUTED_STATES = frozenset(
 )
 
 
-def counts_as_execution(state: NodeRunState) -> bool:
-    """Return True when the node run consumed an execution attempt."""
+def counts_as_execution(state: NodeRunState, attempt: int) -> bool:
+    """Return True when the record represents consumed execution.
 
+    State alone cannot answer for cancellation: a node cancelled before
+    starting carries attempt 0 and never executed, while a node cancelled
+    during execution carries a positive attempt and did. Callers must pass
+    the record's attempt alongside its state; negative attempts are rejected
+    as nonsensical.
+    """
+
+    if attempt < 0:
+        raise ValueError(f"Attempt must be >= 0, got {attempt}.")
+    if state in (NodeRunState.QUEUED, NodeRunState.DEPENDENCY_SKIPPED, NodeRunState.CACHE_REUSED):
+        return False
+    if state == NodeRunState.CANCELLED:
+        return attempt > 0
     return state in NODE_EXECUTED_STATES
 
 
@@ -210,6 +223,7 @@ class RunEventKind(StrEnum):
     NODE_SUCCEEDED = "node_succeeded"
     NODE_FAILED = "node_failed"
     NODE_SKIPPED = "node_skipped"
+    NODE_CANCELLED = "node_cancelled"
     CACHE_REUSED = "cache_reused"
     REVIEW_REQUESTED = "review_requested"
     REVIEW_DECIDED = "review_decided"
@@ -315,6 +329,12 @@ class NodeRunRecord(BaseModel):
                 raise ValueError(
                     f"A {state.value} node run consumed no execution attempt "
                     "and must record attempt 0."
+                )
+        elif state == NodeRunState.CANCELLED and self.started_at is None:
+            if self.attempt != 0:
+                raise ValueError(
+                    "A node cancelled before starting consumed no execution "
+                    "attempt and must record attempt 0."
                 )
         elif self.attempt < 1:
             raise ValueError(

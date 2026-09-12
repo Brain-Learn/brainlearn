@@ -159,6 +159,10 @@ Open into a template gallery, not an empty canvas. Each template states its inte
 
 Use progressive disclosure: essential parameters first, advanced settings available, and defaults explained. A dataset panel shows participants and warnings; a central canvas shows processing; a side panel shows parameters and previews; a run panel shows progress and actionable failures.
 
+Canvas interaction and dataset acquisition are specified in `docs/ui-dataset-roadmap.md`. Registry nodes must support pointer drag-and-drop to an exact canvas position while retaining click and keyboard alternatives. Existing nodes must track the pointer continuously and save one undoable final move. Short, reduced-motion-aware transitions should smooth discrete layout and status changes without adding latency to direct manipulation. Instance labels, notes, colors, and collapsed state remain presentation metadata; manifest-owned scientific identity, ports, licensing, citations, and execution behavior remain immutable.
+
+The dataset panel will start with a curated, OpenNeuro-first catalogue of pinned public BIDS EEG snapshots. It shows version, size, license, citation, and compatibility before a local Python worker downloads and verifies data inside the authorized project. DANDI follows when NWB support is scheduled. PhysioNet automation initially covers open-access records only; restricted or credentialed resources retain their provider-controlled access flow.
+
 Examples of useful messages: “Epoch time is in milliseconds; this node expects seconds,” or “Your evaluation targets new participants, but participant 12 appears in both training and test data.”
 
 Provide signal traces, spectra, and trial summaries for EEG; later provide orthogonal image slices, masks, registration overlays, and statistical maps. Use downsampled previews and lazy loading for large datasets. Support keyboard navigation, readable contrast, and undo/redo. Do not automatically execute expensive nodes whenever a parameter changes.

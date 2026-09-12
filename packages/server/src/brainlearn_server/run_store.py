@@ -201,6 +201,24 @@ class RunStore:
             record for record in self.list_runs(raw_path) if record.state not in RUN_TERMINAL_STATES
         ]
 
+    def recover_run(self, raw_path: str, run_id: str, now: str | None = None) -> RunRecord | None:
+        """Reconcile one nonterminal run; return it only when changed."""
+
+        timestamp = now or utc_now_iso()
+        project = self._project_dir(raw_path)
+        with _run_lock(project, run_id):
+            # Re-read under the lock: a concurrent writer may have
+            # finished the run after discovery listed it.
+            current = self.get_run(str(project), run_id)
+            if current.state in RUN_TERMINAL_STATES:
+                return None
+            repaired = _recover_record(current, timestamp)
+            if repaired is None:
+                return None
+            target = self._run_file(project, repaired.id)
+            atomic_write_json(target, repaired.model_dump(mode="json"))
+            return repaired
+
     def recover_runs(self, raw_path: str, now: str | None = None) -> list[RunRecord]:
         """Repair runs interrupted by a service restart.
 
@@ -225,18 +243,10 @@ class RunStore:
         project = self._project_dir(raw_path)
         recovered: list[RunRecord] = []
         for record in self.find_nonterminal_runs(raw_path):
-            with _run_lock(project, record.id):
-                # Re-read under the lock: a concurrent writer may have
-                # finished the run after discovery listed it.
-                current = self.get_run(str(project), record.id)
-                if current.state in RUN_TERMINAL_STATES:
-                    continue
-                repaired = _recover_record(current, timestamp)
-                if repaired is None:
-                    continue
-                target = self._run_file(project, repaired.id)
-                atomic_write_json(target, repaired.model_dump(mode="json"))
-                recovered.append(repaired)
+            repaired = self.recover_run(str(project), record.id, now=timestamp)
+            if repaired is None:
+                continue
+            recovered.append(repaired)
         return recovered
 
 

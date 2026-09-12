@@ -323,11 +323,21 @@ def test_unexecuted_or_unsuccessful_states_keep_no_artifacts(state: str) -> None
 
 
 def test_cache_reuse_and_skip_do_not_count_as_execution() -> None:
-    assert counts_as_execution(NodeRunState.RUNNING) is True
-    assert counts_as_execution(NodeRunState.SUCCEEDED) is True
-    assert counts_as_execution(NodeRunState.CACHE_REUSED) is False
-    assert counts_as_execution(NodeRunState.DEPENDENCY_SKIPPED) is False
-    assert counts_as_execution(NodeRunState.QUEUED) is False
+    assert counts_as_execution(NodeRunState.RUNNING, 1) is True
+    assert counts_as_execution(NodeRunState.SUCCEEDED, 1) is True
+    assert counts_as_execution(NodeRunState.CACHE_REUSED, 0) is False
+    assert counts_as_execution(NodeRunState.DEPENDENCY_SKIPPED, 0) is False
+    assert counts_as_execution(NodeRunState.QUEUED, 0) is False
+
+
+def test_cancelled_counts_as_execution_only_with_positive_attempt() -> None:
+    assert counts_as_execution(NodeRunState.CANCELLED, 0) is False
+    assert counts_as_execution(NodeRunState.CANCELLED, 1) is True
+    assert counts_as_execution(NodeRunState.WAITING_FOR_REVIEW, 1) is True
+    with pytest.raises(TypeError):
+        counts_as_execution(NodeRunState.CANCELLED)  # type: ignore[call-arg]
+    with pytest.raises(ValueError, match="Attempt must be"):
+        counts_as_execution(NodeRunState.CANCELLED, -1)
 
 
 def test_waiting_node_run_requires_pending_review() -> None:
