@@ -1,9 +1,11 @@
 import { expect, test } from "vitest";
 
 import {
+  allocateUniqueId,
   buildConnectionCandidate,
   emptyWorkflow,
   instantiateNode,
+  maxIdSuffix,
   removeEdges,
   removeNodes,
 } from "./graph";
@@ -52,4 +54,33 @@ test("creates manifest-backed nodes and connects, disconnects, and removes them"
 
   workflow = removeNodes(workflow, new Set(["first"]));
   expect(workflow.nodes.map((node) => node.id)).toEqual(["second"]);
+});
+
+test("derives the id counter from loaded workflows and avoids collisions", () => {
+  const loaded = {
+    ...emptyWorkflow(),
+    nodes: [
+      instantiateNode(manifest, "input-test-1", { x: 0, y: 0 }),
+      instantiateNode(manifest, "input-test-7", { x: 100, y: 0 }),
+    ],
+    edges: [
+      {
+        id: "edge-7",
+        source: { node_id: "input-test-1", port_id: "out" },
+        target: { node_id: "input-test-7", port_id: "out" },
+      },
+    ],
+  };
+  expect(maxIdSuffix(loaded)).toBe(7);
+
+  const counter = { current: maxIdSuffix(loaded) + 1 };
+  const first = allocateUniqueId("input-test", loaded, counter);
+  expect(first).toBe("input-test-8");
+  const withFirst = {
+    ...loaded,
+    nodes: [...loaded.nodes, instantiateNode(manifest, first, { x: 0, y: 0 })],
+  };
+  const second = allocateUniqueId("input-test", withFirst, counter);
+  expect(second).toBe("input-test-9");
+  expect(new Set([first, second]).size).toBe(2);
 });

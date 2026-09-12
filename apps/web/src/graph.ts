@@ -114,3 +114,32 @@ export function updateParameter(
     ),
   };
 }
+
+export function maxIdSuffix(workflow: Workflow): number {
+  let max = 0;
+  const collect = (id: string) => {
+    const match = /-(\d+)$/.exec(id);
+    if (match) {
+      const value = Number.parseInt(match[1], 10);
+      if (Number.isFinite(value) && value > max) max = value;
+    }
+  };
+  for (const node of workflow.nodes) collect(node.id);
+  for (const edge of workflow.edges) collect(edge.id);
+  return max;
+}
+
+export function allocateUniqueId(
+  prefix: string,
+  workflow: Workflow,
+  counter: { current: number },
+): string {
+  const existing = new Set<string>();
+  for (const node of workflow.nodes) existing.add(node.id);
+  for (const edge of workflow.edges) existing.add(edge.id);
+  let candidate = `${prefix}-${counter.current++}`;
+  while (existing.has(candidate)) {
+    candidate = `${prefix}-${counter.current++}`;
+  }
+  return candidate;
+}

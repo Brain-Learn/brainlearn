@@ -23,9 +23,26 @@ import {
 
 import { fetchNodeRegistry, validateWorkflow } from "./api";
 import {
+  clearDraft,
+  loadDraft,
+  loadSessionToken,
+  saveDraft,
+  saveSessionToken,
+} from "./persistence";
+import {
+  createProject,
+  listRecentProjects,
+  openProject,
+  saveProject,
+  saveProjectAs,
+  type RecentEntry,
+} from "./projects";
+import {
+  allocateUniqueId,
   buildConnectionCandidate,
   emptyWorkflow,
   instantiateNode,
+  maxIdSuffix,
   removeEdges,
   removeNodes,
   updateParameter,
@@ -200,7 +217,21 @@ function App() {
   });
   const [status, setStatus] = useState("Empty example canvas");
   const [error, setError] = useState<string>();
+  const [activeProjectPath, setActiveProjectPath] = useState("");
+  const [folderInput, setFolderInput] = useState("");
+  const [projectName, setProjectName] = useState("Untitled project");
+  const [sessionToken, setSessionToken] = useState(() => loadSessionToken());
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
+  const [projectMessage, setProjectMessage] = useState("");
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const nextId = useRef(1);
+  const workflowRev = useRef(0);
+  const validationSeq = useRef(0);
+  const projectOpSeq = useRef(0);
+
+  const syncIdCounter = useCallback((candidate: Workflow) => {
+    nextId.current = Math.max(nextId.current, maxIdSuffix(candidate) + 1);
+  }, []);
 
   useEffect(() => {
     fetchNodeRegistry()
@@ -215,11 +246,14 @@ function App() {
   }, []);
 
   const refreshValidation = useCallback(async (candidate: Workflow) => {
+    const sequence = ++validationSeq.current;
     try {
       const response = await validateWorkflow(candidate);
+      if (sequence !== validationSeq.current) return undefined;
       setValidation(response.validation);
       return response;
     } catch (reason) {
+      if (sequence !== validationSeq.current) return undefined;
       setError(
         reason instanceof Error
           ? reason.message
@@ -229,15 +263,46 @@ function App() {
     }
   }, []);
 
+  useEffect(() => {
+    const draft = loadDraft();
+    if (draft && (draft.workflow.nodes.length > 0 || draft.projectPath)) {
+      setWorkflow(draft.workflow);
+      workflowRev.current += 1;
+      syncIdCounter(draft.workflow);
+      setPast([]);
+      setFuture([]);
+      if (draft.projectPath) {
+        setActiveProjectPath(draft.projectPath);
+        setFolderInput(draft.projectPath);
+      }
+      setDraftNotice(`Recovered unsaved edits from ${draft.savedAt}.`);
+      void refreshValidation(draft.workflow);
+    }
+  }, [refreshValidation, syncIdCounter]);
+
+  useEffect(() => {
+    saveDraft({
+      savedAt: new Date().toISOString(),
+      workflow,
+      projectPath: activeProjectPath || null,
+    });
+  }, [workflow, activeProjectPath]);
+
+  useEffect(() => {
+    saveSessionToken(sessionToken);
+  }, [sessionToken]);
+
   const commit = useCallback(
     (next: Workflow, message: string) => {
       setPast((items) => [...items, workflow]);
       setFuture([]);
       setWorkflow(next);
+      workflowRev.current += 1;
+      syncIdCounter(next);
       setStatus(message);
       void refreshValidation(next);
     },
-    [refreshValidation, workflow],
+    [refreshValidation, syncIdCounter, workflow],
   );
 
   const undo = () => {
@@ -246,6 +311,7 @@ function App() {
     setPast((items) => items.slice(0, -1));
     setFuture((items) => [workflow, ...items]);
     setWorkflow(previous);
+    workflowRev.current += 1;
     setStatus("Undid graph edit");
     void refreshValidation(previous);
   };
@@ -256,13 +322,17 @@ function App() {
     setFuture((items) => items.slice(1));
     setPast((items) => [...items, workflow]);
     setWorkflow(next);
+    workflowRev.current += 1;
     setStatus("Redid graph edit");
     void refreshValidation(next);
   };
 
   const addManifestNode = (manifest: NodeManifest) => {
-    const ordinal = nextId.current++;
-    const id = `${manifest.id.replaceAll(".", "-")}-${ordinal}`;
+    const id = allocateUniqueId(
+      manifest.id.replaceAll(".", "-"),
+      workflow,
+      nextId,
+    );
     const node = instantiateNode(manifest, id, {
       x: 90 + ((workflow.nodes.length * 210) % 840),
       y: 90 + (Math.floor(workflow.nodes.length / 4) % 3) * 180,
@@ -285,9 +355,11 @@ function App() {
 
   const onConnect = async (connection: Connection) => {
     if (!connection.sourceHandle || !connection.targetHandle) return;
+    const revisionAtStart = workflowRev.current;
+    const baseWorkflow = workflow;
     const candidate = buildConnectionCandidate(
-      workflow,
-      `edge-${nextId.current++}`,
+      baseWorkflow,
+      allocateUniqueId("edge", baseWorkflow, nextId),
       connection.source,
       connection.sourceHandle,
       connection.target,
@@ -295,6 +367,10 @@ function App() {
     );
     const response = await refreshValidation(candidate);
     if (!response) return;
+    if (workflowRev.current !== revisionAtStart) {
+      setStatus("Graph changed while validating connection");
+      return;
+    }
     if (!response.validation.valid) {
       setStatus("Connection rejected by scientific validation");
       return;
@@ -313,6 +389,163 @@ function App() {
           ? "Valid graph · round-trip changed"
           : "Graph has validation issues",
     );
+  };
+
+  const applyProjectPayload = (
+    payload: {
+      path: string;
+      manifest: { name: string };
+      workflow: Workflow;
+      validation: ValidationResult;
+    },
+    message: string,
+  ) => {
+    setWorkflow(payload.workflow);
+    workflowRev.current += 1;
+    syncIdCounter(payload.workflow);
+    setPast([]);
+    setFuture([]);
+    setActiveProjectPath(payload.path);
+    setFolderInput(payload.path);
+    if (payload.manifest.name) setProjectName(payload.manifest.name);
+    setValidation(payload.validation);
+    setProjectMessage(message);
+    setStatus(message);
+  };
+
+  const applyProjectPayloadIfCurrent = (
+    payload: {
+      path: string;
+      manifest: { name: string };
+      workflow: Workflow;
+      validation: ValidationResult;
+    },
+    revisionAtStart: number,
+    operationAtStart: number,
+    message: string,
+  ): boolean => {
+    if (
+      operationAtStart !== projectOpSeq.current ||
+      workflowRev.current !== revisionAtStart
+    ) {
+      const staleMessage =
+        "Ignored a stale project response; canvas and project unchanged.";
+      setProjectMessage(staleMessage);
+      setStatus(staleMessage);
+      return false;
+    }
+    applyProjectPayload(payload, message);
+    return true;
+  };
+
+  const projectError = (reason: unknown) => {
+    setProjectMessage(
+      reason instanceof Error ? reason.message : "Project request failed.",
+    );
+  };
+
+  const handleCreate = async () => {
+    const revisionAtStart = workflowRev.current;
+    const operationAtStart = ++projectOpSeq.current;
+    const snapshot = workflow;
+    const destination = folderInput;
+    try {
+      const payload = await createProject(
+        destination,
+        projectName,
+        snapshot,
+        sessionToken,
+      );
+      applyProjectPayloadIfCurrent(
+        payload,
+        revisionAtStart,
+        operationAtStart,
+        `Created project at ${payload.path}`,
+      );
+    } catch (reason) {
+      projectError(reason);
+    }
+  };
+
+  const handleOpen = async () => {
+    const revisionAtStart = workflowRev.current;
+    const operationAtStart = ++projectOpSeq.current;
+    const requested = folderInput;
+    try {
+      const payload = await openProject(requested, sessionToken);
+      applyProjectPayloadIfCurrent(
+        payload,
+        revisionAtStart,
+        operationAtStart,
+        `Opened project at ${payload.path}`,
+      );
+    } catch (reason) {
+      projectError(reason);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!activeProjectPath) {
+      setProjectMessage("Open or create a project before saving.");
+      return;
+    }
+    const revisionAtStart = workflowRev.current;
+    const operationAtStart = ++projectOpSeq.current;
+    const snapshot = workflow;
+    const target = activeProjectPath;
+    try {
+      const payload = await saveProject(
+        target,
+        snapshot,
+        sessionToken,
+        projectName,
+      );
+      applyProjectPayloadIfCurrent(
+        payload,
+        revisionAtStart,
+        operationAtStart,
+        `Saved project at ${payload.path}`,
+      );
+    } catch (reason) {
+      projectError(reason);
+    }
+  };
+
+  const handleSaveAs = async () => {
+    const revisionAtStart = workflowRev.current;
+    const operationAtStart = ++projectOpSeq.current;
+    const snapshot = workflow;
+    const destination = folderInput;
+    try {
+      const payload = await saveProjectAs(
+        destination,
+        snapshot,
+        sessionToken,
+        projectName,
+      );
+      applyProjectPayloadIfCurrent(
+        payload,
+        revisionAtStart,
+        operationAtStart,
+        `Saved copy at ${payload.path}`,
+      );
+    } catch (reason) {
+      projectError(reason);
+    }
+  };
+
+  const handleRecent = async () => {
+    try {
+      setRecent(await listRecentProjects(sessionToken));
+      setProjectMessage("Loaded recent projects.");
+    } catch (reason) {
+      projectError(reason);
+    }
+  };
+
+  const dismissDraft = () => {
+    clearDraft();
+    setDraftNotice(null);
   };
 
   const nodes = useMemo<WorkflowCardNode[]>(
@@ -403,9 +636,89 @@ function App() {
           Select a manifest to add it. All registry nodes are non-executing
           examples.
         </div>
+        <div className="panel-heading">
+          <span>Local project</span>
+        </div>
+        <div className="project-panel">
+          <div className="project-message" role="status">
+            Active project: {activeProjectPath || "none — open or create one"}
+          </div>
+          <label className="parameter">
+            <span>Session token</span>
+            <input
+              aria-label="Session token"
+              onChange={(event) => setSessionToken(event.target.value)}
+              placeholder="Paste token from service terminal"
+              type="password"
+              value={sessionToken}
+            />
+          </label>
+          <label className="parameter">
+            <span>Project folder (absolute path)</span>
+            <input
+              aria-label="Project folder"
+              onChange={(event) => setFolderInput(event.target.value)}
+              placeholder="/Users/researcher/brainlearn-demo"
+              type="text"
+              value={folderInput}
+            />
+          </label>
+          <label className="parameter">
+            <span>Project name</span>
+            <input
+              aria-label="Project name"
+              onChange={(event) => setProjectName(event.target.value)}
+              type="text"
+              value={projectName}
+            />
+          </label>
+          <div className="project-buttons">
+            <button onClick={() => void handleCreate()}>Create</button>
+            <button onClick={() => void handleOpen()}>Open</button>
+            <button
+              disabled={!activeProjectPath}
+              onClick={() => void handleSave()}
+              title={
+                activeProjectPath
+                  ? `Save to ${activeProjectPath}`
+                  : "Open or create a project before saving"
+              }
+            >
+              Save
+            </button>
+            <button onClick={() => void handleSaveAs()}>Save as</button>
+            <button onClick={() => void handleRecent()}>Recent</button>
+          </div>
+          {projectMessage && (
+            <div className="project-message">{projectMessage}</div>
+          )}
+          {recent.length > 0 && (
+            <ul className="recent-list">
+              {recent.map((entry) => (
+                <li key={entry.path}>
+                  <button
+                    onClick={() => {
+                      setFolderInput(entry.path);
+                      if (entry.name) setProjectName(entry.name);
+                    }}
+                  >
+                    {entry.name || entry.path}
+                  </button>
+                  <small>{entry.path}</small>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </aside>
 
       <section className="canvas" aria-label="Workflow canvas">
+        {draftNotice && (
+          <div className="draft-banner" role="status">
+            <span>{draftNotice} Unsaved edits recover after reload.</span>
+            <button onClick={dismissDraft}>Discard</button>
+          </div>
+        )}
         {error ? (
           <div className="load-error">
             <CircleAlert /> {error}

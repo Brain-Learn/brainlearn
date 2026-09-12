@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0",
+  "id": "eeg-first-look",
+  "metadata": {
+    "name": "EEG first look",
+    "description": "Illustrative graph for the planned EEG MVP. Nodes do not execute yet.",
+    "created_with": "BrainLearn 0.1.0",
+    "modality": "EEG",
+    "status": "example"
+  },
+  "nodes": [
+    {"id":"bids","type":"input.bids_eeg","label":"BIDS EEG","category":"Input","description":"Choose a BIDS-compatible EEG dataset.","position":{"x":20,"y":170},"ports":[{"id":"dataset","label":"Dataset","direction":"output","data_type":"bids_dataset"}],"parameters":[{"id":"root","label":"Dataset root","value":"synthetic/example-bids","required":true,"description":"A project-relative dataset path. File access is not implemented yet."}]},
+    {"id":"inspect","type":"eeg.inspect","label":"Inspect Signal","category":"Quality control","description":"Review raw traces and acquisition metadata.","position":{"x":240,"y":170},"ports":[{"id":"dataset","label":"Dataset","direction":"input","data_type":"bids_dataset"},{"id":"raw","label":"Raw EEG","direction":"output","data_type":"raw_eeg"}],"parameters":[],"pauses_for_review":true},
+    {"id":"filter","type":"eeg.filter","label":"Band-pass Filter","category":"Preprocessing","description":"Configure a visible, provenance-tracked frequency filter.","position":{"x":470,"y":170},"ports":[{"id":"raw","label":"Raw EEG","direction":"input","data_type":"raw_eeg"},{"id":"filtered","label":"Filtered EEG","direction":"output","data_type":"raw_eeg"}],"parameters":[{"id":"low_hz","label":"Low cutoff (Hz)","value":1.0,"required":true},{"id":"high_hz","label":"High cutoff (Hz)","value":40.0,"required":true}]},
+    {"id":"ica","type":"eeg.ica_review","label":"ICA Review","category":"Quality control","description":"Pause for a researcher to review proposed ICA components.","position":{"x":710,"y":170},"ports":[{"id":"raw","label":"Raw EEG","direction":"input","data_type":"raw_eeg"},{"id":"reviewed","label":"Reviewed EEG","direction":"output","data_type":"reviewed_eeg"}],"parameters":[],"pauses_for_review":true},
+    {"id":"epochs","type":"eeg.epochs","label":"Epochs","category":"Processing","description":"Create event-locked epochs using explicit time bounds.","position":{"x":950,"y":170},"ports":[{"id":"reviewed","label":"Reviewed EEG","direction":"input","data_type":"reviewed_eeg"},{"id":"epochs","label":"Epochs","direction":"output","data_type":"epochs"}],"parameters":[{"id":"event","label":"Event name","value":"stimulus","required":true},{"id":"tmin","label":"Start (s)","value":-0.2,"required":true},{"id":"tmax","label":"End (s)","value":0.8,"required":true}]},
+    {"id":"erp","type":"eeg.erp_average","label":"ERP Average","category":"Analysis","description":"Average selected epochs to form an evoked response.","position":{"x":1190,"y":80},"ports":[{"id":"epochs","label":"Epochs","direction":"input","data_type":"epochs"},{"id":"evoked","label":"Evoked","direction":"output","data_type":"evoked"}],"parameters":[]},
+    {"id":"psd","type":"eeg.psd","label":"PSD","category":"Analysis","description":"Estimate a power spectrum from the reviewed epochs.","position":{"x":1190,"y":280},"ports":[{"id":"epochs","label":"Epochs","direction":"input","data_type":"epochs"},{"id":"spectrum","label":"Spectrum","direction":"output","data_type":"spectrum"}],"parameters":[]},
+    {"id":"report","type":"output.report","label":"Report","category":"Output","description":"Combine analysis artifacts into a future methods and results report.","position":{"x":1430,"y":170},"ports":[{"id":"evoked","label":"Evoked","direction":"input","data_type":"evoked"},{"id":"spectrum","label":"Spectrum","direction":"input","data_type":"spectrum"},{"id":"report","label":"Report","direction":"output","data_type":"report"}],"parameters":[]}
+  ],
+  "edges": [
+    {"id":"e1","source":{"node_id":"bids","port_id":"dataset"},"target":{"node_id":"inspect","port_id":"dataset"}},
+    {"id":"e2","source":{"node_id":"inspect","port_id":"raw"},"target":{"node_id":"filter","port_id":"raw"}},
+    {"id":"e3","source":{"node_id":"filter","port_id":"filtered"},"target":{"node_id":"ica","port_id":"raw"}},
+    {"id":"e4","source":{"node_id":"ica","port_id":"reviewed"},"target":{"node_id":"epochs","port_id":"reviewed"}},
+    {"id":"e5","source":{"node_id":"epochs","port_id":"epochs"},"target":{"node_id":"erp","port_id":"epochs"}},
+    {"id":"e6","source":{"node_id":"epochs","port_id":"epochs"},"target":{"node_id":"psd","port_id":"epochs"}},
+    {"id":"e7","source":{"node_id":"erp","port_id":"evoked"},"target":{"node_id":"report","port_id":"evoked"}},
+    {"id":"e8","source":{"node_id":"psd","port_id":"spectrum"},"target":{"node_id":"report","port_id":"spectrum"}}
+  ]
+}

@@ -84,15 +84,15 @@ Completion gate:
 
 Goal: make edits durable without allowing arbitrary filesystem access.
 
-- [ ] Define a versioned project manifest and project-directory layout.
-- [ ] Add create, open, save, save-as, and recent-project operations.
-- [ ] Restrict all file operations to explicit user-selected project roots.
-- [ ] Add per-session authentication for the local service.
-- [ ] Validate Host and Origin and document the local threat model.
-- [ ] Persist graphs atomically and keep a recoverable previous version.
-- [ ] Add schema migrations and fixtures for every persisted schema version.
-- [ ] Recover unsaved UI edits after an application or browser interruption.
-- [ ] Add tests for path traversal, invalid tokens, disallowed origins, interrupted writes, and migration round-trips.
+- [x] Define a versioned project manifest and project-directory layout.
+- [x] Add create, open, save, save-as, and recent-project operations.
+- [x] Restrict all file operations to explicit user-selected project roots.
+- [x] Add per-session authentication for the local service.
+- [x] Validate Host and Origin and document the local threat model.
+- [x] Persist graphs atomically and keep a recoverable previous version.
+- [x] Add schema migrations and fixtures for every persisted schema version.
+- [x] Recover unsaved UI edits after an application or browser interruption.
+- [x] Add tests for path traversal, invalid tokens, disallowed origins, interrupted writes, and migration round-trips.
 
 Completion gate: a saved project survives service restart; invalid filesystem paths and unauthenticated requests are rejected; a simulated interrupted write preserves the previous valid graph.
 
@@ -262,6 +262,10 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 2 individual tasks | Verified; monitoring pending | `uv run pytest -q`: 18 passed; `npm --prefix apps/web run test`: 5 passed in 3 files; live POST gate: BIDS EEG → Inspect Signal round-tripped unchanged and valid, BIDS EEG → Filter returned edge-linked `incompatible_port_type`; Ruff, Ruff format, strict mypy, ESLint, Prettier, production build, and `git diff --check` passed | Uncommitted; awaiting monitored review |
 | 2026-09-12 | Step 2 manifest authority repair | Verified; monitoring pending | Registry-aware validation rejects altered node label/category/description/review behavior and parameter label/required/description; focused tests prove ICA review cannot be disabled. Full baseline: 21 pytest tests and 5 Vitest tests passed; Ruff, Ruff format, strict mypy, ESLint, Prettier, production build, and `git diff --check` passed | Uncommitted; awaiting monitored review |
 | 2026-09-12 | Step 2 monitored gate | Complete | Reviewer exercised empty-canvas node creation, compatible and incompatible connections, parameter editing, undo/redo, node removal/restoration, and backend issue display in the live UI; reviewer inspected manifest authority and reran 21 pytest tests, 5 Vitest tests, Ruff, formatting, strict mypy, ESLint, production build, production audit, and `git diff --check` | Monitored review complete; commit pending |
+| 2026-09-12 | Step 3 individual tasks | Verified; monitoring pending | `uv run pytest -q`: 32 passed (11 new project/security tests); `npm --prefix apps/web run test`: 10 passed in 5 files (5 new persistence/project tests); live gate: create 200, save 200 with previous backup, reopen-after-restart 200 with edited name, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format (22 files), strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 3 review findings (REVIEW.md) | Verified; monitoring pending | Resolved P1 save-race (revision guard), P1 unique IDs (counter sync + allocator), P1 last-valid recovery (invalid WIP never replaces previous), P2 stale validation (sequence guard + connect guard), P2 token scope (sessionStorage). `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 16 passed in 5 files; live gate: create 200, save 200, invalid save 200 with valid False and previous kept as last valid, reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format, strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 3 follow-up review (stale association + recovery validation) | Verified; monitoring pending | Stale project responses fully ignored via operation-identity + revision guard (no path/name reuse); recovery validation routed through sequence guard. New tests: edit-during-open, overlapping opens reverse order + subsequent save target, delayed-recovery validation race. `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 19 passed in 5 files; live gate: create 200, save 200, invalid save 200 (False, previous kept), reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format (23 files), strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 3 P1 active-vs-folder identity split | Verified; monitoring pending | `activeProjectPath` stored separately from editable `folderInput`; drafts pair workflow with active path only; Save uses active path and is disabled with none; failed/stale ops change nothing. New tests: type-B-then-failed-open keeps A draft + Save targets A; open-B atomically switches graph + identity. `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 21 passed in 5 files; live gate: create 200, save 200, invalid save 200 (False, previous kept), reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format (23 files), strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
 
 ## Next assignment
 

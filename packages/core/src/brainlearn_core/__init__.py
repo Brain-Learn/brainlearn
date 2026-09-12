@@ -1,5 +1,16 @@
 """Stable public API for BrainLearn workflow definitions."""
 
+from brainlearn_core.projects import (
+    PREVIOUS_WORKFLOW_FILENAME,
+    PROJECT_MANIFEST_FILENAME,
+    PROJECT_SCHEMA_VERSION,
+    SUPPORTED_PROJECT_VERSIONS,
+    WORKFLOW_FILENAME,
+    ProjectManifest,
+    migrate_project_dict,
+    migrate_workflow_dict,
+    new_project_manifest,
+)
 from brainlearn_core.schema import (
     CanvasPosition,
     CapabilityRequirement,
@@ -29,13 +40,22 @@ __all__ = [
     "LicenseMetadata",
     "NodeManifest",
     "NodeInstance",
+    "PREVIOUS_WORKFLOW_FILENAME",
+    "PROJECT_MANIFEST_FILENAME",
+    "PROJECT_SCHEMA_VERSION",
+    "SUPPORTED_PROJECT_VERSIONS",
+    "WORKFLOW_FILENAME",
     "ParameterDefinition",
     "ParameterSchema",
     "PortDefinition",
     "PortDirection",
+    "ProjectManifest",
     "ScientificType",
     "ValidationIssue",
     "ValidationResult",
     "Workflow",
+    "migrate_project_dict",
+    "migrate_workflow_dict",
+    "new_project_manifest",
     "validate_workflow",
 ]

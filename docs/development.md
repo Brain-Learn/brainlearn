@@ -37,6 +37,29 @@ Open `http://127.0.0.1:5173`. Select a node to inspect its parameters and scient
 
 The canvas starts empty. Select registry entries to add nodes, drag compatible output and input handles to connect them, and select nodes or edges before pressing Delete to remove them. Parameter controls come from the backend manifest. Undo and redo cover graph edits. The Validate graph action sends the complete in-memory graph to the backend and confirms whether the returned workflow round-trips unchanged. All nodes remain non-executing examples.
 
+## Local projects and drafts
+
+The service prints a per-process session token at startup. Paste it into the
+Local project panel once per browser session; it is stored in `sessionStorage`
+and sent as `Authorization: Bearer <token>` on `/api/projects/*` calls only.
+
+- Enter an absolute folder under Local project, then Create, Open, Save,
+  Save as, or Recent. `create`/`save-as` require a new or empty folder and
+  never overwrite existing work; `save` keeps `workflow.previous.json`.
+  Typing a folder never changes the active project: Create, Open, and Save as
+  switch the active project only after a current successful response, and Save
+  always writes to the shown active project (disabled when none is active).
+  A failed or ignored operation leaves the graph, active path, and draft
+  association unchanged.
+- Opening a folder explicitly authorizes exactly that directory. Saves to any
+  other canonical path return `403`, and relative paths return `400`.
+- Unsaved edits autosave to `localStorage` (`brainlearn.unsaved-workflow.v1`)
+  and a banner offers recovery after a browser or app interruption. Discard
+  clears the draft; the next edit starts a new one.
+- Read `docs/threat-model.md` before changing Host/Origin handling or file
+  access. The service binds to loopback, validates Host/Origin, and requires
+  the session token for filesystem endpoints.
+
 Useful API checks:
 
 ```bash

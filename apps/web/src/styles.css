@@ -460,3 +460,79 @@ input {
   color: #aebdd0;
   font-size: 14px;
 }
+.project-panel {
+  padding: 12px 14px 18px;
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #223147;
+  max-height: 46vh;
+  overflow: auto;
+}
+.project-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.project-buttons button {
+  border: 1px solid #304057;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #cbd8e8;
+  background: #101e2e;
+  font-size: 11px;
+}
+.project-message {
+  color: #9aabc0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.recent-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.recent-list li {
+  display: grid;
+  gap: 2px;
+}
+.recent-list button {
+  text-align: left;
+  border: 1px solid #26374b;
+  border-radius: 6px;
+  padding: 6px 8px;
+  color: #cbd8e8;
+  background: #101e2e;
+  font-size: 11px;
+}
+.recent-list small {
+  color: #65768b;
+  font-size: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.draft-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #755432;
+  border-radius: 7px;
+  color: #efb66f;
+  background: #261d17;
+  font-size: 11px;
+}
+.draft-banner button {
+  border: 1px solid #755432;
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #efb66f;
+  background: transparent;
+}
