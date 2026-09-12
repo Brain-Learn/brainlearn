@@ -80,7 +80,7 @@ Completion gate:
 4. Serialize the edited graph, round-trip it through the API, and receive the same valid graph.
 5. Baseline checks pass, including new backend and frontend tests for these behaviors.
 
-## [ ] Step 3 — Secure local projects and persistence
+## [x] Step 3 — Secure local projects and persistence
 
 Goal: make edits durable without allowing arbitrary filesystem access.
 
@@ -266,7 +266,50 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 3 review findings (REVIEW.md) | Verified; monitoring pending | Resolved P1 save-race (revision guard), P1 unique IDs (counter sync + allocator), P1 last-valid recovery (invalid WIP never replaces previous), P2 stale validation (sequence guard + connect guard), P2 token scope (sessionStorage). `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 16 passed in 5 files; live gate: create 200, save 200, invalid save 200 with valid False and previous kept as last valid, reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format, strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
 | 2026-09-12 | Step 3 follow-up review (stale association + recovery validation) | Verified; monitoring pending | Stale project responses fully ignored via operation-identity + revision guard (no path/name reuse); recovery validation routed through sequence guard. New tests: edit-during-open, overlapping opens reverse order + subsequent save target, delayed-recovery validation race. `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 19 passed in 5 files; live gate: create 200, save 200, invalid save 200 (False, previous kept), reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format (23 files), strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
 | 2026-09-12 | Step 3 P1 active-vs-folder identity split | Verified; monitoring pending | `activeProjectPath` stored separately from editable `folderInput`; drafts pair workflow with active path only; Save uses active path and is disabled with none; failed/stale ops change nothing. New tests: type-B-then-failed-open keeps A draft + Save targets A; open-B atomically switches graph + identity. `uv run pytest -q`: 33 passed; `npm --prefix apps/web run test`: 21 passed in 5 files; live gate: create 200, save 200, invalid save 200 (False, previous kept), reopen 200, traversal 403, unauth 401, evil Origin 403; Ruff, Ruff format (23 files), strict mypy (11 files), ESLint, Prettier, production build, `git diff --check` passed | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 3 monitored gate | Complete | Active project path and name are isolated from target-form values; recovery preserves both and legacy drafts omit unknown names; selecting Recent cannot rename the active project. Full gate: `uv run pytest -q` 33 passed; frontend 24 passed in 5 files; Ruff, Ruff format (23 files), strict mypy (11 files), ESLint, Prettier, production build, production audit (0 vulnerabilities), and `git diff --check` passed. Prior live gate verified restart recovery, path traversal 403, unauthenticated 401, hostile Origin 403, and last-valid workflow preservation. | `77e4686`, `fd1479b`; monitored review complete |
 
 ## Next assignment
 
-The next agent must implement **Step 3 — Secure local projects and persistence** only. It must leave execution and scientific processing untouched. The implementing agent should update individual Step 3 checkboxes only after their tests pass, then request monitoring review. The monitoring agent reruns the completion gate and checks the Step 3 heading only after all requirements are demonstrated.
+The next agent starts **Step 4 — Run records, artifact storage, and executor**.
+Work through Step 4 in the ordered slices below. Complete and verify one slice
+before starting the next; check a Step 4 task only when its behavior exists and
+its evidence is recorded in the completion log.
+
+### Step 4A — Versioned execution contracts (do this next)
+
+1. Add versioned core schemas for run, node-run, artifact, environment, event,
+   failure, and review-pause records. Forbid unknown fields and define explicit
+   lifecycle states and timestamps.
+2. Document state transitions and invariants, including terminal states,
+   cancellation, cached results, dependency failure, and review pauses.
+3. Define canonical content identities from input identities, parameters, node
+   implementation version, environment, seeds, and relevant execution settings.
+4. Add deterministic serialization, migration entry points, version fixtures,
+   round-trip tests, and hash-stability/hash-change tests.
+5. Keep this slice non-executing. Do not add scientific libraries, arbitrary
+   shell execution, background workers, or claim that example nodes process
+   data.
+
+Step 4A gate: the same canonical fixture produces the same identities across
+repeated serialization; changing each declared identity input changes the
+appropriate identity; every schema fixture migrates and round-trips; the full
+repository verification baseline passes.
+
+### Remaining Step 4 order
+
+1. **Step 4B — Run store and scheduler:** persist run records inside authorized
+   projects, implement topological dependency states, and recover nonterminal
+   runs after service restart.
+2. **Step 4C — Worker lifecycle:** run work outside API requests, stream ordered
+   events, implement cancellation, and prevent cancelled/failed partial outputs
+   from becoming successful artifacts.
+3. **Step 4D — Cache and invalidation:** reuse content-addressed outputs and
+   invalidate only descendants affected by input, parameter, implementation,
+   environment, seed, or setting changes.
+4. **Step 4E — Demonstration gate:** add non-scientific copy, delay, failure,
+   branch, and review-pause fixtures; display run state, logs, artifacts, cache
+   state, and actionable failures; execute the complete Step 4 gate.
+
+Each slice ends with exact command results in the completion log and a
+monitoring review. The Step 4 heading remains unchecked until the full branched
+workflow completion gate passes.
