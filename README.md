@@ -10,3 +10,5 @@ The project now has an executable foundation: a versioned workflow schema and va
 - View the [initial interface concept](design/brainlearn-layout-concept-v1.png).
 
 BrainLearn is intended for research use and is not a medical device or diagnostic system.
+
+BrainLearn's original code is licensed under the [BSD 3-Clause License](LICENSE). Third-party libraries, scientific tools, datasets, atlases, models, and plugins remain subject to their own licenses.

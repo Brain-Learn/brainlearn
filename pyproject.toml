@@ -3,6 +3,8 @@ name = "brainlearn-workspace"
 version = "0.1.0"
 description = "Local-first visual workflows for reproducible neuroscience research"
 requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 dependencies = [
   "brainlearn-core",
   "brainlearn-server",
@@ -38,4 +40,3 @@ python_version = "3.12"
 strict = true
 packages = ["brainlearn_core", "brainlearn_server"]
 mypy_path = ["packages/core/src", "packages/server/src"]
-

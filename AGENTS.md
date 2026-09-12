@@ -13,7 +13,8 @@ The first product milestone is one complete EEG workflow. Do not broaden the ini
 - `PROPOSAL.md` contains the product, publication, validation, CI/CD, licensing, and adoption plan.
 - `design/brainlearn-layout-concept-v1.png` is the first interface reference.
 - The repository was initialized on the `main` branch on 12 September 2026.
-- No production code exists yet.
+- The executable foundation includes the workflow schema, validator, local API, capability inspection, and visual graph shell. Scientific processing is not implemented yet.
+- BrainLearn's original code uses BSD-3-Clause. Preserve the root and package license files and SPDX metadata. Every external tool, dependency, dataset, atlas, model, and plugin retains its own license and must be reviewed separately before bundling.
 
 ## Architecture decision
 
@@ -203,4 +204,3 @@ At the end of each work unit, report:
 6. The next smallest executable work unit.
 
 If blocked, show the evidence and continue any independent work that remains possible.
-

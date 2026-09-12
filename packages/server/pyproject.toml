@@ -3,6 +3,8 @@ name = "brainlearn-server"
 version = "0.1.0"
 description = "Loopback API for the BrainLearn local application"
 requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
 dependencies = [
   "brainlearn-core",
   "fastapi>=0.116,<1",
@@ -19,4 +21,3 @@ brainlearn-core = { workspace = true }
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-

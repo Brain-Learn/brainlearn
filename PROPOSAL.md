@@ -242,7 +242,7 @@ Release alpha builds first, then betas, then a stable release with a documented 
 
 ## 12. Contributor guide and governance
 
-Before inviting external contributions, provide README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GOVERNANCE, CHANGELOG, citation metadata, and an OSI-approved license for the original code. BSD-3-Clause is a reasonable proposed core license, subject to a dependency and ownership review.
+Before inviting external contributions, provide README, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GOVERNANCE, CHANGELOG, and citation metadata. BrainLearn's original code is licensed under BSD-3-Clause; preserve that SPDX identifier in package metadata and keep third-party licenses separate.
 
 FSL is predominantly licensed for non-commercial use, with component-specific exceptions. Do not treat it as an unrestricted dependency or assume containers solve redistribution conditions. Start with an optional user-installed adapter and review the actual components, atlases, and distribution model before bundling. [FSL license](https://fsl.fmrib.ox.ac.uk/fsl/docs/license.html).
 
