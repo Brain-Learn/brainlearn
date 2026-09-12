@@ -7,6 +7,7 @@ export interface DraftState {
   savedAt: string;
   workflow: Workflow;
   projectPath: string | null;
+  projectName: string | null;
 }
 
 function isWorkflow(value: unknown): value is Workflow {
@@ -33,10 +34,15 @@ export function loadDraft(storage: Storage = localStorage): DraftState | null {
       record.projectPath === null || typeof record.projectPath === "string"
         ? record.projectPath
         : null;
+    const projectName =
+      record.projectName === null || typeof record.projectName === "string"
+        ? record.projectName
+        : null;
     return {
       savedAt: record.savedAt,
       workflow: record.workflow,
       projectPath,
+      projectName,
     };
   } catch {
     return null;

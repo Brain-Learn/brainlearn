@@ -898,3 +898,149 @@ test("prefers edited-graph validation over delayed recovery validation", async (
   );
   expect(screen.getAllByText("edited-result").length).toBeGreaterThan(0);
 });
+
+test("preserves the active project name when saving a recovered draft", async () => {
+  const recovered = testWorkflow("recovered", ["node-a"]);
+  localStorage.setItem(
+    "brainlearn.unsaved-workflow.v1",
+    JSON.stringify({
+      savedAt: "2026-09-12T00:00:00.000Z",
+      workflow: recovered,
+      projectPath: "/tmp/project-a",
+      projectName: "Project A",
+    }),
+  );
+  let savedBody: { path: string; name?: string } | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      if (url.endsWith("/api/projects/save") && init?.body) {
+        const body = JSON.parse(String(init.body)) as {
+          path: string;
+          name?: string;
+          workflow: Workflow;
+        };
+        savedBody = body;
+        return {
+          ok: true,
+          json: async () => ({
+            path: body.path,
+            manifest: { name: body.name },
+            workflow: body.workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+
+  render(<App />);
+  await screen.findByText("Active project: /tmp/project-a");
+  fireEvent.change(screen.getByLabelText("Session token"), {
+    target: { value: "test-token" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+  await waitFor(() => expect(savedBody).toBeDefined());
+  expect(savedBody).toMatchObject({
+    path: "/tmp/project-a",
+    name: "Project A",
+  });
+});
+
+test("selecting a recent project does not rename the active project", async () => {
+  let savedBody: { path: string; name?: string } | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      if (url.endsWith("/api/projects/open")) {
+        return {
+          ok: true,
+          json: async () => ({
+            path: "/tmp/project-a",
+            manifest: { name: "Project A" },
+            workflow: testWorkflow("a", ["node-a"]),
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      if (url.endsWith("/api/projects/recent")) {
+        return {
+          ok: true,
+          json: async () => [
+            { path: "/tmp/project-b", name: "Project B", last_opened: "now" },
+          ],
+        };
+      }
+      if (url.endsWith("/api/projects/save") && init?.body) {
+        const body = JSON.parse(String(init.body)) as {
+          path: string;
+          name?: string;
+          workflow: Workflow;
+        };
+        savedBody = body;
+        return {
+          ok: true,
+          json: async () => ({
+            path: body.path,
+            manifest: { name: body.name },
+            workflow: body.workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+
+  render(<App />);
+  await screen.findByRole("button", { name: /BIDS EEG/ });
+  fireEvent.change(screen.getByLabelText("Session token"), {
+    target: { value: "test-token" },
+  });
+  fireEvent.change(screen.getByLabelText("Project folder"), {
+    target: { value: "/tmp/project-a" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Open$/ }));
+  await screen.findByText("Active project: /tmp/project-a");
+
+  fireEvent.click(screen.getByRole("button", { name: /^Recent$/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Project B" }));
+  expect(screen.getByLabelText("Project name")).toHaveValue("Project B");
+  fireEvent.click(screen.getByRole("button", { name: /^Save$/ }));
+
+  await waitFor(() => expect(savedBody).toBeDefined());
+  expect(savedBody).toMatchObject({
+    path: "/tmp/project-a",
+    name: "Project A",
+  });
+});

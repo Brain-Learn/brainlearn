@@ -218,8 +218,9 @@ function App() {
   const [status, setStatus] = useState("Empty example canvas");
   const [error, setError] = useState<string>();
   const [activeProjectPath, setActiveProjectPath] = useState("");
+  const [activeProjectName, setActiveProjectName] = useState("");
   const [folderInput, setFolderInput] = useState("");
-  const [projectName, setProjectName] = useState("Untitled project");
+  const [nameInput, setNameInput] = useState("Untitled project");
   const [sessionToken, setSessionToken] = useState(() => loadSessionToken());
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [projectMessage, setProjectMessage] = useState("");
@@ -274,6 +275,10 @@ function App() {
       if (draft.projectPath) {
         setActiveProjectPath(draft.projectPath);
         setFolderInput(draft.projectPath);
+        if (draft.projectName) {
+          setActiveProjectName(draft.projectName);
+          setNameInput(draft.projectName);
+        }
       }
       setDraftNotice(`Recovered unsaved edits from ${draft.savedAt}.`);
       void refreshValidation(draft.workflow);
@@ -285,8 +290,9 @@ function App() {
       savedAt: new Date().toISOString(),
       workflow,
       projectPath: activeProjectPath || null,
+      projectName: activeProjectName || null,
     });
-  }, [workflow, activeProjectPath]);
+  }, [workflow, activeProjectPath, activeProjectName]);
 
   useEffect(() => {
     saveSessionToken(sessionToken);
@@ -406,8 +412,9 @@ function App() {
     setPast([]);
     setFuture([]);
     setActiveProjectPath(payload.path);
+    setActiveProjectName(payload.manifest.name);
     setFolderInput(payload.path);
-    if (payload.manifest.name) setProjectName(payload.manifest.name);
+    if (payload.manifest.name) setNameInput(payload.manifest.name);
     setValidation(payload.validation);
     setProjectMessage(message);
     setStatus(message);
@@ -452,7 +459,7 @@ function App() {
     try {
       const payload = await createProject(
         destination,
-        projectName,
+        nameInput,
         snapshot,
         sessionToken,
       );
@@ -498,7 +505,7 @@ function App() {
         target,
         snapshot,
         sessionToken,
-        projectName,
+        activeProjectName || undefined,
       );
       applyProjectPayloadIfCurrent(
         payload,
@@ -521,7 +528,7 @@ function App() {
         destination,
         snapshot,
         sessionToken,
-        projectName,
+        nameInput,
       );
       applyProjectPayloadIfCurrent(
         payload,
@@ -667,9 +674,9 @@ function App() {
             <span>Project name</span>
             <input
               aria-label="Project name"
-              onChange={(event) => setProjectName(event.target.value)}
+              onChange={(event) => setNameInput(event.target.value)}
               type="text"
-              value={projectName}
+              value={nameInput}
             />
           </label>
           <div className="project-buttons">
@@ -699,7 +706,7 @@ function App() {
                   <button
                     onClick={() => {
                       setFolderInput(entry.path);
-                      if (entry.name) setProjectName(entry.name);
+                      if (entry.name) setNameInput(entry.name);
                     }}
                   >
                     {entry.name || entry.path}

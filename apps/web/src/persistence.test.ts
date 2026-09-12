@@ -33,13 +33,20 @@ test("saves, loads, and clears an unsaved workflow draft", () => {
   const storage = memoryStorage();
   const workflow = { ...emptyWorkflow(), id: "draft-workflow" };
   saveDraft(
-    { savedAt: "2026-09-12T00:00:00.000Z", workflow, projectPath: null },
+    {
+      savedAt: "2026-09-12T00:00:00.000Z",
+      workflow,
+      projectPath: "/tmp/draft-project",
+      projectName: "Draft project",
+    },
     storage,
   );
 
   expect(storage.getItem(DRAFT_STORAGE_KEY)).toContain("draft-workflow");
   const loaded = loadDraft(storage);
   expect(loaded?.workflow.id).toBe("draft-workflow");
+  expect(loaded?.projectPath).toBe("/tmp/draft-project");
+  expect(loaded?.projectName).toBe("Draft project");
 
   clearDraft(storage);
   expect(loadDraft(storage)).toBeNull();
@@ -53,6 +60,22 @@ test("rejects corrupt drafts instead of crashing recovery", () => {
   expect(loadDraft(storage)).toBeNull();
 });
 
+test("loads legacy drafts without inventing an active project name", () => {
+  const storage = memoryStorage();
+  storage.setItem(
+    DRAFT_STORAGE_KEY,
+    JSON.stringify({
+      savedAt: "2026-09-12T00:00:00.000Z",
+      workflow: emptyWorkflow(),
+      projectPath: "/tmp/legacy-project",
+    }),
+  );
+
+  const loaded = loadDraft(storage);
+  expect(loaded?.projectPath).toBe("/tmp/legacy-project");
+  expect(loaded?.projectName).toBeNull();
+});
+
 test("keeps the session token out of persistent local storage and drafts", () => {
   const session = memoryStorage();
   const persistent = memoryStorage();
@@ -62,7 +85,12 @@ test("keeps the session token out of persistent local storage and drafts", () =>
 
   const workflow = { ...emptyWorkflow(), id: "draft-without-token" };
   saveDraft(
-    { savedAt: "2026-09-12T00:00:00.000Z", workflow, projectPath: null },
+    {
+      savedAt: "2026-09-12T00:00:00.000Z",
+      workflow,
+      projectPath: null,
+      projectName: null,
+    },
     persistent,
   );
   expect(persistent.getItem(DRAFT_STORAGE_KEY)).not.toContain("secret-token");
