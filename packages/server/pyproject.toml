@@ -1,0 +1,22 @@
+[project]
+name = "brainlearn-server"
+version = "0.1.0"
+description = "Loopback API for the BrainLearn local application"
+requires-python = ">=3.12"
+dependencies = [
+  "brainlearn-core",
+  "fastapi>=0.116,<1",
+  "pydantic>=2.11,<3",
+  "uvicorn[standard]>=0.35,<1",
+]
+
+[project.scripts]
+brainlearn-server = "brainlearn_server.app:run"
+
+[tool.uv.sources]
+brainlearn-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+

@@ -1,0 +1,11 @@
+[project]
+name = "brainlearn-core"
+version = "0.1.0"
+description = "Workflow schema and scientific graph validation for BrainLearn"
+requires-python = ">=3.12"
+dependencies = ["pydantic>=2.11,<3"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+

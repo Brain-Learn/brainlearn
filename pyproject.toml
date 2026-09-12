@@ -1,0 +1,41 @@
+[project]
+name = "brainlearn-workspace"
+version = "0.1.0"
+description = "Local-first visual workflows for reproducible neuroscience research"
+requires-python = ">=3.12"
+dependencies = [
+  "brainlearn-core",
+  "brainlearn-server",
+]
+
+[dependency-groups]
+dev = [
+  "httpx>=0.28,<1",
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "ruff>=0.12,<1",
+]
+
+[tool.uv.sources]
+brainlearn-core = { workspace = true }
+brainlearn-server = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/core", "packages/server"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["brainlearn_core", "brainlearn_server"]
+mypy_path = ["packages/core/src", "packages/server/src"]
+
