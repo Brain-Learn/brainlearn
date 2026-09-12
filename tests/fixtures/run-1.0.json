@@ -1,0 +1,138 @@
+{
+  "schema_version": "1.0",
+  "id": "run-demo-001",
+  "workflow_id": "eeg-first-look",
+  "workflow_schema_version": "1.0",
+  "workflow_identity": "brainlearn-v1:workflow:546d1aea5c7aade51b6eafde7471a582f4f5f48ae900c44206c260162149aa82",
+  "state": "succeeded",
+  "created_at": "2026-09-12T09:00:00+00:00",
+  "started_at": "2026-09-12T09:01:00+00:00",
+  "finished_at": "2026-09-12T09:06:00+00:00",
+  "environment": {
+    "schema_version": "1.0",
+    "operating_system": "Linux",
+    "architecture": "x86_64",
+    "python_version": "3.12.7",
+    "packages": {
+      "brainlearn-core": "0.1.0",
+      "pydantic": "2.11.7"
+    },
+    "accelerator": "cpu"
+  },
+  "seed": 7,
+  "node_runs": [
+    {
+      "schema_version": "1.0",
+      "id": "node-run-inspect-001",
+      "node_id": "inspect",
+      "node_type": "eeg.inspect",
+      "node_version": "0.1.0",
+      "dependencies": [],
+      "attempt": 1,
+      "state": "succeeded",
+      "started_at": "2026-09-12T09:01:00+00:00",
+      "finished_at": "2026-09-12T09:02:00+00:00",
+      "inputs": {
+        "dataset": "brainlearn-v1:artifact:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "parameters": {},
+      "environment_identity": "brainlearn-v1:environment:ff07c69cbbcba662faf1f5bf3934f5206e99d149d4214ca83b5e49455e2ccbaa",
+      "seed": 7,
+      "settings": {},
+      "content_identity": "brainlearn-v1:node:a18463b1cbce1c2c32e9a9f60dece71b35a60435fb17e845c2a6c51a4497b2b1",
+      "artifacts": [],
+      "failure": null,
+      "review_pause": null
+    },
+    {
+      "schema_version": "1.0",
+      "id": "node-run-filter-001",
+      "node_id": "filter",
+      "node_type": "eeg.filter",
+      "node_version": "0.1.0",
+      "dependencies": ["node-run-inspect-001"],
+      "attempt": 1,
+      "state": "succeeded",
+      "started_at": "2026-09-12T09:04:00+00:00",
+      "finished_at": "2026-09-12T09:05:00+00:00",
+      "inputs": {
+        "raw": "brainlearn-v1:node:a18463b1cbce1c2c32e9a9f60dece71b35a60435fb17e845c2a6c51a4497b2b1"
+      },
+      "parameters": {
+        "low_hz": 1.0,
+        "high_hz": 40.0
+      },
+      "environment_identity": "brainlearn-v1:environment:ff07c69cbbcba662faf1f5bf3934f5206e99d149d4214ca83b5e49455e2ccbaa",
+      "seed": 7,
+      "settings": {
+        "timeout_seconds": 600
+      },
+      "content_identity": "brainlearn-v1:node:bc9e6acbbdc9c13dd5795575ae60d7a47830f26f63171e0dbc32fc04dbe34feb",
+      "artifacts": [
+        {
+          "schema_version": "1.0",
+          "artifact_id": "brainlearn-v1:artifact:14e0688c7970b04412941424680ac9bc10167348ca198899b62ceb9be9b47bfb",
+          "path": "artifacts/filter/low-high-40hz.fif",
+          "media_type": "application/octet-stream",
+          "byte_size": 65536,
+          "sha256": "60b30cffefb779b14fea12e42018255007d59c7bf9e827fa2d2528c099993603",
+          "produced_by_node": "node-run-filter-001",
+          "port_id": "filtered"
+        }
+      ],
+      "failure": null,
+      "review_pause": null
+    }
+  ],
+  "events": [
+    {
+      "schema_version": "1.0",
+      "seq": 0,
+      "at": "2026-09-12T09:01:00+00:00",
+      "kind": "run_started",
+      "node_run_id": null,
+      "message": ""
+    },
+    {
+      "schema_version": "1.0",
+      "seq": 1,
+      "at": "2026-09-12T09:01:00+00:00",
+      "kind": "node_started",
+      "node_run_id": "node-run-inspect-001",
+      "message": ""
+    },
+    {
+      "schema_version": "1.0",
+      "seq": 2,
+      "at": "2026-09-12T09:02:00+00:00",
+      "kind": "node_succeeded",
+      "node_run_id": "node-run-inspect-001",
+      "message": ""
+    },
+    {
+      "schema_version": "1.0",
+      "seq": 3,
+      "at": "2026-09-12T09:04:00+00:00",
+      "kind": "node_started",
+      "node_run_id": "node-run-filter-001",
+      "message": ""
+    },
+    {
+      "schema_version": "1.0",
+      "seq": 4,
+      "at": "2026-09-12T09:05:00+00:00",
+      "kind": "node_succeeded",
+      "node_run_id": "node-run-filter-001",
+      "message": "Band-pass filter finished within tolerance of the reference run."
+    },
+    {
+      "schema_version": "1.0",
+      "seq": 5,
+      "at": "2026-09-12T09:06:00+00:00",
+      "kind": "run_succeeded",
+      "node_run_id": null,
+      "message": ""
+    }
+  ],
+  "failure": null
+}

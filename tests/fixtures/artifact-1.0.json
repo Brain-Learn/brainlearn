@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "artifact_id": "brainlearn-v1:artifact:14e0688c7970b04412941424680ac9bc10167348ca198899b62ceb9be9b47bfb",
+  "path": "artifacts/filter/low-high-40hz.fif",
+  "media_type": "application/octet-stream",
+  "byte_size": 65536,
+  "sha256": "60b30cffefb779b14fea12e42018255007d59c7bf9e827fa2d2528c099993603",
+  "produced_by_node": "node-run-filter-001",
+  "port_id": "filtered"
+}

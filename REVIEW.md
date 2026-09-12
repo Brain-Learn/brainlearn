@@ -2,51 +2,66 @@
 
 Review date: 2026-09-12
 
-Scope: Step 3 secure local projects and persistence, including commits
-`77e4686` and `fd1479b`.
+## Current review
 
-Status: **approved**. All review findings are resolved, the full verification
-baseline passes, and the Step 3 completion gate is satisfied.
+Scope: final monitoring review of the uncommitted Step 4A execution contracts
+and deterministic content identities.
 
-## Final repair
+Status: **approved**. All findings from both monitoring reviews are resolved,
+the independent mutation probes reject the previously accepted contradictory
+records, and the complete repository verification baseline passes.
 
-The active project now owns separate path and name state. The editable folder
-and name fields are used only as targets for Create, Open, and Save as.
+Step 3 remains approved through commits `77e4686`, `fd1479b`, and
+`68efda6`.
 
-- Recovery drafts persist the active project name with the workflow and path.
-- Saving a recovered project retains its manifest name.
-- Legacy drafts with no recorded project name omit the optional name during
-  Save, allowing the backend to preserve the existing manifest name.
-- Selecting another recent project changes only the target form; it cannot
-  rename the active project before Open succeeds.
-- Save remains disabled until a project is active and always uses that active
-  project's path and name.
+## Approved behavior
 
-Regression tests cover recovered-name saving, recent-project selection, legacy
-draft compatibility, active/requested path separation, stale project
-responses, validation ordering, unique IDs, and last-valid recovery.
+- Seven versioned execution records define runs, node runs, artifacts,
+  environments, events, failures, and review pauses, with explicit migration
+  entry points for schema `1.0`.
+- Content identities deterministically cover every declared computation input
+  and canonicalize mapping order and numerically equivalent JSON values.
+- Node content identities are recomputed during validation, and every node run
+  is tied to the environment record contained by its run.
+- Run and node lifecycle rules enforce timezone-aware chronology, failure,
+  review, artifact, attempt, reference, dependency, and aggregate-state
+  consistency.
+- Artifact paths are portable project-relative paths and reject rooted,
+  drive-qualified, UNC, traversal, and ambiguous dot-segment forms.
+- The fixtures contain a self-contained inspect-to-filter dependency graph and
+  identities computed from their declared fields.
 
-## Resolved findings
+## Monitoring adjustment
 
-| Finding | Resolution |
-|---|---|
-| Active project name could be lost during recovery | Drafts persist active name; legacy drafts cause Save to omit an unknown name. |
-| Recent selection could rename the active project | Target-form name and active project name are separate. |
-| Folder entry could replace the active save target | Active path and folder input are separate; Save uses only the active path. |
-| Pending responses could overwrite newer edits or project identity | Workflow revision and project-operation sequence guards discard stale responses. |
-| Loaded graphs could generate duplicate IDs | ID allocation synchronizes with loaded node and edge IDs and checks collisions. |
-| Previous recovery graph could be invalid | Invalid work-in-progress saves never replace the last semantically valid recovery graph. |
-| Validation responses could arrive out of order | Sequenced validation and connection revision checks keep diagnostics current. |
-| Filesystem bearer token persisted beyond the browser session | The token uses `sessionStorage` and is absent from project drafts. |
+The final review found that `NodeRunRecord` still defaulted to the invalid pair
+`state="queued"` and `attempt=1`. The reviewer changed the attempt default to
+zero and added a regression test proving that omitted state and attempt fields
+produce a valid queued record. This aligns the model defaults with the already
+documented execution-attempt contract.
+
+## Independent probes
+
+The final review directly confirmed rejection of:
+
+- duplicate references in a node's dependency list;
+- changed parameters paired with a stale node identity;
+- an edited run environment paired with stale node environment identities;
+- a coherent, recomputed per-node environment substitution when the run does
+  not persist that environment;
+- a cancelled run whose finish time precedes creation; and
+- queued work carrying a positive attempt or running work carrying zero.
+
+Valid queued work with attempt zero and valid running work with a positive
+attempt both pass.
 
 ## Verification
 
-The complete baseline passed after the final repair:
+The complete baseline passed after the monitoring adjustment:
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 23 files already formatted.
-- `uv run mypy`: passed for 11 source files.
-- `uv run pytest -q`: 33 passed, with 2 upstream deprecation warnings.
+- `uv run ruff format --check .`: 27 files already formatted.
+- `uv run mypy`: passed for 13 source files.
+- `uv run pytest -q`: 134 passed, with 2 upstream deprecation warnings.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
 - `npm --prefix apps/web run test`: 24 passed across 5 files.
@@ -54,14 +69,10 @@ The complete baseline passed after the final repair:
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
 - `git diff --check`: passed.
 
-The monitored Step 3 gate also includes the previously exercised live checks:
-project creation and saving, recovery after service authorization reset,
-rejection of path traversal and unauthenticated requests, hostile-Origin
-rejection, atomic writes, and preservation of the last valid workflow.
-
 ## Next assignment
 
-Step 4 is ready. The implementing agent must begin with **Step 4A — Versioned
-execution contracts** in `docs/implementation-plan.md`. It should not start
-workers, execution, caching, or scientific integrations until the Step 4A
-contracts and identity tests pass monitoring review.
+Step 4B is ready. Implement the run store and topological scheduler described
+in `docs/implementation-plan.md`. Keep worker execution, event streaming,
+cancellation, cache storage, UI controls, scientific integrations, and
+arbitrary command execution outside that slice. Request monitoring review
+before committing Step 4B.

@@ -1,0 +1,10 @@
+{
+  "schema_version": "1.0",
+  "id": "review-ica-001",
+  "node_run_id": "node-run-ica-001",
+  "input_identity": "brainlearn-v1:node:bc9e6acbbdc9c13dd5795575ae60d7a47830f26f63171e0dbc32fc04dbe34feb",
+  "requested_at": "2026-09-12T09:10:00+00:00",
+  "decided_at": "2026-09-12T09:12:30+00:00",
+  "decision": "approved",
+  "note": "Excluded components 0 and 2 (ocular artifacts); kept the remainder."
+}

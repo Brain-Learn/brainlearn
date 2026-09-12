@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "operating_system": "Linux",
+  "architecture": "x86_64",
+  "python_version": "3.12.7",
+  "packages": {
+    "brainlearn-core": "0.1.0",
+    "pydantic": "2.11.7"
+  },
+  "accelerator": "cpu"
+}
