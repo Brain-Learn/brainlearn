@@ -270,30 +270,68 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 ## Next assignment
 
-The next agent starts **Step 4 — Run records, artifact storage, and executor**.
+Starting point: `main` contains the approved Step 3 implementation through
+`68efda6`. The next agent starts **Step 4 — Run records, artifact storage, and
+executor**. Read `AGENTS.md`, `REVIEW.md`, and this plan before editing. Confirm
+the worktree is clean, then complete only Step 4A in the next work unit.
+
 Work through Step 4 in the ordered slices below. Complete and verify one slice
-before starting the next; check a Step 4 task only when its behavior exists and
-its evidence is recorded in the completion log.
+before starting the next. Check a task only after its behavior and tests pass,
+and add exact evidence to the completion log. Do not check the Step 4 heading
+until the complete Step 4 gate passes.
 
 ### Step 4A — Versioned execution contracts (do this next)
 
-1. Add versioned core schemas for run, node-run, artifact, environment, event,
-   failure, and review-pause records. Forbid unknown fields and define explicit
-   lifecycle states and timestamps.
-2. Document state transitions and invariants, including terminal states,
-   cancellation, cached results, dependency failure, and review pauses.
-3. Define canonical content identities from input identities, parameters, node
-   implementation version, environment, seeds, and relevant execution settings.
-4. Add deterministic serialization, migration entry points, version fixtures,
-   round-trip tests, and hash-stability/hash-change tests.
-5. Keep this slice non-executing. Do not add scientific libraries, arbitrary
-   shell execution, background workers, or claim that example nodes process
-   data.
+- [ ] Add `packages/core/src/brainlearn_core/execution.py` with schema version
+  `1.0` and strict Pydantic models for `RunRecord`, `NodeRunRecord`,
+  `ArtifactRecord`, `EnvironmentRecord`, `RunEvent`, `FailureRecord`, and
+  `ReviewPauseRecord`. Export the public contracts from `brainlearn_core`.
+- [ ] Define explicit run and node-run state enums. Cover queued, running,
+  waiting for review, succeeded, failed, cancelled, dependency-skipped, and
+  cache-reused behavior without treating cached or skipped work as execution.
+- [ ] Put the information needed for later replay into the contracts: workflow
+  identity and schema version, node type and implementation version, dependency
+  IDs, attempt number, timestamps, environment identity, seed/settings,
+  artifacts, failure details, and review-pause references. Use project-relative
+  artifact paths; never embed large data or session tokens.
+- [ ] Add `packages/core/src/brainlearn_core/identity.py`. Canonicalize an
+  explicit identity payload to deterministic UTF-8 JSON and hash it with
+  SHA-256 plus a schema/domain prefix. Reject non-finite numbers. Do not include
+  timestamps, UI positions, display labels, absolute project paths, or other
+  values that do not change computation.
+- [ ] Include every computation-changing input: input artifact/content
+  identities keyed by port, parameter values, node implementation identity,
+  environment identity, seeds, and relevant execution settings. Define list
+  ordering and mapping-key ordering so equivalent payloads hash identically.
+- [ ] Add explicit `1.0` migration entry points for execution records. Unknown
+  versions must fail with an actionable compatibility message; never silently
+  coerce them.
+- [ ] Add one JSON fixture per persisted `1.0` execution record under
+  `tests/fixtures/`. Add round-trip and migration tests in
+  `tests/test_execution_contracts.py`.
+- [ ] Add identity tests proving repeated/equivalent payloads are stable and
+  changing each declared computation input changes the hash. Also prove UI
+  position, labels, timestamps, and mapping insertion order do not change it.
+- [ ] Add `docs/execution-contracts.md` documenting state transitions and
+  invariants: legal starts and terminal states, timestamp requirements,
+  cancellation, dependency failure, cache reuse, review pauses, artifact
+  success rules, and restart expectations for later slices.
+- [ ] Run the complete verification baseline, record exact counts in the
+  completion log, check only the first two Step 4 bullets if their full
+  contracts are satisfied, and request monitoring review. Stop after Step 4A.
+
+Step 4A file boundary: changes belong in `packages/core`, execution-contract
+tests/fixtures, the contract document, core exports, and this checklist. Do not
+add server run endpoints, worker processes, WebSockets, executor logic, cache
+storage, UI run controls, scientific dependencies, or arbitrary command
+execution in this slice.
 
 Step 4A gate: the same canonical fixture produces the same identities across
-repeated serialization; changing each declared identity input changes the
-appropriate identity; every schema fixture migrates and round-trips; the full
-repository verification baseline passes.
+repeated serialization and mapping insertion orders; changing each declared
+identity input changes the appropriate identity; excluded presentation and
+timestamp fields do not affect it; every schema fixture migrates and
+round-trips; illegal state/timestamp combinations and unknown versions fail
+clearly; the full repository verification baseline passes.
 
 ### Remaining Step 4 order
 
