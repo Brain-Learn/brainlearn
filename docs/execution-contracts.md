@@ -13,7 +13,7 @@ scheduler, cache, or UI run control is built. The contracts live in
 | `NodeRunRecord` | One node's execution attempt: replay inputs, state, timestamps, artifacts, optional failure or review pause. |
 | `ArtifactRecord` | Reference to one output file by project-relative path plus content hash. Never embeds bytes. |
 | `EnvironmentRecord` | OS, architecture, Python version, pinned packages, accelerator label. |
-| `RunEvent` | One ordered (`seq` 0..n-1), timestamped fact in the run's event stream. |
+| `RunEvent` | One ordered (`seq` 0..n-1), timestamped fact in the run's event stream, with an optional structured `attempt` naming the execution attempt it describes. |
 | `FailureRecord` | Machine-readable `code`, human-readable `message`, optional node-run link, timestamp. |
 | `ReviewPauseRecord` | Human-review checkpoint bound to the reviewed data via `input_identity`. |
 
@@ -72,7 +72,9 @@ the terminal sets (`RUN_TERMINAL_STATES`, `NODE_TERMINAL_STATES`).
   terminal run contains no nonterminal nodes.
 - **Attempts** count executions: `queued`, `dependency_skipped`, and
   `cache_reused` records must carry `attempt: 0`; every other state requires
-  a positive attempt number.
+  a positive attempt number. Recovery records the voided attempt
+  structurally on the appended `node_queued` event, so the next execution
+  can compute its fresh attempt number without parsing message text.
 - **Identity shape**: recorded identities must match
   `brainlearn-v1:<domain>:<sha256 hex>` with the domain matching the field
   (`node`, `environment`, `workflow`, `artifact`); input values accept any
@@ -115,3 +117,47 @@ must change the hash and therefore invalidate dependent work.
   once recorded, applies only to the matching `input_identity`.
 - Cancellation resumes only from an explicit valid checkpoint (defined with
   the training/checkpoint contracts in later slices).
+
+## Run store and scheduling (Step 4B)
+
+Run records persist inside their owning project at
+`<project-root>/runs/<run-id>/run.json`, written atomically through the same
+explicit-root authorization, session token, and Host/Origin checks as
+projects. Run IDs start with a letter or digit and contain only letters,
+digits, dots, underscores, and dashes, so they cannot escape the runs
+directory. Run operations require the exact authorized project root with its
+manifest and workflow files present; subdirectories are rejected even when
+they sit inside an authorized root.
+
+Terminal runs are immutable: any save over a succeeded, failed, or cancelled
+record is rejected before writing, preserving the stored file byte-for-byte.
+Overlapping creates and saves for one run are serialized by a per-run lock
+held across each read-check-write sequence, so a terminal write always wins
+over a stale concurrent write and duplicate creates cannot both succeed. The
+locks are process-wide (shared by request handlers, recovery, and future
+worker threads using `RunStore`); they do not serialize separate processes.
+
+Discovery never follows symlinks and ignores entries without a `run.json`
+or with directory names outside the run-ID grammar. A discovered `run.json`
+is authorized before reading, and its record ID must equal its directory
+name. Unparseable, unmigratable, or invalid run files raise an actionable
+error naming the path and cause instead of silently dropping history.
+
+The scheduler (`brainlearn_core.scheduler`) is pure dependency logic:
+`topological_order` returns a deterministic execution order; `ready_node_ids`
+returns queued nodes whose dependencies all completed (`succeeded` or
+`cache_reused`); `downstream_ids` returns transitive dependents for skip
+propagation after failures. All three entry points share one graph
+validation rule (known references, unique edges, acyclicity) and one
+state-key rule (every graph node must have a state; extra keys are ignored).
+Downstream queries additionally reject unknown source IDs so a misspelled
+failure cannot silently skip nothing.
+
+Restart recovery (`RunStore.recover_runs`) voids interrupted `running` nodes
+back to `queued` with `attempt` reset to 0 — queued work never carries an
+attempt number — and records the voided attempt number in an appended
+`node_queued` event; the next execution assigns a fresh positive attempt.
+Pending reviews survive unchanged. The run follows its nodes: waiting when a
+review is pending, running while completed siblings exist, queued only when
+nothing ever completed (with a `run_queued` event). Terminal runs are never
+modified.

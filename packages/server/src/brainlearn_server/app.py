@@ -8,6 +8,7 @@ import uvicorn
 from brainlearn_core import (
     NodeManifest,
     ProjectManifest,
+    RunRecord,
     ValidationResult,
     Workflow,
     validate_workflow,
@@ -20,6 +21,7 @@ from brainlearn_server.auth import get_session_token, require_session_token
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
 from brainlearn_server.project_store import ProjectStore
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
+from brainlearn_server.run_store import RunStore
 from brainlearn_server.security import HostOriginValidationMiddleware
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
@@ -83,7 +85,43 @@ class RecentProject(BaseModel):
     last_opened: str = ""
 
 
+class RunCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run: RunRecord
+
+
+class RunOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+
+
+class RunSaveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run: RunRecord
+
+
+class RunRecoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+
+
+class RunResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    run_id: str
+    run: RunRecord
+
+
 store = ProjectStore()
+runs = RunStore(store)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -221,6 +259,75 @@ def save_project_as(
 @app.get("/api/projects/recent", response_model=list[RecentProject])
 def recent_projects(_auth: None = Depends(require_session_token)) -> list[RecentProject]:
     return [RecentProject.model_validate(entry) for entry in store.list_recent()]
+
+
+@app.post("/api/runs/create", response_model=RunResponse)
+def create_run(
+    payload: RunCreateRequest, _auth: None = Depends(require_session_token)
+) -> RunResponse:
+    try:
+        record = runs.create_run(payload.path, payload.run)
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=record.id, run=record)
+
+
+@app.post("/api/runs/open", response_model=RunResponse)
+def open_run(payload: RunOpenRequest, _auth: None = Depends(require_session_token)) -> RunResponse:
+    try:
+        record = runs.get_run(payload.path, payload.run_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=record.id, run=record)
+
+
+@app.post("/api/runs/save", response_model=RunResponse)
+def save_run(payload: RunSaveRequest, _auth: None = Depends(require_session_token)) -> RunResponse:
+    try:
+        record = runs.save_run(payload.path, payload.run)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return RunResponse(path=payload.path, run_id=record.id, run=record)
+
+
+@app.get("/api/runs/list", response_model=list[RunResponse])
+def list_runs(path: str, _auth: None = Depends(require_session_token)) -> list[RunResponse]:
+    try:
+        records = runs.list_runs(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [RunResponse(path=path, run_id=record.id, run=record) for record in records]
+
+
+@app.post("/api/runs/recover", response_model=list[RunResponse])
+def recover_runs(
+    payload: RunRecoverRequest, _auth: None = Depends(require_session_token)
+) -> list[RunResponse]:
+    try:
+        records = runs.recover_runs(payload.path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [RunResponse(path=payload.path, run_id=record.id, run=record) for record in records]
 
 
 def run() -> None:

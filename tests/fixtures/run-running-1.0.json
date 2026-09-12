@@ -1,0 +1,112 @@
+{
+  "created_at": "2026-09-12T09:00:00+00:00",
+  "environment": {
+    "accelerator": "cpu",
+    "architecture": "x86_64",
+    "operating_system": "Linux",
+    "packages": {
+      "brainlearn-core": "0.1.0",
+      "pydantic": "2.11.7"
+    },
+    "python_version": "3.12.7",
+    "schema_version": "1.0"
+  },
+  "events": [
+    {
+      "at": "2026-09-12T09:01:00+00:00",
+      "kind": "run_started",
+      "message": "",
+      "node_run_id": null,
+      "schema_version": "1.0",
+      "seq": 0
+    },
+    {
+      "at": "2026-09-12T09:01:00+00:00",
+      "kind": "node_started",
+      "message": "",
+      "node_run_id": "node-run-inspect-001",
+      "schema_version": "1.0",
+      "seq": 1
+    },
+    {
+      "at": "2026-09-12T09:02:00+00:00",
+      "kind": "node_succeeded",
+      "message": "",
+      "node_run_id": "node-run-inspect-001",
+      "schema_version": "1.0",
+      "seq": 2
+    },
+    {
+      "at": "2026-09-12T09:04:00+00:00",
+      "kind": "node_started",
+      "message": "",
+      "node_run_id": "node-run-filter-001",
+      "schema_version": "1.0",
+      "seq": 3
+    }
+  ],
+  "failure": null,
+  "finished_at": null,
+  "id": "run-demo-running",
+  "node_runs": [
+    {
+      "artifacts": [],
+      "attempt": 1,
+      "content_identity": "brainlearn-v1:node:a18463b1cbce1c2c32e9a9f60dece71b35a60435fb17e845c2a6c51a4497b2b1",
+      "dependencies": [],
+      "environment_identity": "brainlearn-v1:environment:ff07c69cbbcba662faf1f5bf3934f5206e99d149d4214ca83b5e49455e2ccbaa",
+      "failure": null,
+      "finished_at": "2026-09-12T09:02:00+00:00",
+      "id": "node-run-inspect-001",
+      "inputs": {
+        "dataset": "brainlearn-v1:artifact:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "node_id": "inspect",
+      "node_type": "eeg.inspect",
+      "node_version": "0.1.0",
+      "parameters": {},
+      "review_pause": null,
+      "schema_version": "1.0",
+      "seed": 7,
+      "settings": {},
+      "started_at": "2026-09-12T09:01:00+00:00",
+      "state": "succeeded"
+    },
+    {
+      "artifacts": [],
+      "attempt": 1,
+      "content_identity": "brainlearn-v1:node:bc9e6acbbdc9c13dd5795575ae60d7a47830f26f63171e0dbc32fc04dbe34feb",
+      "dependencies": [
+        "node-run-inspect-001"
+      ],
+      "environment_identity": "brainlearn-v1:environment:ff07c69cbbcba662faf1f5bf3934f5206e99d149d4214ca83b5e49455e2ccbaa",
+      "failure": null,
+      "id": "node-run-filter-001",
+      "inputs": {
+        "raw": "brainlearn-v1:node:a18463b1cbce1c2c32e9a9f60dece71b35a60435fb17e845c2a6c51a4497b2b1"
+      },
+      "node_id": "filter",
+      "node_type": "eeg.filter",
+      "node_version": "0.1.0",
+      "parameters": {
+        "high_hz": 40.0,
+        "low_hz": 1.0
+      },
+      "review_pause": null,
+      "schema_version": "1.0",
+      "seed": 7,
+      "settings": {
+        "timeout_seconds": 600
+      },
+      "started_at": "2026-09-12T09:04:00+00:00",
+      "state": "running"
+    }
+  ],
+  "schema_version": "1.0",
+  "seed": 7,
+  "started_at": "2026-09-12T09:01:00+00:00",
+  "state": "running",
+  "workflow_id": "eeg-first-look",
+  "workflow_identity": "brainlearn-v1:workflow:546d1aea5c7aade51b6eafde7471a582f4f5f48ae900c44206c260162149aa82",
+  "workflow_schema_version": "1.0"
+}

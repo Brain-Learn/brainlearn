@@ -102,7 +102,7 @@ Goal: execute deterministic demonstration nodes without claiming scientific proc
 
 - [x] Define run, node-run, artifact, environment, event, and failure schemas.
 - [x] Create content identities from inputs, parameters, implementation version, environment, seeds, and relevant settings.
-- [ ] Implement topological scheduling and explicit dependency states.
+- [x] Implement topological scheduling and explicit dependency states.
 - [ ] Run workers outside the API request lifecycle.
 - [ ] Stream progress and events to the UI.
 - [ ] Implement cancellation and service-restart recovery.
@@ -273,87 +273,93 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 4A second monitoring review | Changes requested | Full baseline reproduced: Ruff and formatting passed (27 files), strict mypy passed (13 files), pytest 120 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed, audit found 0 vulnerabilities, and `git diff --check` passed. Direct probes still accepted duplicate dependency references; stale node identities after hashed fields or the embedded environment changed; queued `attempt: 1` despite `counts_as_execution` false; and cancelled runs finishing before creation. Four focused repairs and regression tests are specified in `REVIEW.md`; first two Step 4 boxes remain unchecked. | Uncommitted; monitoring review failed |
 | 2026-09-12 | Step 4A second-review repairs (4 findings) | Verified; monitoring pending | Node `content_identity` recomputed from declared fields with mismatch rejected; run environment identity computed from `EnvironmentRecord` and required on every node run; duplicate dependency references rejected; `attempt: 0` required for queued/skipped/reused with positive attempts elsewhere; `created<=finished` enforced even when `started_at` is absent. New tests: per-field stale-identity mutations, substituted/edited environment rejection, duplicate deps, queued/running attempt boundaries, cancelled-before-start chronology. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 27 files clean; `mypy` 13 files clean; `uv run pytest -q` 133 passed (100 contract tests); ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. First two Step 4 boxes left unchecked for the monitor. | Uncommitted; awaiting monitored review |
 | 2026-09-12 | Step 4A final monitored gate | Complete | Reviewer independently reproduced all four repaired rejection cases, including a coherently rehashed per-node environment substitution. Reviewer aligned the queued model default to `attempt: 0` and added an omitted-default regression test. Full gate: `uv run pytest -q` 134 passed; frontend 24 passed in 5 files; Ruff, Ruff format (27 files), strict mypy (13 files), ESLint, Prettier, production build (1,837 modules), production audit (0 vulnerabilities), and `git diff --check` passed. The first two Step 4 items are approved; Step 4 remains open for 4B–4E. | Monitored review complete |
+| 2026-09-12 | Step 4B run store and scheduler | Verified; monitoring pending | New `scheduler.py` (deterministic topological order, ready-node and downstream closures) and `run_store.py` (`runs/<id>/run.json` CRUD under explicit-root auth, atomic writes, nonterminal discovery, restart recovery voiding running nodes to queued/attempt-0 with waiting reviews preserved). Run endpoints create/open/save/list/recover behind the session token. Recovery follows the queued-attempt-0 rule: voided numbers live in events, next execution assigns a fresh attempt. New `run-running-1.0.json` fixture, `test_scheduler.py` (10 tests) and `test_run_store.py` (12 tests: round-trips, traversal/auth/overwrite guards, recovery semantics, restart simulation, endpoints). `docs/execution-contracts.md` extended. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 31 files clean; `mypy` 15 files clean; `uv run pytest -q` 156 passed; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Step 4 heading left unchecked; workers/streaming/cancellation/cache/UI excluded per slice boundary. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4B review repairs (6 findings) | Verified; monitoring pending | Terminal runs immutable on save (read-before-write, byte-preserved, store + endpoint tests for succeeded/failed/cancelled); recovery reconciles every nonterminal run (running/all-queued→queued, mixed→running, all-completed→succeeded with finish time, waiting preserved only with valid prerequisites, stale reviews requeued transitively); corrupt `run.json` files raise with path+cause on list/recover (store + endpoint tests); scheduler entry points share unknown/duplicate/cycle validation with a documented state-key rule; run APIs require the exact authorized project root with manifest checks (descendant/deleted rejections); `node_queued` events carry the voided attempt structurally with attempt>1 and round-trip tests. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 31 files clean; `mypy` 15 files clean; `uv run pytest -q` 175 passed (41 scheduler/store tests); ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Scheduling bullet and Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4B second-review repairs (3 findings) | Verified; monitoring pending | Discovery never follows symlinks, enforces the run-ID grammar, requires record/directory ID equality, and authorizes candidates before reading; per-run locks serialize create/save/recovery read-check-write sequences with deterministic terminal-wins and single-create race tests plus a documented in-process boundary; downstream queries reject unknown sources. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 31 files clean; `mypy` 15 files clean; `uv run pytest -q` 184 passed (50 scheduler/store tests); ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Scheduling bullet and Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-12 | Step 4B monitoring review | Changes requested | Full baseline reproduced: Ruff and formatting passed (31 files), strict mypy passed (15 files), pytest 156 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed, audit found 0 vulnerabilities, and `git diff --check` passed. Direct probes found terminal history writable; running/all-queued records unreconciled; dependent reviews preserved after their running prerequisite is reset; malformed run files silently omitted; `ready_node_ids` accepting an unknown graph dependency when a state exists; authorized descendants accepted as project roots; and interrupted attempt numbers retained only in message text. Repair criteria are in `REVIEW.md`; Step 4B remains open. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4B second monitoring review | Changes requested | All six prior findings verified repaired and full baseline reproduced: Ruff and formatting passed (31 files), strict mypy passed (15 files), pytest 175 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed, audit found 0 vulnerabilities, and `git diff --check` passed. Controlled probes found discovery following an external run-directory symlink and accepting a directory/record-ID mismatch; overlapping terminal and stale saves restoring the nonterminal record; and `downstream_ids` silently ignoring an unknown source. Three focused repairs are specified in `REVIEW.md`; Step 4B remains open. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4B final monitored gate | Complete | Reviewer independently reproduced unknown-source rejection, external symlink exclusion, directory/record-ID mismatch rejection, and terminal-wins concurrent saving; focused tests also cover symlinked files, invalid directory names, mixed unknown sources, and duplicate-create races. Full gate: `uv run pytest -q` 184 passed; frontend 24 passed in 5 files; Ruff, Ruff format (31 files), strict mypy (15 files), ESLint, Prettier, production build (1,837 modules), production audit (0 vulnerabilities), and `git diff --check` passed. In-process locking is approved provided Step 4C workers write only through `RunStore`; a separate writer process requires cross-process coordination. Scheduling is approved; Step 4 remains open for 4C–4E. | Monitored review complete |
 
 ## Next assignment
 
-Starting point: `main` contains the approved Step 3 implementation through
-`68efda6`. The next agent starts **Step 4 — Run records, artifact storage, and
-executor**. Read `AGENTS.md`, `REVIEW.md`, and this plan before editing. Confirm
-the worktree is clean, then complete only Step 4A in the next work unit.
+Read `AGENTS.md`, `REVIEW.md`, and this plan before acting. Step 4A is approved
+in `25bf419`. The worktree currently contains uncommitted Step 4B plus a repair
+row claiming the three findings from the second monitoring review are fixed.
 
-Work through Step 4 in the ordered slices below. Complete and verify one slice
-before starting the next. Check a task only after its behavior and tests pass,
-and add exact evidence to the completion log. Do not check the Step 4 heading
-until the complete Step 4 gate passes.
+### Immediate action — submit Step 4B repairs for review
 
-### Step 4A — Versioned execution contracts (do this next)
+1. Inspect the shared worktree and preserve every existing change. Do not
+   rewrite the monitoring rows or remove prior evidence.
+2. Confirm the repair implementation covers all three current findings:
+   discovered run paths cannot follow symlinked directories or files and must
+   match their directory ID; create/save/recovery share per-run serialization;
+   and downstream queries reject unknown source IDs.
+3. Confirm deterministic tests cover directory and file symlinks, invalid and
+   mismatched run-directory IDs, terminal-versus-stale concurrent saves,
+   duplicate concurrent creates, unknown-only sources, and mixed
+   known/unknown sources.
+4. Run the full repository verification baseline and report exact counts. The
+   latest unreviewed row reports 184 Python tests and 24 frontend tests; do not
+   copy those numbers without reproducing them.
+5. Leave the scheduling bullet and Step 4 heading unchecked. Stop and request
+   monitoring review. Do not commit and do not begin Step 4C.
 
-- [ ] Add `packages/core/src/brainlearn_core/execution.py` with schema version
-  `1.0` and strict Pydantic models for `RunRecord`, `NodeRunRecord`,
-  `ArtifactRecord`, `EnvironmentRecord`, `RunEvent`, `FailureRecord`, and
-  `ReviewPauseRecord`. Export the public contracts from `brainlearn_core`.
-- [ ] Define explicit run and node-run state enums. Cover queued, running,
-  waiting for review, succeeded, failed, cancelled, dependency-skipped, and
-  cache-reused behavior without treating cached or skipped work as execution.
-- [ ] Put the information needed for later replay into the contracts: workflow
-  identity and schema version, node type and implementation version, dependency
-  IDs, attempt number, timestamps, environment identity, seed/settings,
-  artifacts, failure details, and review-pause references. Use project-relative
-  artifact paths; never embed large data or session tokens.
-- [ ] Add `packages/core/src/brainlearn_core/identity.py`. Canonicalize an
-  explicit identity payload to deterministic UTF-8 JSON and hash it with
-  SHA-256 plus a schema/domain prefix. Reject non-finite numbers. Do not include
-  timestamps, UI positions, display labels, absolute project paths, or other
-  values that do not change computation.
-- [ ] Include every computation-changing input: input artifact/content
-  identities keyed by port, parameter values, node implementation identity,
-  environment identity, seeds, and relevant execution settings. Define list
-  ordering and mapping-key ordering so equivalent payloads hash identically.
-- [ ] Add explicit `1.0` migration entry points for execution records. Unknown
-  versions must fail with an actionable compatibility message; never silently
-  coerce them.
-- [ ] Add one JSON fixture per persisted `1.0` execution record under
-  `tests/fixtures/`. Add round-trip and migration tests in
-  `tests/test_execution_contracts.py`.
-- [ ] Add identity tests proving repeated/equivalent payloads are stable and
-  changing each declared computation input changes the hash. Also prove UI
-  position, labels, timestamps, and mapping insertion order do not change it.
-- [ ] Add `docs/execution-contracts.md` documenting state transitions and
-  invariants: legal starts and terminal states, timestamp requirements,
-  cancellation, dependency failure, cache reuse, review pauses, artifact
-  success rules, and restart expectations for later slices.
-- [ ] Run the complete verification baseline, record exact counts in the
-  completion log, check only the first two Step 4 bullets if their full
-  contracts are satisfied, and request monitoring review. Stop after Step 4A.
+Step 4B remains limited to `packages/core` scheduler/contracts,
+`packages/server` run persistence and endpoints, their focused tests and
+fixtures, `docs/execution-contracts.md`, `REVIEW.md`, and this plan. Do not add
+worker execution, cache storage, scientific dependencies, UI run controls, or
+arbitrary command execution.
 
-Step 4A file boundary: changes belong in `packages/core`, execution-contract
-tests/fixtures, the contract document, core exports, and this checklist. Do not
-add server run endpoints, worker processes, WebSockets, executor logic, cache
-storage, UI run controls, scientific dependencies, or arbitrary command
-execution in this slice.
+### Step 4C — Worker lifecycle after monitored approval
 
-Step 4A gate: the same canonical fixture produces the same identities across
-repeated serialization and mapping insertion orders; changing each declared
-identity input changes the appropriate identity; excluded presentation and
-timestamp fields do not affect it; every schema fixture migrates and
-round-trips; illegal state/timestamp combinations and unknown versions fail
-clearly; the full repository verification baseline passes.
+Begin this slice only after the monitor approves and commits Step 4B.
+
+1. Define a bounded worker protocol and lifecycle service. Work must execute
+   outside FastAPI request handlers. Use an allowlisted registry of internal
+   demonstration-node functions; never accept shell commands, module paths, or
+   arbitrary Python from API payloads.
+2. Route every run mutation through the Step 4B serialized writer path. Assign
+   a fresh positive attempt when queued work starts, using structured event
+   history to remain monotonic after restart.
+3. Drive nodes in deterministic topological order. Start only ready queued
+   nodes; propagate failed/cancelled prerequisites to the transitive downstream
+   closure as `dependency_skipped`; author the run-level failed or cancelled
+   transition that Step 4B deliberately deferred.
+4. Append gapless structured events for run/node start, success, failure,
+   dependency skip, review pause/resume, recovery, and cancellation. Provide a
+   one-way local progress stream to the UI, preferring SSE unless bidirectional
+   transport is demonstrably required.
+5. Implement cooperative cancellation for queued and running work. Cancellation
+   must reach a terminal state after a bounded wait and remain idempotent when
+   requested repeatedly or after completion.
+6. Stage every output beneath its run directory and atomically promote it only
+   after node success. Failed, cancelled, or interrupted attempts must leave no
+   successful `ArtifactRecord`; clean or quarantine temporary files without
+   deleting prior successful history.
+7. Recover service interruptions through the approved Step 4B recovery path,
+   then resume schedulable work with fresh attempts while preserving valid
+   pending reviews.
+8. Add deterministic demonstration adapters needed to exercise lifecycle
+   behavior only: short delay, controlled failure, and small file copy are
+   sufficient here. Full branching/review/cache demonstration remains Step 4E.
+9. Test state transitions, ordering, concurrent API requests, restart during
+   work, cancellation before and during work, failure propagation, event-stream
+   reconnect, attempt monotonicity, and atomic artifact promotion. Avoid tests
+   that merely mirror implementation details.
+10. Update `docs/execution-contracts.md`, add exact verification evidence to the
+    completion log, check only the Step 4 worker/stream/cancellation/artifact
+    bullets whose complete behavior passes, and request monitoring review.
+    Leave the Step 4 heading unchecked and stop before Step 4D.
 
 ### Remaining Step 4 order
 
-1. **Step 4B — Run store and scheduler:** persist run records inside authorized
-   projects, implement topological dependency states, and recover nonterminal
-   runs after service restart.
-2. **Step 4C — Worker lifecycle:** run work outside API requests, stream ordered
-   events, implement cancellation, and prevent cancelled/failed partial outputs
-   from becoming successful artifacts.
-3. **Step 4D — Cache and invalidation:** reuse content-addressed outputs and
+1. **Step 4D — Cache and invalidation:** reuse content-addressed outputs and
    invalidate only descendants affected by input, parameter, implementation,
    environment, seed, or setting changes.
-4. **Step 4E — Demonstration gate:** add non-scientific copy, delay, failure,
-   branch, and review-pause fixtures; display run state, logs, artifacts, cache
-   state, and actionable failures; execute the complete Step 4 gate.
+2. **Step 4E — Demonstration gate:** complete the non-scientific branching,
+   failure, review-pause, and cache fixtures; display run state, logs,
+   artifacts, cache state, and actionable failures; execute the full Step 4
+   completion gate.
 
-Each slice ends with exact command results in the completion log and a
-monitoring review. The Step 4 heading remains unchecked until the full branched
-workflow completion gate passes.
+Every slice ends with exact command results and a monitoring review. The Step
+4 heading remains unchecked until the complete branched-workflow gate passes.

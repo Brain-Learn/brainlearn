@@ -228,6 +228,11 @@ class RunEvent(BaseModel):
     at: str = Field(min_length=1)
     kind: RunEventKind
     node_run_id: str | None = None
+    # Structured attempt history: when set, the execution attempt this event
+    # describes. Recovery records the voided attempt here so later slices can
+    # assign the next attempt without parsing human-readable text. None means
+    # the event is not attempt-specific (for example, run-level events).
+    attempt: int | None = Field(default=None, ge=0)
     message: str = ""
 
     @field_validator("at")

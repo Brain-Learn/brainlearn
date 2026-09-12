@@ -43,6 +43,7 @@ from brainlearn_core.projects import (
     migrate_workflow_dict,
     new_project_manifest,
 )
+from brainlearn_core.scheduler import downstream_ids, ready_node_ids, topological_order
 from brainlearn_core.schema import (
     CanvasPosition,
     CapabilityRequirement,
@@ -105,6 +106,7 @@ __all__ = [
     "canonical_json_bytes",
     "content_identity",
     "counts_as_execution",
+    "downstream_ids",
     "environment_identity",
     "migrate_artifact_dict",
     "migrate_environment_dict",
@@ -117,5 +119,7 @@ __all__ = [
     "migrate_workflow_dict",
     "new_project_manifest",
     "node_content_identity",
+    "ready_node_ids",
+    "topological_order",
     "validate_workflow",
 ]
