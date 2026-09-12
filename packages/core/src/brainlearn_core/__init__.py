@@ -7,6 +7,8 @@ from brainlearn_core.execution import (
     RUN_TERMINAL_STATES,
     SUPPORTED_EXECUTION_VERSIONS,
     ArtifactRecord,
+    CacheEntry,
+    CacheOutput,
     EnvironmentRecord,
     FailureRecord,
     NodeRunRecord,
@@ -18,6 +20,7 @@ from brainlearn_core.execution import (
     RunState,
     counts_as_execution,
     migrate_artifact_dict,
+    migrate_cache_entry_dict,
     migrate_environment_dict,
     migrate_event_dict,
     migrate_failure_dict,
@@ -65,6 +68,8 @@ from brainlearn_core.validation import ValidationIssue, ValidationResult, valida
 
 __all__ = [
     "ArtifactRecord",
+    "CacheEntry",
+    "CacheOutput",
     "CapabilityRequirement",
     "CanvasPosition",
     "CitationMetadata",
@@ -109,6 +114,7 @@ __all__ = [
     "downstream_ids",
     "environment_identity",
     "migrate_artifact_dict",
+    "migrate_cache_entry_dict",
     "migrate_environment_dict",
     "migrate_event_dict",
     "migrate_failure_dict",

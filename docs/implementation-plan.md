@@ -107,7 +107,7 @@ Goal: execute deterministic demonstration nodes without claiming scientific proc
 - [x] Stream progress and events to the UI.
 - [x] Implement cancellation and service-restart recovery.
 - [x] Write outputs atomically and keep partial files out of successful artifact records.
-- [ ] Implement cache reuse and downstream invalidation.
+- [x] Implement cache reuse and downstream invalidation.
 - [ ] Add non-scientific fixture nodes for copy, delay, failure, branching, and review pause.
 - [ ] Support smooth existing-node dragging and palette-to-canvas drag-and-drop with click and keyboard fallbacks.
 - [ ] Add reduced-motion-aware transitions for discrete canvas, inspector, viewport, and run-state changes.
@@ -305,58 +305,61 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 4C fourth-review repair (staging boundary) | Verified; monitoring pending | Moved staging reservation and input resolution inside the node-attempt `try` with `staging: Path \| None` guard so setup containment failures produce structured node failure, downstream skips, and terminal failed run without touching symlink targets; uninitialized staging is never quarantined. New test plants `staging/` symlink and proves sentinel unchanged, no artifacts, and node/run failed. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 37 files clean; `mypy` 18 files clean; `uv run pytest -q` 232 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cancellation/recovery and atomic-output bullets plus Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
 
 | 2026-09-12 | Step 4C final monitored gate | Complete | Reviewer reproduced the staging-root symlink failure: API start returned normally, node and run reached structured `failed`, the external sentinel was byte-identical, and no successful artifact appeared. All earlier repair probes remained covered. Full gate: Ruff and format passed (37 files), strict mypy passed (18 files), pytest 232 passed with only 2 upstream deprecation warnings, focused repair group 6 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Cancellation/recovery and atomic-output items are approved; Step 4 remains open for 4D–4E. | Monitored review complete |
+| 2026-09-12 | Step 4D cache and invalidation | Verified; monitoring pending | New versioned `CacheEntry`/`CacheOutput` contract (`schema_version 1.0`, keyed by node content identity with repeated type/version/env/seed/inputs/params/settings plus immutable output metadata, `migrate_cache_entry_dict`); project-local `cache/nodes/<sha>/entry.json+files/` with atomic staging publish under a per-project lock (existing complete wins, corrupt quarantined, interrupted staging quarantined on recover), symlink/traversal refusal, verified size/SHA reuse as `cache_reused` attempt 0 with per-run `cache-reused/` artifacts and `cache_reused`/`run_started` events, publish only after promotion+persistence (zero-output/failure/cancel/review never publish, publish faults never fail runs). New `tests/test_cache.py` (18 tests: hit/reuse semantics, exact bytes, zero-output, corrupt entry/file, symlink file/root, traversal, interrupted publish, concurrent runs, param/descendant, version, environment, seed, setting, independent branch, cached-upstream relay, contract validation). `docs/execution-contracts.md` extended. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 250 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cache bullet checked; Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+
+| 2026-09-12 | Step 4D monitoring review | Changes requested | Full gate reproduced: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 250 passed with only 2 upstream deprecation warnings, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Direct probes showed altered node version/parameters and an undeclared output port reusing under a stale identity; late multi-output reuse failure leaving an unreferenced partial `cache-reused/` tree; and a regular file at `cache/nodes/<sha>` preventing healing across repeated runs. The new persisted schema also lacks its required versioned fixture and unsupported-version migration gate. Four focused repairs are specified in `REVIEW.md`; the cache bullet was reopened. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4D review repairs (4 findings) | Verified; monitoring pending | Cache lookup now recomputes the entry identity from repeated fields, compares every repeated field to the queued node, and validates cached ports against persisted declared outputs plus the current manifest including required outputs; per-run reuse stages all outputs in a worker-owned temp tree, reverifies bytes at the commit boundary, renames atomically, and removes/quarantines staging and final trees on any copy/hash/cancel/persistence failure; publish quarantines regular-file key occupants before replacement while still refusing symlinks; new `tests/fixtures/cache-entry-1.0.json` with round-trip, stable-identity, and `9.9` migration-rejection tests. New `tests/test_cache.py` regressions: 7 per-field mutations, wrong/missing output ports (incl. dual-output manifest), multi-output late copy failure, regular-file healing. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 264 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cache bullet and Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+
+| 2026-09-12 | Step 4D second monitoring review | Changes requested | The four first-review repair behaviors were reproduced and the full gate passed: Ruff and format (38 files), strict mypy (18 files), pytest 264 passed with only 2 upstream deprecation warnings, focused repair group 12 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. A cancellation-during-cache-copy probe cleaned reuse files but escaped before lifecycle handling, leaving run and node queued at attempt 0. A schema probe also showed `CacheEntry.model_validate` accepting a changed node version under a stale content identity even though worker lookup rejects it. Two focused repairs are specified in `REVIEW.md`; cache remains unchecked. | Uncommitted; monitoring review failed |
+| 2026-09-12 | Step 4D second-review repairs (2 findings) | Verified; monitoring pending | Cache reuse now catches `CancelledByUser` explicitly and persists the normal pre-execution cancelled record (attempt 0, no timestamps, no artifacts, terminal cancelled run), with a second cancel check after the atomic rename before persistence; every other reuse exception falls back to ordinary execution so nothing escapes to strand the record. `CacheEntry` recomputes `node_content_identity` in its model validator and rejects stale identities at load time; worker field/port checks retained as defense in depth. New regressions: cancellation during copy and after rename (both prove cancelled run/node, attempt 0, no timestamps/artifacts/trees) plus 7 schema-level per-field stale-identity tests. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 273 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cache bullet and Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+
+| 2026-09-12 | Step 4D final monitored gate | Complete | Reviewer reproduced cancellation during cache copy and after atomic rename: both reached terminal cancelled run/node at attempt 0 with no timestamps, artifacts, staging, or final reuse tree. A direct stale-fixture probe confirmed `CacheEntry.model_validate` rejects repeated fields that no longer match content identity; all 7 schema mutation cases pass. Earlier metadata/port, atomic multi-output, regular-file healing, symlink, corruption, recovery, concurrency, and exact invalidation coverage remains green. Full gate: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 273 passed with only 2 upstream deprecation warnings, focused final group 9 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Cache/invalidation is approved; Step 4 remains open for 4E. | Monitored review complete |
 
 ## Next assignment
 
-Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`, and this plan
-before acting. Step 4A is approved in `25bf419`; Step 4B is approved in
-`91b9d2e`; Step 4C is approved by the final monitored gate above. Preserve all
-completion-log history and the UI/dataset roadmap.
+Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`,
+`docs/ui-dataset-roadmap.md`, and this plan before acting. Steps 4A–4D are
+approved in commits/history through the final monitored gate. Preserve every
+completion-log row.
 
-### Step 4D — content-addressed cache and downstream invalidation
+### Step 4E — canvas interaction and complete demonstration gate
 
-Implement only this cache slice. Do not start the Step 4E canvas or run-drawer
-work in the same work unit.
+Implement only this UI and demonstration slice. Do not begin scientific EEG
+processing or dataset downloading.
 
-1. Define the versioned cache-entry contract before storage code. Bind each
-   entry to the existing node content identity, node implementation version,
-   environment identity, seed, settings, input identities, and immutable output
-   metadata. Document what can and cannot be reused across platforms.
-2. Store cache entries inside the authorized project using atomic writes and
-   worker-owned path containment. Never follow symlinks, overwrite prior cache
-   history, trust a record without verifying its files, or place large bytes in
-   JSON. Choose an explicit project-local layout and add recovery rules for
-   interrupted cache publication.
-3. Before executing a ready node, look up its exact content identity. Reuse only
-   a complete entry whose artifact paths, sizes, and SHA-256 values verify.
-   Materialize or reference outputs without mutating the immutable cache entry;
-   record node state `cache_reused`, attempt 0, typed artifacts, and a structured
-   `cache_reused` event.
-4. Treat missing, corrupt, incomplete, incompatible, or unsafe entries as cache
-   misses with actionable diagnostics where appropriate. Never silently accept
-   partial results and never delete valid prior outputs during a miss.
-5. Publish a cache entry only after successful atomic output promotion and run
-   record persistence. Failure, cancellation, review pause, and zero-output
-   control nodes must not create misleading reusable entries.
-6. Prove invalidation through identities: an unchanged second run reuses eligible
-   nodes; changing one parameter, input identity, implementation version,
-   environment, seed, or relevant setting invalidates that node and exactly its
-   transitive descendants while independent branches remain reusable.
-7. Add deterministic tests for cache hit/miss, exact artifact verification,
-   corrupt metadata/files, symlink and traversal refusal, interrupted publish,
-   concurrent identical runs, attempt/event semantics, independent branches,
-   and every declared invalidation input. Keep scientific processing out of
-   this slice.
-8. Update `docs/execution-contracts.md` and append exact verification evidence.
-   Check only the cache/invalidation bullet after its behavior and full baseline
-   pass. Leave the Step 4 heading unchecked and request monitoring review before
-   committing.
+1. Repair controlled React Flow state so dragging an existing node updates
+   continuously, ends at the pointer-selected position, persists as one undoable
+   edit, and survives project save/open and draft recovery.
+2. Add node-library drag-and-drop onto exact flow coordinates after viewport
+   pan/zoom. Keep the existing click insertion and add an operable keyboard
+   path; all three methods must create the same valid node model.
+3. Add restrained transitions for discrete node, inspector, viewport, validation,
+   and run-state changes. Respect `prefers-reduced-motion` and avoid animating
+   direct pointer tracking in a way that introduces lag.
+4. Add safe per-instance presentation customization such as title, color/accent,
+   compactness, and notes. Persist it separately from scientific parameters and
+   prove it does not change workflow/node computation identities or cache hits.
+5. Complete a non-scientific branched fixture using copy, delay, controlled
+   failure, and review-pause behavior. The same fixture must support success,
+   failure propagation, explicit review approval/rejection, cancellation,
+   restart recovery, cache reuse, and exact descendant invalidation.
+6. Connect the UI to run creation/control and SSE replay. The run drawer must
+   display current run/node state, ordered events/logs, artifacts, cache status,
+   review decisions, cancellation, and actionable failures without exposing
+   internal tracebacks as ordinary user guidance.
+7. Add focused Vitest coverage for graph-change reduction, drag/drop coordinate
+   conversion, keyboard/click equivalence, undo grouping, reduced motion,
+   presentation/identity separation, run-state rendering, SSE reconnect, and
+   review/cancel actions. Add the smallest practical browser-level test for the
+   full assembled workflow if the existing toolchain supports it.
+8. Run the complete Step 4 gate manually and automatically: assemble the branch
+   by each supported input method; move/customize/save/reopen it; run it; reuse
+   the cache; change one parameter and verify exact descendant invalidation;
+   exercise review, restart, failure, and cancellation; confirm no successful
+   partial artifacts.
+9. Update user/contributor documentation and append exact verification evidence.
+   Check individual 4E items only after their gates pass. Leave the Step 4 heading
+   unchecked for the monitoring agent and request review before commit.
 
-### Following work after monitored Step 4D approval
-
-Step 4E repairs continuous existing-node dragging, adds exact-coordinate palette
-drop with click/keyboard fallbacks, implements reduced-motion-aware transitions,
-persists presentation customization outside scientific identity, completes the
-branching/failure/review/cache fixture, and connects the run drawer. Follow
-`docs/ui-dataset-roadmap.md`. Step 5A then implements the curated OpenNeuro-first
+After monitored Step 4E approval, Step 5A begins the curated OpenNeuro-first
 dataset library and secure local download lifecycle.

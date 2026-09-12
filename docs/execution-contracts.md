@@ -238,6 +238,56 @@ endpoints only. Edge IDs, node labels, descriptions, canvas positions, and
 list insertion order never affect it; endpoint, topology, parameter, or port
 changes always do.
 
+### Content-addressed cache (Step 4D)
+
+Each cache entry (`CacheEntry`/`CacheOutput`, schema `1.0`) is keyed by the
+existing node content identity, which already binds node type and
+implementation version, input identities, parameter values, environment
+identity, seed, and execution settings; those fields repeat inside the entry
+for audit. The model itself recomputes the identity from its repeated fields
+and rejects a stale one wherever the entry is loaded, like `NodeRunRecord`.
+Outputs carry port, canonical relative path, media type, size, and SHA-256;
+large bytes are never embedded in JSON.
+
+Entries live project-local at `<project>/cache/nodes/<sha>/` with
+`entry.json` plus immutable `files/`. Publication stages to
+`cache/staging/<sha>-<id>/` (verified size/hash copies plus the entry file)
+and renames atomically into place under a per-process per-project lock, so
+concurrent identical runs serialize: an existing complete entry wins and the
+loser's staging is discarded; a corrupt, incomplete, non-directory, or
+unsafe occupant is quarantined to `cache/quarantine/` before replacement. Interrupted
+publications leave staging behind and `POST /api/runs/recover` quarantines
+it the same way. Symlinked cache components are never followed, prior valid
+history is never overwritten, and publish problems are fault-logged without
+failing the already-succeeded run.
+
+Before executing a ready node the worker looks up its exact content
+identity. A clean miss (no entry) executes normally; a present-but-unusable
+entry is a miss with a fault-log diagnostic naming the identity. A hit
+requires the entry's repeated computation fields to recompute to its claimed
+identity and match the queued node's replay fields exactly, every cached
+port to be declared by the node's workflow outputs and allowed by the
+current adapter manifest (including every required output), and every file
+to resolve inside the entry with no symlinks and matching size and SHA-256.
+The node then records `cache_reused` with attempt 0 and no timestamps,
+staging every output in a worker-owned temporary tree, reverifying bytes at
+the commit boundary, and renaming the complete tree atomically into the
+per-run `cache-reused/` artifacts; any copy, hash, cancellation, or
+persistence failure removes or quarantines both staging and final reuse
+trees so no partial tree survives. Cancellation during reuse cleans both
+trees and persists the normal pre-execution cancellation (attempt 0, no
+timestamps, no artifacts, terminal cancelled run); any other reuse failure
+falls back to ordinary execution, so nothing escapes to strand the record.
+A `run_started` transition applies when the run was still queued, alongside the structured `cache_reused` event with
+attempt 0. Failure, cancellation, review pauses, and zero-output control
+nodes never publish. A regular file occupying a cache key is quarantined
+before the replacement is published, so the key heals on the next run;
+symlink occupants continue to be refused without touching external targets. Cross-platform reuse requires an exact
+environment-identity match, so platform differences invalidate rather than
+silently reuse; changing any of parameter, input, implementation version,
+environment, seed, or setting input changes the identity and therefore
+invalidates exactly the affected node and its transitive descendants.
+
 The scheduler (`brainlearn_core.scheduler`) is pure dependency logic:
 `topological_order` returns a deterministic execution order; `ready_node_ids`
 returns queued nodes whose dependencies all completed (`succeeded` or

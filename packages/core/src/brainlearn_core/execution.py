@@ -169,6 +169,119 @@ class ArtifactRecord(BaseModel):
         return canonical
 
 
+class CacheOutput(BaseModel):
+    """One immutable output file stored inside a cache entry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    port_id: str = Field(min_length=1)
+    relative_path: str = Field(min_length=1)
+    media_type: str = Field(min_length=1, default="application/octet-stream")
+    byte_size: int = Field(ge=0)
+    sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @field_validator("relative_path")
+    @classmethod
+    def _path_must_be_canonical(cls, value: str) -> str:
+        canonical = value.replace("\\", "/")
+        if (
+            not canonical
+            or canonical.startswith("/")
+            or re.match(_DRIVE_QUALIFIED_PATTERN, canonical)
+        ):
+            raise ValueError(
+                "Cache output path must be relative with no drive or root qualifier, "
+                f"got {value!r}."
+            )
+        segments = canonical.split("/")
+        if ".." in segments or "." in segments or "" in segments:
+            raise ValueError(
+                f"Cache output path must not contain empty, '.', or '..' segments, got {value!r}."
+            )
+        if segments[0] in ("complete", "staging", "quarantine"):
+            raise ValueError(
+                f"Cache output path must not use the reserved prefix {segments[0]!r}, "
+                f"got {value!r}."
+            )
+        return canonical
+
+
+class CacheEntry(BaseModel):
+    """Versioned content-addressed cache entry for one node computation.
+
+    The entry is keyed by the existing node content identity, which already
+    binds node type and implementation version, input identities, parameter
+    values, environment identity, seed, and execution settings. Those fields
+    are repeated here for audit and diagnostics; the key itself is
+    ``content_identity``. Large bytes are never embedded: ``outputs`` carries
+    immutable file metadata and the bytes live under the entry's ``files/``
+    directory. Reuse across operating systems and architectures is allowed
+    only when the environment identity matches exactly; platform differences
+    therefore invalidate rather than silently reuse.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1.0"] = EXECUTION_SCHEMA_VERSION
+    content_identity: str = Field(min_length=1, pattern=_NODE_IDENTITY_PATTERN)
+    node_type: str = Field(min_length=1)
+    node_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+    environment_identity: str = Field(min_length=1, pattern=_ENVIRONMENT_IDENTITY_PATTERN)
+    seed: int | None = None
+    inputs: dict[str, str] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    settings: dict[str, Any] = Field(default_factory=dict)
+    outputs: list[CacheOutput] = Field(min_length=1)
+    created_at: str = Field(min_length=1)
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_must_be_iso(cls, value: str) -> str:
+        return _ensure_iso_timestamp(value, "created_at") or value
+
+    @field_validator("inputs")
+    @classmethod
+    def _inputs_must_be_identities(cls, value: dict[str, str]) -> dict[str, str]:
+        for port, identity in value.items():
+            if re.match(_IDENTITY_PATTERN, identity) is None:
+                raise ValueError(
+                    f"Input {port!r} must be a brainlearn-v1 identity, got {identity!r}."
+                )
+        return value
+
+    @model_validator(mode="after")
+    def _outputs_must_be_unique(self) -> "CacheEntry":
+        ports = [output.port_id for output in self.outputs]
+        if len(set(ports)) != len(ports):
+            raise ValueError("Cache entry output ports must be unique within an entry.")
+        paths = [output.relative_path for output in self.outputs]
+        if len(set(paths)) != len(paths):
+            raise ValueError("Cache entry output paths must be unique within an entry.")
+        return self
+
+    @model_validator(mode="after")
+    def _identity_must_match_repeated_fields(self) -> "CacheEntry":
+        try:
+            expected = _compute_node_identity(
+                node_type=self.node_type,
+                node_version=self.node_version,
+                inputs=self.inputs,
+                parameters=self.parameters,
+                environment_identity=self.environment_identity,
+                seed=self.seed,
+                settings=self.settings,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Cache entry has replay fields that cannot be hashed: {exc}") from exc
+        if expected != self.content_identity:
+            raise ValueError(
+                "Cache entry content_identity does not match its node type/version, "
+                "inputs, parameters, environment identity, seed, and settings. "
+                "Recompute the identity instead of reusing a stale one."
+            )
+        return self
+
+
 class FailureRecord(BaseModel):
     """Actionable description of why a run or node run failed."""
 
@@ -590,3 +703,9 @@ def migrate_review_pause_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Migrate a raw review-pause record dict to the current execution schema."""
 
     return _check_version(data, "schema_version", "review-pause records")
+
+
+def migrate_cache_entry_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a raw cache-entry dict to the current execution schema."""
+
+    return _check_version(data, "schema_version", "cache-entry records")

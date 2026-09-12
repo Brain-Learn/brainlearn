@@ -4,58 +4,61 @@ Review date: 2026-09-12
 
 ## Current review
 
-Scope: fifth monitoring review of the uncommitted Step 4C worker lifecycle and
-the fourth-review staging-boundary repair.
+Scope: final monitoring review of Step 4D content-addressed caching, including
+the two second-review repairs completed in the shared worktree.
 
-Status: **approved**. The staging setup failure now terminates the affected node
-and run safely, all earlier Step 4C findings remain repaired, and the complete
-repository gate passes. Step 4C may be committed. Step 4 remains open for cache,
-canvas interaction, fixture demonstration, and run UI work in Steps 4D and 4E.
+Status: **approved**. Cache identity, lookup, materialization, publication,
+invalidation, recovery, cancellation, and corruption handling satisfy the Step
+4D gate. The complete repository gate passes. Step 4D may be committed; Step 4
+remains open for the Step 4E interaction and demonstration gate.
 
-Step 4A is approved in commit `25bf419`. Step 4B is approved in commit
-`91b9d2e`.
+Steps 4A–4C are approved in commits `25bf419`, `91b9d2e`, and `55ae9e1`.
 
-## Final repair independently verified
+## Final repairs independently verified
 
-A direct probe created a valid queued `demo.copy` run, planted `staging/` as a
-symlink to an external sentinel directory, and started the existing run. The API
-returned 200, the worker recorded structured failure, the node and run both
-reached `failed`, and the external sentinel remained byte-identical. No output
-was written through the symlink. The regression test also proves downstream
-skip propagation and absence of successful artifacts.
+- Cancellation raised during cache copying now persists a terminal cancelled run
+  and node at attempt 0, with no timestamps, artifacts, staging, or final reuse
+  tree.
+- Cancellation after the atomic reuse rename and before run-record persistence
+  has the same terminal attempt-0 semantics and removes the unreferenced final
+  tree.
+- Other ordinary reuse exceptions fall through to normal execution rather than
+  escaping to the driver and stranding a record.
+- `CacheEntry` recomputes `node_content_identity` from node type, version, inputs,
+  parameters, environment, seed, and settings. Each stale-field mutation is
+  rejected during model validation; worker comparisons remain in place.
 
-Staging reservation and input resolution now execute inside the node-attempt
-failure boundary. Quarantine is called only when a staging path was initialized.
+## Step 4D behavior approved
 
-## Step 4C behavior approved
-
-- Allowlisted demonstration workers execute outside FastAPI request handlers and
-  persist mutations through `RunStore`.
-- Deterministic scheduling, positive attempt assignment, failure propagation,
-  review pause/resume, structured SSE events, and terminal run authorship work.
-- Cancellation distinguishes never-started attempt 0 from executed attempts,
-  remains idempotent, and does not publish partial artifacts.
-- Restart recovery quarantines interrupted staging and unreferenced final
-  attempts, preserves valid reviews, and resumes schedulable work monotonically.
-- Output promotion validates paths, symlinks, manifest ports, required outputs,
-  unique destinations, and containment before one atomic attempt rename.
-- Post-promotion cancellation and persistence failures remove or quarantine
-  unreferenced attempts without modifying external sentinel targets.
-- One adapter manifest controls versions, required/optional ports, and handlers;
-  real relay coverage proves exact upstream artifact bytes reach downstream.
-- Unexpected request and adapter failures are captured by the local fault log
-  without request bodies or authentication tokens.
+- Exact second runs reuse verified outputs as `cache_reused`, attempt 0, with
+  typed per-run artifacts and structured events.
+- Cache keys bind inputs, parameters, implementation, environment, seed, and
+  settings. Changes invalidate exactly the affected node and descendants while
+  independent branches remain reusable.
+- Entry metadata, manifest output ports, required outputs, file size, SHA-256,
+  containment, and symlink boundaries are verified before reuse.
+- Reused outputs stage and verify before one atomic rename; failures and
+  cancellations leave no partial successful tree.
+- Cache publication is atomic and serialized in-process. Corrupt directories and
+  regular-file occupants are quarantined and healed; symlink targets remain
+  untouched.
+- Interrupted publication staging is quarantined during recovery. Zero-output,
+  failed, cancelled, and review-paused work does not create misleading entries.
+- Schema `1.0` has a genuine fixture, round-trip and stable-identity coverage,
+  per-field stale-identity rejection, and unsupported-version rejection.
 
 ## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 37 files clean.
+- `uv run ruff format --check .`: 38 files clean.
 - `uv run mypy packages/core/src packages/server/src`: passed for 18 source files.
-- `uv run pytest -q`: 232 passed; two warnings are upstream Starlette/AnyIO
+- `uv run pytest -q`: 273 passed; two warnings are upstream Starlette/AnyIO
   deprecations and none originate in BrainLearn code.
-- Focused repair group: 6 passed, covering staging symlink failure, blocked
-  post-promotion quarantine, blocked orphan quarantine, missing required output,
-  disconnected required input, and omitted required adapter output.
+- Focused final repair group: 9 passed.
+- Direct cancellation-during-copy probe: run and node `cancelled`, attempt 0,
+  reuse tree absent.
+- Direct stale-fixture probe: `CacheEntry.model_validate` rejected the changed
+  version under the old identity.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
 - `npm --prefix apps/web test -- --run`: 24 passed in 5 files.
@@ -65,7 +68,7 @@ failure boundary. Quarantine is called only when a staging path was initialized.
 
 ## Next assignment
 
-Proceed only with Step 4D cache and invalidation as specified in
-`docs/implementation-plan.md`. Do not begin Step 4E UI interaction work in the
-same work unit. Keep the Step 4 heading unchecked until the complete 4E gate is
-reviewed.
+Proceed only with Step 4E canvas interaction and the complete demonstration
+workflow gate in `docs/implementation-plan.md`. Keep scientific processing and
+dataset downloading out of that work unit. The Step 4 heading remains unchecked
+until the entire 4E completion gate passes monitored review.

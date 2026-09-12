@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "content_identity": "brainlearn-v1:node:fe8a3d3923bcac6f9ef769a1e70f54f4896dce5ad9a81b53cccee4dd87376140",
+  "node_type": "demo.copy",
+  "node_version": "0.1.0",
+  "environment_identity": "brainlearn-v1:environment:30ef42285268e491efad75f5c27459e8a1fdd4a8216fb810a724415e25b85227",
+  "seed": 0,
+  "inputs": {},
+  "parameters": {
+    "text": "cache-fixture"
+  },
+  "settings": {
+    "input_sources": {},
+    "declared_outputs": [
+      "output"
+    ]
+  },
+  "outputs": [
+    {
+      "port_id": "output",
+      "relative_path": "output.txt",
+      "media_type": "text/plain",
+      "byte_size": 19,
+      "sha256": "341caece0d7cf8cfc14e932aca18361138ef7f99f276cd8d43491b22cff14b5d"
+    }
+  ],
+  "created_at": "2026-09-12T09:10:00+00:00"
+}

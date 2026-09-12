@@ -21,6 +21,8 @@ from brainlearn_core import (
     NODE_TERMINAL_STATES,
     RUN_TERMINAL_STATES,
     ArtifactRecord,
+    CacheEntry,
+    CacheOutput,
     Edge,
     EnvironmentRecord,
     FailureRecord,
@@ -36,6 +38,7 @@ from brainlearn_core import (
     Workflow,
     content_identity,
     environment_identity,
+    migrate_cache_entry_dict,
     node_content_identity,
     validate_workflow,
 )
@@ -56,6 +59,42 @@ JOIN_TIMEOUT_SECONDS = 15.0
 STAGING_DIRNAME = "staging"
 ARTIFACTS_DIRNAME = "artifacts"
 QUARANTINE_DIRNAME = "quarantine"
+CACHE_DIRNAME = "cache"
+CACHE_NODES_DIRNAME = "nodes"
+CACHE_STAGING_DIRNAME = "staging"
+CACHE_FILES_DIRNAME = "files"
+CACHE_ENTRY_FILENAME = "entry.json"
+
+# Process-wide cache-publication serialization, keyed by raw project string.
+# Workers are threads in this process; concurrent publishes of the same
+# content identity serialize here so one winner publishes and the other
+# discards its staging instead of overwriting history. Cross-process
+# coordination remains future work, consistent with the RunStore boundary.
+_CACHE_LOCKS: dict[str, threading.Lock] = {}
+_CACHE_LOCKS_GUARD = threading.Lock()
+
+
+def _cache_lock(project: str) -> threading.Lock:
+    with _CACHE_LOCKS_GUARD:
+        existing = _CACHE_LOCKS.get(project)
+        if existing is None:
+            existing = threading.Lock()
+            _CACHE_LOCKS[project] = existing
+        return existing
+
+
+def _cache_identity_sha(identity: str) -> str | None:
+    """Hex directory name for a node content identity, or None when malformed."""
+
+    import re
+
+    prefix = "brainlearn-v1:node:"
+    if not identity.startswith(prefix):
+        return None
+    sha = identity[len(prefix) :]
+    if re.fullmatch(r"[0-9a-f]{64}", sha) is None:
+        return None
+    return sha
 
 
 def _owned_child(root: Path, node_id: str, label: str, *names: str) -> Path:
@@ -519,16 +558,18 @@ class WorkerService:
         """Recover interrupted runs: quarantine staging, reconcile, resume.
 
         Leftover attempt staging trees move to ``quarantine/`` first so no
-        stale file can be promoted later. Records reconcile through the Step
-        4B recovery path (preserving structured voided attempts); every
-        reconciled run with schedulable queued work resumes driving, while
-        runs parked on valid pending reviews stay parked. Returns the
-        reconciled runs.
+        stale file can be promoted later. Interrupted cache publications under
+        ``cache/staging/`` quarantine the same way before any lookup. Records
+        reconcile through the Step 4B recovery path (preserving structured
+        voided attempts); every reconciled run with schedulable queued work
+        resumes driving, while runs parked on valid pending reviews stay
+        parked. Returns the reconciled runs.
         """
 
         from brainlearn_core.scheduler import ready_node_ids
 
         timestamp = now or utc_now_iso()
+        self._recover_cache_staging(project)
         recovered: list[RunRecord] = []
         for record in self.runs.find_nonterminal_runs(project):
             with self._guard:
@@ -961,6 +1002,22 @@ class WorkerService:
         node = next(item for item in fresh.node_runs if item.id == node_id)
         if node.state != NodeRunState.QUEUED or self._cancel_flag(project, record.id).is_set():
             return
+        cached = self._lookup_cache(project, fresh.id, node)
+        if cached is not None and not self._cancel_flag(project, fresh.id).is_set():
+            try:
+                self._reuse_from_cache(project, fresh.id, node_id, cached)
+                return
+            except CancelledByUser:
+                current = self.runs.get_run(project, fresh.id)
+                self.runs.save_run(project, _cancel_record(current, utc_now_iso()))
+                return
+            except Exception as exc:
+                log_fault(
+                    summary=f"{type(exc).__name__}: {exc}",
+                    method="WORKER",
+                    path=f"{project} :: {fresh.id}/{node_id}",
+                    exc=exc if isinstance(exc, OSError) else None,
+                )
         timestamp = utc_now_iso()
         attempt = next_attempt(fresh, node_id)
         started = node.model_copy(
@@ -1039,6 +1096,7 @@ class WorkerService:
                 self._quarantine(staging, project, fresh.id, node_id, attempt)
                 raise CancelledByUser(f"Node {node_id!r} cancelled during execution.")
             self._finish_node(project, fresh.id, node_id, attempt, artifacts)
+            self._publish_cache(project, fresh.id, node, artifacts)
         except ReviewPauseRequested as exc:
             self._pause_for_review(project, fresh.id, node_id, attempt, str(exc))
         except CancelledByUser:
@@ -1128,6 +1186,668 @@ class WorkerService:
                     if candidate is not None and candidate.is_file():
                         resolved[target_port] = candidate
         return resolved
+
+    # -- content-addressed cache (Step 4D) -----------------------------------
+    def _verify_cache_entry(
+        self, project_root: Path, sha: str, node: NodeRunRecord
+    ) -> CacheEntry | None:
+        """Verify a complete cache entry against one queued node; None is a miss.
+
+        Beyond file verification, the entry's repeated computation fields must
+        recompute to its claimed content identity, match the queued node's
+        replay fields exactly, and declare only ports the node's workflow
+        outputs and current adapter manifest allow (including every required
+        output). Anything else is a miss; the caller decides whether the miss
+        deserves a diagnostic.
+        """
+
+        import hashlib
+        import json
+
+        cache_root = project_root / CACHE_DIRNAME
+        nodes_root = cache_root / CACHE_NODES_DIRNAME
+        try:
+            if cache_root.is_symlink() or nodes_root.is_symlink():
+                return None
+            if not nodes_root.is_dir():
+                return None
+            dst = nodes_root / sha
+            if dst.is_symlink() or not dst.is_dir():
+                return None
+            if not _is_contained(dst, project_root) or _parent_chain_has_symlink(dst, project_root):
+                return None
+            entry_file = dst / CACHE_ENTRY_FILENAME
+            if entry_file.is_symlink() or not entry_file.is_file():
+                return None
+            try:
+                payload = json.loads(entry_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return None
+            if not isinstance(payload, dict):
+                return None
+            try:
+                entry = CacheEntry.model_validate(migrate_cache_entry_dict(payload))
+            except ValueError:
+                return None
+            if _cache_identity_sha(entry.content_identity) != sha:
+                return None
+            try:
+                recomputed = node_content_identity(
+                    node_type=entry.node_type,
+                    node_version=entry.node_version,
+                    inputs=entry.inputs,
+                    parameters=entry.parameters,
+                    environment_identity=entry.environment_identity,
+                    seed=entry.seed,
+                    settings=entry.settings,
+                )
+            except (TypeError, ValueError):
+                return None
+            if recomputed != entry.content_identity:
+                return None
+            if (
+                entry.node_type != node.node_type
+                or entry.node_version != node.node_version
+                or entry.inputs != node.inputs
+                or entry.parameters != node.parameters
+                or entry.environment_identity != node.environment_identity
+                or entry.seed != node.seed
+                or entry.settings != node.settings
+            ):
+                return None
+            manifest = DEMO_NODES.get(node.node_type)
+            if manifest is None:
+                return None
+            declared = node.settings.get("declared_outputs", [])
+            if not isinstance(declared, list) or not all(
+                isinstance(item, str) for item in declared
+            ):
+                return None
+            declared_set = set(declared)
+            entry_ports = [output.port_id for output in entry.outputs]
+            for port_id in entry_ports:
+                if port_id not in declared_set or port_id not in manifest.outputs:
+                    return None
+            for port_id, required in manifest.outputs.items():
+                if required and port_id not in entry_ports:
+                    return None
+            for output in entry.outputs:
+                candidate = _contained_child(dst, f"{CACHE_FILES_DIRNAME}/{output.relative_path}")
+                if candidate is None or candidate.is_symlink() or not candidate.is_file():
+                    return None
+                try:
+                    if candidate.stat().st_size != output.byte_size:
+                        return None
+                    digest = hashlib.sha256()
+                    with candidate.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    if digest.hexdigest() != output.sha256:
+                        return None
+                except OSError:
+                    return None
+            return entry
+        except OSError:
+            return None
+
+    def _lookup_cache(self, project: str, run_id: str, node: NodeRunRecord) -> CacheEntry | None:
+        """Look up one queued node's exact content identity; None is a miss.
+
+        A clean miss (no entry yet) is silent. A present-but-unusable entry is
+        a miss with a fault-log diagnostic naming the identity, never the
+        bytes. Never raises and never follows symlinks.
+        """
+
+        sha = _cache_identity_sha(node.content_identity)
+        if sha is None:
+            return None
+        try:
+            project_root = self._run_dir(project, run_id).parent.parent
+        except (OSError, ControlledFailure) as exc:
+            log_fault(
+                summary=f"{type(exc).__name__}: {exc}",
+                method="WORKER",
+                path=f"{project} :: {run_id}/{node.id}",
+                exc=exc if isinstance(exc, OSError) else None,
+            )
+            return None
+        dst = project_root / CACHE_DIRNAME / CACHE_NODES_DIRNAME / sha
+        try:
+            if not dst.is_symlink() and not dst.exists():
+                return None
+        except OSError:
+            return None
+        entry = self._verify_cache_entry(project_root, sha, node)
+        if entry is None:
+            log_fault(
+                summary=(
+                    "CacheMiss: no complete verified entry for "
+                    f"content {node.content_identity!r} (node {node.id!r})."
+                ),
+                method="WORKER",
+                path=f"{project} :: {run_id}/{node.id}",
+            )
+            return None
+        if entry.content_identity != node.content_identity:
+            log_fault(
+                summary=(
+                    "CacheMiss: entry identity mismatch for "
+                    f"content {node.content_identity!r} (node {node.id!r})."
+                ),
+                method="WORKER",
+                path=f"{project} :: {run_id}/{node.id}",
+            )
+            return None
+        return entry
+
+    def _recover_cache_staging(self, project: str) -> None:
+        """Quarantine interrupted cache publications; never follow symlinks."""
+
+        import shutil
+
+        from brainlearn_server.project_store import canonicalize_project_path
+
+        try:
+            root = self.runs.projects.require_allowed(canonicalize_project_path(project))
+        except (OSError, ValueError) as exc:
+            log_fault(
+                summary=f"{type(exc).__name__}: {exc}",
+                method="WORKER",
+                path=f"{project} :: cache",
+                exc=exc if isinstance(exc, OSError) else None,
+            )
+            return
+        if root.is_symlink():
+            log_fault(
+                summary=f"OSError: refusing symlinked project root {root}",
+                method="WORKER",
+                path=f"{project} :: cache",
+            )
+            return
+        staging_root = root / CACHE_DIRNAME / CACHE_STAGING_DIRNAME
+        try:
+            if staging_root.is_symlink() or not staging_root.is_dir():
+                return
+        except OSError:
+            return
+        try:
+            quarantine_root = _owned_child(root, "cache", "quarantine", CACHE_DIRNAME, "quarantine")
+        except ControlledFailure as exc:
+            log_fault(
+                summary=f"ControlledFailure: {exc}",
+                method="WORKER",
+                path=f"{project} :: cache",
+            )
+            for child in sorted(staging_root.iterdir()):
+                try:
+                    if child.is_symlink() or not child.is_dir():
+                        continue
+                except OSError:
+                    continue
+                if not _safe_remove_dir(child, root):
+                    log_fault(
+                        summary=(f"OSError: could not quarantine or remove cache staging {child}"),
+                        method="WORKER",
+                        path=f"{project} :: cache",
+                    )
+            return
+        for child in sorted(staging_root.iterdir()):
+            try:
+                if child.is_symlink() or not child.is_dir():
+                    continue
+            except OSError:
+                continue
+            if not _is_contained(child, root) or _parent_chain_has_symlink(child, root):
+                log_fault(
+                    summary=(f"OSError: refusing unsafe cache staging source {child}"),
+                    method="WORKER",
+                    path=f"{project} :: cache",
+                )
+                continue
+            target = _free_quarantine_target(quarantine_root, f"{child.name}-interrupted")
+            if target is None:
+                if not _safe_remove_dir(child, root):
+                    log_fault(
+                        summary=(f"OSError: no free quarantine name for cache staging {child}"),
+                        method="WORKER",
+                        path=f"{project} :: cache",
+                    )
+                continue
+            try:
+                shutil.move(str(child), str(target))
+            except OSError as exc:
+                log_fault(
+                    summary=f"{type(exc).__name__}: {exc}",
+                    method="WORKER",
+                    path=f"{project} :: cache",
+                    exc=exc,
+                )
+                if not _safe_remove_dir(child, root):
+                    log_fault(
+                        summary=(f"OSError: could not quarantine or remove cache staging {child}"),
+                        method="WORKER",
+                        path=f"{project} :: cache",
+                    )
+
+    def _reuse_from_cache(self, project: str, run_id: str, node_id: str, entry: CacheEntry) -> None:
+        """Record a queued node as ``cache_reused`` with cache-backed artifacts.
+
+        All outputs stage first in a worker-owned temporary tree, reverify
+        byte-for-byte at the commit boundary, then move into the final
+        ``cache-reused/`` tree with one atomic rename. Any copy, hash,
+        cancellation, or persistence failure removes or quarantines both the
+        staging and final reuse trees, so no unreferenced partial tree can
+        survive beside the executed attempt outputs.
+        """
+
+        import hashlib
+        import os
+        import shutil
+        import uuid
+
+        sha = _cache_identity_sha(entry.content_identity)
+        if sha is None:
+            raise ControlledFailure(f"Cache entry for node {node_id!r} has a bad identity.")
+        timestamp = utc_now_iso()
+        record = self.runs.get_run(project, run_id)
+        artifacts = [
+            ArtifactRecord(
+                schema_version="1.0",
+                artifact_id=content_identity(
+                    "artifact",
+                    {
+                        "schema_version": "1.0",
+                        "run_id": run_id,
+                        "node": node_id,
+                        "port": output.port_id,
+                        "sha256": output.sha256,
+                    },
+                ),
+                path=f"runs/{run_id}/{ARTIFACTS_DIRNAME}/{node_id}/cache-reused/{output.relative_path}",
+                media_type=output.media_type,
+                byte_size=output.byte_size,
+                sha256=output.sha256,
+                produced_by_node=node_id,
+                port_id=output.port_id,
+            )
+            for output in entry.outputs
+        ]
+        # Materialize the verified cache files into the run's own
+        # ``cache-reused/`` attempt tree so each run stays self-contained and
+        # later cache eviction cannot dangle a terminal record. The immutable
+        # cache entry itself is never mutated.
+        run_dir = self._run_dir(project, run_id)
+        project_root = run_dir.parent.parent
+        staging: Path | None = None
+        final: Path | None = None
+        try:
+            artifacts_root = _owned_child(run_dir, node_id, "artifacts", ARTIFACTS_DIRNAME)
+            node_dest = artifacts_root / node_id
+            if node_dest.is_symlink():
+                raise ControlledFailure(
+                    f"Node {node_id!r} artifact directory is a symlink; refusing it."
+                )
+            if node_dest.exists() and not node_dest.is_dir():
+                raise ControlledFailure(
+                    f"Node {node_id!r} artifact path is not a directory; refusing it."
+                )
+            node_dest.mkdir(parents=True, exist_ok=True)
+            if node_dest.is_symlink():
+                raise ControlledFailure(
+                    f"Node {node_id!r} artifact directory changed underfoot; refusing it."
+                )
+            final = node_dest / "cache-reused"
+            reuse_root = _owned_child(project_root, node_id, "staging", STAGING_DIRNAME, node_id)
+            staging = reuse_root / f"reuse-{uuid.uuid4().hex[:8]}"
+            if staging.exists() or staging.is_symlink():
+                raise ControlledFailure(f"Cache reuse staging collision for node {node_id!r}.")
+            staging.mkdir(parents=True, exist_ok=False)
+            if staging.is_symlink():
+                raise ControlledFailure(
+                    f"Cache reuse staging for node {node_id!r} changed underfoot."
+                )
+            for output in entry.outputs:
+                source = _contained_child(
+                    project_root,
+                    f"{CACHE_DIRNAME}/{CACHE_NODES_DIRNAME}/{sha}/{CACHE_FILES_DIRNAME}/{output.relative_path}",
+                )
+                if source is None or source.is_symlink() or not source.is_file():
+                    raise ControlledFailure(
+                        f"Cache entry for node {node_id!r} lost its verified file "
+                        f"{output.relative_path!r} before reuse."
+                    )
+                destination = _contained_child(staging, output.relative_path)
+                if destination is None or destination.is_symlink():
+                    raise ControlledFailure(
+                        f"Cache reuse for node {node_id!r} escapes its staging."
+                    )
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.parent.is_symlink() or destination.is_symlink():
+                    raise ControlledFailure(
+                        f"Cache reuse staging for node {node_id!r} changed underfoot."
+                    )
+                shutil.copy2(source, destination)
+            if self._cancel_flag(project, run_id).is_set():
+                raise CancelledByUser(f"Node {node_id!r} cancelled before reuse completed.")
+            for output in entry.outputs:
+                staged = _contained_child(staging, output.relative_path)
+                if staged is None or staged.is_symlink() or not staged.is_file():
+                    raise ControlledFailure(
+                        f"Cache reuse for node {node_id!r} lost staged file "
+                        f"{output.relative_path!r} before commit."
+                    )
+                try:
+                    if staged.stat().st_size != output.byte_size:
+                        raise ControlledFailure(
+                            f"Cache reuse for node {node_id!r} found a changed size."
+                        )
+                    digest = hashlib.sha256()
+                    with staged.open("rb") as handle:
+                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                            digest.update(chunk)
+                    if digest.hexdigest() != output.sha256:
+                        raise ControlledFailure(
+                            f"Cache reuse for node {node_id!r} found changed bytes."
+                        )
+                except OSError as exc:
+                    raise ControlledFailure(
+                        f"Cache reuse for node {node_id!r} cannot verify staged files."
+                    ) from exc
+            if final.is_symlink() or (final.exists() and not final.is_dir()):
+                quarantine_root = _owned_child(run_dir, node_id, "quarantine", QUARANTINE_DIRNAME)
+                target = _free_quarantine_target(quarantine_root, "cache-reused-replaced")
+                if target is None:
+                    raise ControlledFailure(
+                        f"No free quarantine name for reuse tree of node {node_id!r}."
+                    )
+                shutil.move(str(final), str(target))
+            elif final.is_dir():
+                quarantine_root = _owned_child(run_dir, node_id, "quarantine", QUARANTINE_DIRNAME)
+                target = _free_quarantine_target(quarantine_root, "cache-reused-replaced")
+                if target is None:
+                    if not _safe_remove_dir(final, project_root):
+                        raise ControlledFailure(
+                            f"No free quarantine name for reuse tree of node {node_id!r}."
+                        )
+                else:
+                    try:
+                        shutil.move(str(final), str(target))
+                    except OSError as exc:
+                        log_fault(
+                            summary=f"{type(exc).__name__}: {exc}",
+                            method="WORKER",
+                            path=f"{project} :: {run_id}/{node_id}",
+                            exc=exc,
+                        )
+                        if not _safe_remove_dir(final, project_root):
+                            raise ControlledFailure(
+                                f"Cache reuse for node {node_id!r} cannot clear its destination."
+                            ) from exc
+            os.replace(staging, final)
+            staging = None
+            if self._cancel_flag(project, run_id).is_set():
+                raise CancelledByUser(
+                    f"Node {node_id!r} cancelled after reuse rename before persistence."
+                )
+            nodes = [
+                item.model_copy(
+                    update={
+                        "state": NodeRunState.CACHE_REUSED,
+                        "attempt": 0,
+                        "started_at": None,
+                        "finished_at": None,
+                        "artifacts": list(artifacts),
+                    }
+                )
+                if item.id == node_id
+                else item
+                for item in record.node_runs
+            ]
+            events = [
+                *record.events,
+                RunEvent(
+                    schema_version="1.0",
+                    seq=len(record.events),
+                    at=timestamp,
+                    kind=RunEventKind.CACHE_REUSED,
+                    node_run_id=node_id,
+                    attempt=0,
+                    message=(
+                        f"Reused content {entry.content_identity} "
+                        f"({len(artifacts)} verified outputs)."
+                    ),
+                ),
+            ]
+            if record.state == RunState.QUEUED:
+                started_run: RunRecord = record.model_copy(
+                    update={"state": RunState.RUNNING, "started_at": timestamp}
+                )
+                events.append(
+                    RunEvent(
+                        schema_version="1.0",
+                        seq=len(events),
+                        at=timestamp,
+                        kind=RunEventKind.RUN_STARTED,
+                        node_run_id=None,
+                        message="Run started.",
+                    )
+                )
+            else:
+                started_run = record
+            self.runs.save_run(
+                project,
+                RunRecord.model_validate(
+                    started_run.model_copy(
+                        update={"node_runs": nodes, "events": events}
+                    ).model_dump(mode="json")
+                ),
+            )
+        except BaseException:
+            if staging is not None:
+                _safe_remove_dir(staging, project_root)
+            if final is not None:
+                _safe_remove_dir(final, project_root)
+                try:
+                    final.parent.rmdir()
+                except OSError:
+                    pass
+            raise
+
+    def _publish_cache(
+        self, project: str, run_id: str, node: NodeRunRecord, artifacts: list[ArtifactRecord]
+    ) -> None:
+        """Publish one successful node's outputs; best-effort, never fails a run.
+
+        Copies verified run outputs into ``cache/staging/`` then atomically
+        renames into ``cache/nodes/<sha>/`` under a per-project lock. An
+        existing complete entry wins over a new identical one; a corrupt or
+        unsafe occupant is quarantined before a replacement is published.
+        Zero-output successes, unknown identities, and any filesystem or
+        validation problem are swallowed after a fault-log entry so the
+        already-succeeded run is never retroactively failed.
+        """
+
+        import hashlib
+        import json
+        import os
+        import shutil
+        import uuid
+
+        if not artifacts:
+            return
+        sha = _cache_identity_sha(node.content_identity)
+        if sha is None:
+            return
+        try:
+            project_root = self._run_dir(project, run_id).parent.parent
+            _owned_child(project_root, node.id, "cache", CACHE_DIRNAME)
+            staging_root = _owned_child(
+                project_root, node.id, "cache", CACHE_DIRNAME, CACHE_STAGING_DIRNAME
+            )
+            unique = f"{sha}-{uuid.uuid4().hex[:8]}"
+            if (staging_root / unique).exists() or (staging_root / unique).is_symlink():
+                raise ControlledFailure(f"Cache staging collision for node {node.id!r}.")
+            staging = staging_root / unique
+            staging.mkdir(parents=True, exist_ok=False)
+            if staging.is_symlink():
+                raise ControlledFailure(f"Cache staging for node {node.id!r} changed underfoot.")
+            files_root = staging / CACHE_FILES_DIRNAME
+            files_root.mkdir(parents=True, exist_ok=True)
+            outputs: list[CacheOutput] = []
+            for artifact in artifacts:
+                parts = artifact.path.split("/")
+                if (
+                    len(parts) < 6
+                    or parts[0] != "runs"
+                    or parts[1] != run_id
+                    or parts[2] != ARTIFACTS_DIRNAME
+                    or parts[3] != node.id
+                ):
+                    raise ControlledFailure(
+                        f"Cache publish for node {node.id!r} escapes its attempt tree."
+                    )
+                canonical = _canonical_relative("/".join(parts[5:]))
+                if canonical is None:
+                    raise ControlledFailure(
+                        f"Cache publish for node {node.id!r} has an unsafe path."
+                    )
+                source = _contained_child(project_root, artifact.path)
+                if source is None or source.is_symlink() or not source.is_file():
+                    raise ControlledFailure(
+                        f"Cache publish for node {node.id!r} is missing its output."
+                    )
+                data = source.read_bytes()
+                digest = hashlib.sha256(data).hexdigest()
+                if len(data) != artifact.byte_size or digest != artifact.sha256:
+                    raise ControlledFailure(
+                        f"Cache publish for node {node.id!r} found changed bytes."
+                    )
+                if "/" in canonical:
+                    destination = _contained_child(files_root, canonical)
+                else:
+                    destination = files_root / canonical
+                    if destination.is_symlink():
+                        destination = None
+                if destination is None or destination.is_symlink():
+                    raise ControlledFailure(
+                        f"Cache publish for node {node.id!r} escapes its staging."
+                    )
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(data)
+                outputs.append(
+                    CacheOutput(
+                        port_id=artifact.port_id,
+                        relative_path=canonical,
+                        media_type=artifact.media_type,
+                        byte_size=len(data),
+                        sha256=artifact.sha256,
+                    )
+                )
+            entry = CacheEntry(
+                schema_version="1.0",
+                content_identity=node.content_identity,
+                node_type=node.node_type,
+                node_version=node.node_version,
+                environment_identity=node.environment_identity,
+                seed=node.seed,
+                inputs=dict(node.inputs),
+                parameters=dict(node.parameters),
+                settings=dict(node.settings),
+                outputs=outputs,
+                created_at=utc_now_iso(),
+            )
+            (staging / CACHE_ENTRY_FILENAME).write_text(
+                json.dumps(entry.model_dump(mode="json"), sort_keys=True), encoding="utf-8"
+            )
+        except (OSError, ValueError, ControlledFailure) as exc:
+            log_fault(
+                summary=f"{type(exc).__name__}: {exc}",
+                method="WORKER",
+                path=f"{project} :: {run_id}/{node.id}",
+                exc=exc if isinstance(exc, OSError) else None,
+            )
+            try:
+                project_root = self._run_dir(project, run_id).parent.parent
+                candidate = project_root / CACHE_DIRNAME / CACHE_STAGING_DIRNAME / unique
+                _safe_remove_dir(candidate, project_root)
+            except (OSError, ControlledFailure, NameError):
+                pass
+            return
+        with _cache_lock(project):
+            try:
+                project_root = self._run_dir(project, run_id).parent.parent
+                nodes_root = _owned_child(
+                    project_root, node.id, "cache", CACHE_DIRNAME, CACHE_NODES_DIRNAME
+                )
+                quarantine_root = _owned_child(
+                    project_root, node.id, "cache", CACHE_DIRNAME, "quarantine"
+                )
+                dst = nodes_root / sha
+                if dst.is_symlink():
+                    target = _free_quarantine_target(quarantine_root, f"{sha}-replaced")
+                    if target is None:
+                        raise ControlledFailure(f"No free quarantine name for cache {sha!r}.")
+                    shutil.move(str(dst), str(target))
+                elif dst.is_dir():
+                    existing = self._verify_cache_entry(project_root, sha, node)
+                    if existing is not None and existing.content_identity == node.content_identity:
+                        _safe_remove_dir(staging, project_root)
+                        return
+                    target = _free_quarantine_target(quarantine_root, f"{sha}-replaced")
+                    if target is None:
+                        if not _safe_remove_dir(dst, project_root):
+                            raise ControlledFailure(f"No free quarantine name for cache {sha!r}.")
+                    else:
+                        try:
+                            shutil.move(str(dst), str(target))
+                        except OSError as exc:
+                            log_fault(
+                                summary=f"{type(exc).__name__}: {exc}",
+                                method="WORKER",
+                                path=f"{project} :: {run_id}/{node.id}",
+                                exc=exc,
+                            )
+                            if not _safe_remove_dir(dst, project_root):
+                                _safe_remove_dir(staging, project_root)
+                                return
+                elif dst.exists():
+                    # A regular file or other non-directory occupant is never a
+                    # valid entry. Quarantine the occupant itself (moving a link
+                    # moves the link, never its target) before publishing the
+                    # replacement; fall back to removing the file itself when no
+                    # free quarantine name exists.
+                    target = _free_quarantine_target(quarantine_root, f"{sha}-replaced")
+                    moved = False
+                    if target is not None:
+                        try:
+                            shutil.move(str(dst), str(target))
+                            moved = True
+                        except OSError as exc:
+                            log_fault(
+                                summary=f"{type(exc).__name__}: {exc}",
+                                method="WORKER",
+                                path=f"{project} :: {run_id}/{node.id}",
+                                exc=exc,
+                            )
+                    if not moved:
+                        try:
+                            dst.unlink()
+                        except OSError as exc:
+                            raise ControlledFailure(
+                                f"Cache destination for {sha!r} cannot be healed."
+                            ) from exc
+                os.replace(staging, dst)
+            except (OSError, ValueError, ControlledFailure) as exc:
+                log_fault(
+                    summary=f"{type(exc).__name__}: {exc}",
+                    method="WORKER",
+                    path=f"{project} :: {run_id}/{node.id}",
+                    exc=exc if isinstance(exc, OSError) else None,
+                )
+                try:
+                    _safe_remove_dir(staging, self._run_dir(project, run_id).parent.parent)
+                except (OSError, ControlledFailure):
+                    pass
 
     def _promote(
         self,

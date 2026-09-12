@@ -8,6 +8,7 @@ import pytest
 from brainlearn_core import (
     RUN_TERMINAL_STATES,
     ArtifactRecord,
+    CacheEntry,
     EnvironmentRecord,
     FailureRecord,
     NodeRunRecord,
@@ -18,6 +19,7 @@ from brainlearn_core import (
     RunState,
     counts_as_execution,
     migrate_artifact_dict,
+    migrate_cache_entry_dict,
     migrate_environment_dict,
     migrate_event_dict,
     migrate_failure_dict,
@@ -99,6 +101,7 @@ def _bare_node(node_id: str, state: str = "succeeded") -> dict[str, Any]:
         ("run-event-1.0.json", RunEvent),
         ("failure-1.0.json", FailureRecord),
         ("review-pause-1.0.json", ReviewPauseRecord),
+        ("cache-entry-1.0.json", CacheEntry),
     ],
 )
 def test_execution_fixtures_round_trip(fixture: str, model: Any) -> None:
@@ -121,6 +124,7 @@ def test_execution_fixtures_round_trip(fixture: str, model: Any) -> None:
         migrate_event_dict,
         migrate_failure_dict,
         migrate_review_pause_dict,
+        migrate_cache_entry_dict,
     ],
 )
 def test_migrations_reject_unknown_versions(migrate: Any) -> None:
@@ -166,6 +170,41 @@ def test_mapping_insertion_order_does_not_change_identity() -> None:
 def test_changing_any_declared_input_changes_identity(mutation: dict[str, Any]) -> None:
     baseline = node_content_identity(**_node_payload())
     assert node_content_identity(**(_node_payload() | mutation)) != baseline
+
+
+def test_cache_entry_fixture_recomputes_stable_identity() -> None:
+    raw = _load("cache-entry-1.0.json")
+    entry = CacheEntry.model_validate(migrate_cache_entry_dict(raw))
+    recomputed = node_content_identity(
+        node_type=entry.node_type,
+        node_version=entry.node_version,
+        inputs=entry.inputs,
+        parameters=entry.parameters,
+        environment_identity=entry.environment_identity,
+        seed=entry.seed,
+        settings=entry.settings,
+    )
+    assert recomputed == entry.content_identity
+    assert CacheEntry.model_validate_json(entry.model_dump_json()) == entry
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("node_type", "demo.relay"),
+        ("node_version", "9.9.9"),
+        ("inputs", {"in": "brainlearn-v1:node:" + "d" * 64}),
+        ("parameters", {"text": "mutated"}),
+        ("environment_identity", "brainlearn-v1:environment:" + "e" * 64),
+        ("seed", 1),
+        ("settings", {"input_sources": {}, "declared_outputs": ["output", "extra"]}),
+    ],
+)
+def test_cache_entry_rejects_stale_identity_per_field(field: str, value: Any) -> None:
+    raw = _load("cache-entry-1.0.json")
+    raw[field] = value
+    with pytest.raises(ValidationError, match="content_identity"):
+        CacheEntry.model_validate(raw)
 
 
 @pytest.mark.parametrize(
