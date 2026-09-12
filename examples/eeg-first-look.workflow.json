@@ -9,7 +9,7 @@
     "status": "example"
   },
   "nodes": [
-    {"id":"bids","type":"input.bids_eeg","label":"BIDS EEG","category":"Input","description":"Choose a BIDS-compatible EEG dataset.","position":{"x":20,"y":170},"ports":[{"id":"dataset","label":"Dataset","direction":"output","data_type":"bids_dataset"}],"parameters":[{"id":"root","label":"Dataset root","value":"synthetic/example-bids","required":true}]},
+    {"id":"bids","type":"input.bids_eeg","label":"BIDS EEG","category":"Input","description":"Choose a BIDS-compatible EEG dataset.","position":{"x":20,"y":170},"ports":[{"id":"dataset","label":"Dataset","direction":"output","data_type":"bids_dataset"}],"parameters":[{"id":"root","label":"Dataset root","value":"synthetic/example-bids","required":true,"description":"A project-relative dataset path. File access is not implemented yet."}]},
     {"id":"inspect","type":"eeg.inspect","label":"Inspect Signal","category":"Quality control","description":"Review raw traces and acquisition metadata.","position":{"x":240,"y":170},"ports":[{"id":"dataset","label":"Dataset","direction":"input","data_type":"bids_dataset"},{"id":"raw","label":"Raw EEG","direction":"output","data_type":"raw_eeg"}],"parameters":[],"pauses_for_review":true},
     {"id":"filter","type":"eeg.filter","label":"Band-pass Filter","category":"Preprocessing","description":"Configure a visible, provenance-tracked frequency filter.","position":{"x":470,"y":170},"ports":[{"id":"raw","label":"Raw EEG","direction":"input","data_type":"raw_eeg"},{"id":"filtered","label":"Filtered EEG","direction":"output","data_type":"raw_eeg"}],"parameters":[{"id":"low_hz","label":"Low cutoff (Hz)","value":1.0,"required":true},{"id":"high_hz","label":"High cutoff (Hz)","value":40.0,"required":true}]},
     {"id":"ica","type":"eeg.ica_review","label":"ICA Review","category":"Quality control","description":"Pause for a researcher to review proposed ICA components.","position":{"x":710,"y":170},"ports":[{"id":"raw","label":"Raw EEG","direction":"input","data_type":"raw_eeg"},{"id":"reviewed","label":"Reviewed EEG","direction":"output","data_type":"reviewed_eeg"}],"parameters":[],"pauses_for_review":true},
@@ -29,4 +29,3 @@
     {"id":"e8","source":{"node_id":"psd","port_id":"spectrum"},"target":{"node_id":"report","port_id":"spectrum"}}
   ]
 }
-

@@ -4,7 +4,7 @@ import { Check, Eye, Pause } from "lucide-react";
 import type { WorkflowNode } from "./types";
 
 export type WorkflowCardData = WorkflowNode &
-  Record<string, unknown> & { selected?: boolean };
+  Record<string, unknown> & { selected?: boolean; issues?: string[] };
 export type WorkflowCardNode = Node<WorkflowCardData, "workflow">;
 
 export function WorkflowCard({ data: node }: NodeProps<WorkflowCardNode>) {
@@ -12,7 +12,9 @@ export function WorkflowCard({ data: node }: NodeProps<WorkflowCardNode>) {
   const outputPorts = node.ports.filter((port) => port.direction === "output");
 
   return (
-    <article className={`workflow-card ${node.selected ? "selected" : ""}`}>
+    <article
+      className={`workflow-card ${node.selected ? "selected" : ""} ${node.issues?.length ? "invalid" : ""}`}
+    >
       {inputPorts.map((port, index) => (
         <Handle
           className="port input-port"

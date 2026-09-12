@@ -76,7 +76,6 @@ input {
   padding: 3px 6px;
 }
 .run-button {
-  justify-self: end;
   border: 0;
   border-radius: 7px;
   padding: 9px 14px;
@@ -84,6 +83,26 @@ input {
   gap: 7px;
   color: #617085;
   background: #1a2738;
+}
+.top-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.top-actions > button:not(.run-button) {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #304057;
+  border-radius: 7px;
+  color: #b9c7d8;
+  background: #111e2e;
+}
+.top-actions > button:disabled {
+  color: #536278;
+  cursor: not-allowed;
 }
 .panel {
   background: #0c1726;
@@ -187,6 +206,12 @@ input {
   box-shadow:
     0 0 0 1px #4bd5bb,
     0 8px 24px #02060caa;
+}
+.workflow-card.invalid {
+  border-color: #df737c;
+}
+.react-flow__edge.invalid-edge .react-flow__edge-path {
+  stroke: #df737c;
 }
 .node-kind {
   color: #70839b;
@@ -294,6 +319,50 @@ input {
   background: #101d2c;
   font-size: 11px;
 }
+.parameter select {
+  border: 1px solid #304057;
+  border-radius: 6px;
+  padding: 8px;
+  color: #d9e5f3;
+  background: #101d2c;
+  font-size: 11px;
+}
+.parameter small {
+  color: #65768b;
+  line-height: 1.4;
+}
+.parameter.checkbox {
+  display: flex;
+  align-items: center;
+}
+.manifest-version {
+  margin: 12px 0;
+  color: #667991;
+  font-size: 9px;
+}
+.validation-issue {
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid #754149;
+  border-radius: 6px;
+  color: #f3a9ae;
+  background: #29191f;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.remove-button {
+  width: 100%;
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #70434a;
+  border-radius: 7px;
+  padding: 8px;
+  color: #eda4aa;
+  background: #21181e;
+}
 .port-row {
   display: flex;
   align-items: center;
@@ -339,6 +408,24 @@ input {
   background: #4dd1b8;
   box-shadow: 0 0 8px #4dd1b8;
 }
+.status-dot.invalid {
+  background: #e36f79;
+  box-shadow: 0 0 8px #e36f79;
+}
+.issue-summary {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.issue-summary span {
+  color: #efa5ac;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .run-drawer button {
   border: 1px solid #2a394d;
   border-radius: 6px;
@@ -356,4 +443,20 @@ input {
   color: #f2a7a7;
   border: 1px dashed #73444a;
   border-radius: 8px;
+}
+.empty-canvas {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: #61758f;
+  font-size: 11px;
+}
+.empty-canvas strong {
+  color: #aebdd0;
+  font-size: 14px;
 }

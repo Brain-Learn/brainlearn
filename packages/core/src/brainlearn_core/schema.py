@@ -41,6 +41,66 @@ class ParameterDefinition(BaseModel):
     description: str | None = None
 
 
+class ParameterSchema(BaseModel):
+    """UI-independent description of one editable node parameter."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    value_type: Literal["string", "number", "integer", "boolean"]
+    default: Any = None
+    required: bool = False
+    description: str | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    options: list[str] | None = None
+
+
+class CitationMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1)
+    doi: str | None = None
+    url: str | None = None
+
+
+class LicenseMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    spdx_id: str | None = None
+    url: str | None = None
+
+
+class CapabilityRequirement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    required: bool = True
+    description: str = Field(min_length=1)
+
+
+class NodeManifest(BaseModel):
+    """Versioned registry contract; it describes nodes but does not execute them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    manifest_schema_version: Literal["1.0"] = "1.0"
+    id: str = Field(min_length=1)
+    node_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+    label: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    status: Literal["example", "experimental", "certified"] = "example"
+    ports: list[PortDefinition] = Field(default_factory=list)
+    parameters: list[ParameterSchema] = Field(default_factory=list)
+    review_behavior: Literal["none", "required"] = "none"
+    citations: list[CitationMetadata] = Field(default_factory=list)
+    license: LicenseMetadata
+    capability_requirements: list[CapabilityRequirement] = Field(default_factory=list)
+
+
 class CanvasPosition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

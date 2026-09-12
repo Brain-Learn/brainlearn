@@ -23,6 +23,38 @@ export interface ParameterDefinition {
   description?: string;
 }
 
+export interface ParameterSchema {
+  id: string;
+  label: string;
+  value_type: "string" | "number" | "integer" | "boolean";
+  default: unknown;
+  required: boolean;
+  description?: string;
+  minimum?: number;
+  maximum?: number;
+  options?: string[];
+}
+
+export interface NodeManifest {
+  manifest_schema_version: "1.0";
+  id: string;
+  node_version: string;
+  label: string;
+  description: string;
+  category: string;
+  status: "example" | "experimental" | "certified";
+  ports: PortDefinition[];
+  parameters: ParameterSchema[];
+  review_behavior: "none" | "required";
+  citations: Array<{ title: string; doi?: string; url?: string }>;
+  license: { name: string; spdx_id?: string; url?: string };
+  capability_requirements: Array<{
+    id: string;
+    required: boolean;
+    description: string;
+  }>;
+}
+
 export interface WorkflowNode {
   id: string;
   type: string;
@@ -53,4 +85,21 @@ export interface Workflow {
   };
   nodes: WorkflowNode[];
   edges: WorkflowEdge[];
+}
+
+export interface ValidationIssue {
+  code: string;
+  message: string;
+  node_id?: string;
+  edge_id?: string;
+}
+
+export interface ValidationResult {
+  valid: boolean;
+  issues: ValidationIssue[];
+}
+
+export interface WorkflowValidationResponse {
+  workflow: Workflow;
+  validation: ValidationResult;
 }
