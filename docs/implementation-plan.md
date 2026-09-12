@@ -1,0 +1,265 @@
+# BrainLearn implementation checklist
+
+This is the authoritative build sequence for BrainLearn. Agents must work from the first unchecked step whose dependencies are complete. `PROPOSAL.md` explains the product strategy; `AGENTS.md` defines the permanent engineering and scientific rules.
+
+## How completion is recorded
+
+- `[ ]` means unverified or incomplete. Partial work stays unchecked.
+- `[x]` means the stated behavior exists, its completion gate passed, and evidence appears in the completion log.
+- An implementing agent may check an individual task only after running its stated verification.
+- A top-level step may be checked only after the monitoring/reviewing agent inspects the change and reruns the completion gate.
+- Do not check a step because files exist, code compiles, or a mock screen looks complete. Check the behavior described by the gate.
+- If a later change breaks a completed gate, change the affected item back to `[ ]`, add a log entry explaining the regression, and repair it before expanding scope.
+- Every work unit ends with the reporting format in `AGENTS.md` and an update to the completion log below.
+- Each pull request or commit should address one top-level step or a clearly named subset of it.
+
+## Required verification baseline
+
+Unless a step explicitly adds more checks, every code change must pass:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run pytest
+npm --prefix apps/web run lint
+npm --prefix apps/web run format:check
+npm --prefix apps/web run test
+npm --prefix apps/web run build
+git diff --check
+```
+
+The agent must report exact results. “Tests passed” without the command and count is not completion evidence.
+
+## Step 0 — Repository and product baseline
+
+- [x] Initialize Git on `main`.
+- [x] Add the full proposal and scope boundaries.
+- [x] Save the interface concept inside the repository.
+- [x] Add the agent operating brief.
+- [x] License BrainLearn's original code under BSD-3-Clause.
+- [x] Put the SPDX identifier and full license notice into Python package distributions.
+
+Completion gate: repository has a clean baseline, readable proposal and handoff, project-local design asset, and built Python wheels containing the BSD-3-Clause expression and license text.
+
+## Step 1 — Executable foundation
+
+- [x] Scaffold the Python workspace and React application.
+- [x] Define workflow schema version `1.0`.
+- [x] Represent nodes, typed ports, parameters, positions, and edges.
+- [x] Reject missing nodes, unknown ports, wrong directions, incompatible types, missing required parameters, and cycles.
+- [x] Expose loopback health, system-capability, example-workflow, and validation endpoints.
+- [x] Distinguish a detected GPU/container candidate from a runtime-validated capability.
+- [x] Render the eight-node example EEG graph.
+- [x] Update the inspector when a user selects a node.
+- [x] Label the interface and graph as non-executing examples.
+
+Completion gate: backend baseline passes with 10 tests; frontend baseline passes with one component test and a production build; a live API and interface render the example graph.
+
+## Step 2 — Node registry and editable graph
+
+Goal: replace hard-coded UI examples with a backend-owned registry and support safe in-memory editing.
+
+- [ ] Define a versioned `NodeManifest` model containing identity, version, category, ports, parameter schema, review behavior, citations, license metadata, and capability requirements.
+- [ ] Add an initial registry for the eight illustrative EEG nodes. Mark every node `example`; do not imply execution support.
+- [ ] Expose read-only registry list/detail endpoints.
+- [ ] Add a workflow validation endpoint that accepts a submitted workflow body rather than validating only the bundled example.
+- [ ] Generate frontend node-library entries and inspector controls from manifests returned by the API.
+- [ ] Allow users to add and remove nodes in local UI state.
+- [ ] Allow compatible connections and disconnections using React Flow.
+- [ ] Display backend validation issues against the relevant node or edge.
+- [ ] Support editing parameter values with schema-derived controls.
+- [ ] Add undo and redo for graph edits.
+- [ ] Add contract tests ensuring registry manifests and frontend types agree.
+
+Completion gate:
+
+1. Start with an empty canvas, add BIDS EEG and Inspect Signal, and connect them.
+2. Attempt an incompatible connection and show the backend-generated reason.
+3. Change a required parameter, undo it, and redo it.
+4. Serialize the edited graph, round-trip it through the API, and receive the same valid graph.
+5. Baseline checks pass, including new backend and frontend tests for these behaviors.
+
+## Step 3 — Secure local projects and persistence
+
+Goal: make edits durable without allowing arbitrary filesystem access.
+
+- [ ] Define a versioned project manifest and project-directory layout.
+- [ ] Add create, open, save, save-as, and recent-project operations.
+- [ ] Restrict all file operations to explicit user-selected project roots.
+- [ ] Add per-session authentication for the local service.
+- [ ] Validate Host and Origin and document the local threat model.
+- [ ] Persist graphs atomically and keep a recoverable previous version.
+- [ ] Add schema migrations and fixtures for every persisted schema version.
+- [ ] Recover unsaved UI edits after an application or browser interruption.
+- [ ] Add tests for path traversal, invalid tokens, disallowed origins, interrupted writes, and migration round-trips.
+
+Completion gate: a saved project survives service restart; invalid filesystem paths and unauthenticated requests are rejected; a simulated interrupted write preserves the previous valid graph.
+
+## Step 4 — Run records, artifact storage, and executor
+
+Goal: execute deterministic demonstration nodes without claiming scientific processing.
+
+- [ ] Define run, node-run, artifact, environment, event, and failure schemas.
+- [ ] Create content identities from inputs, parameters, implementation version, environment, seeds, and relevant settings.
+- [ ] Implement topological scheduling and explicit dependency states.
+- [ ] Run workers outside the API request lifecycle.
+- [ ] Stream progress and events to the UI.
+- [ ] Implement cancellation and service-restart recovery.
+- [ ] Write outputs atomically and keep partial files out of successful artifact records.
+- [ ] Implement cache reuse and downstream invalidation.
+- [ ] Add non-scientific fixture nodes for copy, delay, failure, branching, and review pause.
+- [ ] Display run status, logs, artifacts, cached status, and actionable failures in the run drawer.
+
+Completion gate: a branched fixture workflow runs, reuses its cache on the second run, invalidates only affected descendants after a parameter change, survives service restart, and cancels without producing successful partial artifacts.
+
+## Step 5 — BIDS EEG import and signal inspection
+
+Goal: introduce the first real scientific dependency with no signal transformation.
+
+- [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum.
+- [ ] Add MNE-Python and MNE-BIDS as an optional, pinned EEG dependency group.
+- [ ] Record upstream versions, licenses, citations, and installation status in node metadata.
+- [ ] Implement BIDS EEG discovery and essential metadata validation.
+- [ ] Create input content identities without copying the full dataset.
+- [ ] Implement a read-only signal-inspection node.
+- [ ] Produce downsampled trace, channel, event, and spectrum previews.
+- [ ] Persist annotations and researcher inspection decisions separately from source data.
+- [ ] Provide errors for unsupported formats and incomplete metadata.
+- [ ] Add an independently reviewed direct-MNE reference script.
+
+Completion gate: BrainLearn and the reference script identify the same recordings, channels, sampling frequency, events, and selected summary values on the pinned fixture. Source files remain unchanged.
+
+Scientific review required before checking this step.
+
+## Step 6 — First processing node and code-generation contract
+
+Goal: execute a real filter and prove that the same graph can produce readable Python.
+
+- [ ] Implement the MNE band-pass/notch filter adapter with explicit units and parameter constraints.
+- [ ] Show before/after signal and spectrum previews.
+- [ ] Record filter design, phase behavior, edge handling, software version, and warnings.
+- [ ] Define a versioned code-rendering interface for node manifests.
+- [ ] Generate a minimal standalone Python script for BIDS import, inspection, and filtering.
+- [ ] Keep data paths configurable and escape generated literals safely.
+- [ ] Include dependency versions and citations with the export.
+- [ ] Add tests that execute the generated script on the fixture.
+- [ ] Compare internal and generated-code outputs using predeclared numerical tolerances.
+
+Completion gate: the internal adapter, direct-MNE reference, and generated Python script agree within documented tolerances on the same fixture and parameters. Changing filter parameters updates both execution and exported code.
+
+Scientific review required before checking this step.
+
+## Step 7 — Explicit quality control and ICA review
+
+- [ ] Define immutable QC review records linked to input and node identities.
+- [ ] Implement bad-channel review and annotation persistence.
+- [ ] Implement ICA fitting as a separate operation from ICA component rejection.
+- [ ] Provide component maps, time courses, spectra, and relevant diagnostics.
+- [ ] Require an explicit researcher decision before applying exclusions.
+- [ ] Invalidate an old decision when its input or fitted ICA artifact changes.
+- [ ] Export the reviewed component choices to Python code and provenance.
+- [ ] Add resume, rejection, and stale-decision tests.
+
+Completion gate: the workflow pauses for review, resumes only after a persisted decision, invalidates that decision after an upstream change, and reproduces the reviewed output in exported Python.
+
+Scientific review required before checking this step.
+
+## Step 8 — Complete descriptive EEG workflow
+
+- [ ] Implement explicit event selection and event diagnostics.
+- [ ] Implement epoching with units, rejection rules, and baseline settings.
+- [ ] Implement ERP averaging and uncertainty summaries.
+- [ ] Implement PSD analysis with documented estimator settings.
+- [ ] Join ERP and PSD artifacts into an HTML report.
+- [ ] Report exclusions, failures, participant counts, and denominators.
+- [ ] Generate methods text from actual run records with human-review placeholders.
+- [ ] Generate a deduplicated citation bundle for executed methods.
+- [ ] Compare every certified node against the direct-MNE reference workflow.
+- [ ] Add a complete tutorial using the pinned public/synthetic dataset.
+
+Completion gate: a clean installation completes the full EEG template through both GUI and CLI; results match the reviewed reference workflow; report, provenance, methods, and citations describe the actual run.
+
+Scientific review required before checking this step.
+
+## Step 9 — Complete Python project and notebook export
+
+- [ ] Export `workflow.py`, configuration, README, environment lock, provenance, citations, and expected output descriptions.
+- [ ] Export a readable notebook that separates setup, inspection, QC decisions, processing, and results.
+- [ ] Provide readable direct-library mode and exact BrainLearn-runner replay mode.
+- [ ] Ensure generated projects do not depend on the browser interface.
+- [ ] Add deterministic formatting and snapshot review for generated code.
+- [ ] Run exported projects in a clean environment during integration testing.
+- [ ] Prevent embedded secrets, session tokens, and unintended absolute personal paths.
+- [ ] Document which aspects are exact replay and which allow tolerance-based agreement.
+
+Completion gate: a second clean environment runs the exported Python project without the BrainLearn GUI and reproduces the certified workflow within the declared agreement level.
+
+## Step 10 — CI, packaging, and supported-platform matrix
+
+- [ ] Add GitHub Actions for Python lint/type/tests and frontend lint/tests/build.
+- [ ] Add Linux, macOS, and Windows clean-install smoke tests.
+- [ ] Pin third-party actions to commit SHAs and minimize permissions.
+- [ ] Add schema compatibility and generated-code integration jobs.
+- [ ] Add scheduled scientific reference tests.
+- [ ] Add dependency-license inventory and production vulnerability scanning.
+- [ ] Build a launcher/installer spike without changing the core architecture.
+- [ ] Publish an explicit OS/architecture/backend support matrix.
+- [ ] Define release candidates, signing/checksum procedure, rollback, and changelog generation.
+- [ ] Verify that old projects keep their recorded environment rather than silently upgrading.
+
+Completion gate: a release candidate installs and completes the certified reference workflow on every advertised platform/backend combination. Unverified combinations remain clearly labeled unsupported or experimental.
+
+## Step 11 — Public beta and contributor readiness
+
+- [ ] Add CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GOVERNANCE, CHANGELOG, and CITATION.cff.
+- [ ] Publish a worked “add a node” contributor tutorial.
+- [ ] Document scientific-review and plugin-ownership expectations.
+- [ ] Run installation and task-completion pilots with 5–8 users.
+- [ ] Classify failures and revise the interface before larger evaluation.
+- [ ] Recruit at least three independent pilot laboratories.
+- [ ] Record repeat use, support burden, and independently completed analyses.
+- [ ] Obtain any required ethics determination before formal usability research.
+
+Completion gate: external users can install BrainLearn and finish the bounded EEG task without developer intervention; at least three independent labs complete an analysis and at least two return for another use.
+
+## Step 12 — Stable EEG release and software paper
+
+- [ ] Freeze a release candidate and complete license/citation inventory.
+- [ ] Archive the release and obtain a version DOI.
+- [ ] Publish versioned documentation and tutorial data instructions.
+- [ ] Complete usability, replay, and semantic-guardrail evaluation.
+- [ ] Prepare `paper.md`, bibliography, figures, limitations, and AI-use disclosure.
+- [ ] Recheck current JOSS eligibility and policy at submission time.
+- [ ] Submit only after sufficient public history and demonstrated research use.
+- [ ] Track reviewer requests as repository issues and preserve the reviewed release.
+
+Completion gate: stable release evidence is archived, the paper accurately describes tested behavior, and the chosen journal's current eligibility requirements are satisfied.
+
+## Step 13 — MRI and advanced ML expansion
+
+This step starts only after the EEG release is supportable by the available maintainers.
+
+- [ ] Revalidate demand and choose one bounded MRI scientific question.
+- [ ] Add NIfTI inspection, spatial metadata validation, and alignment overlays.
+- [ ] Add selected Nilearn analysis through reviewed adapters.
+- [ ] Treat FSL as an optional separately installed integration unless written licensing review approves another model.
+- [ ] Add participant-aware scikit-learn templates and nested evaluation.
+- [ ] Add PyTorch only after resource, determinism, and checkpoint contracts exist.
+- [ ] Add SHAP/Captum explanations only for compatible models with explicit reference choices and limitations.
+
+Completion gate: each new certified modality or ML template has its own reference workflow, scientific review, supported-platform matrix, export path, and independent user evidence.
+
+## Completion log
+
+Add one row whenever a task or top-level step changes state. Do not rewrite prior evidence.
+
+| Date | Step | State | Evidence | Commit/review |
+|---|---|---|---|---|
+| 2026-09-12 | Step 0 repository/proposal baseline | Complete | Repository, proposal, handoff, and design asset inspected | `e184cfe` |
+| 2026-09-12 | Step 1 executable foundation | Complete | Ruff, formatting, strict mypy, 10 pytest tests, ESLint, Prettier, 1 Vitest test, production build, live API/UI inspection | `ed2fc78`, monitored review |
+| 2026-09-12 | Step 0 licensing | Complete | BSD-3-Clause root/package notices; wheel metadata and embedded license files inspected; 10 pytest tests and frontend build passed | `0a76335` |
+
+## Next assignment
+
+The next agent must implement **Step 2 — Node registry and editable graph** only. It must leave Step 3 and scientific execution untouched. The implementing agent should update individual Step 2 checkboxes only after their tests pass, then request monitoring review. The monitoring agent reruns the completion gate and checks the Step 2 heading only after all requirements are demonstrated.

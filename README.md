@@ -6,6 +6,7 @@ The project now has an executable foundation: a versioned workflow schema and va
 
 - Read the [full proposal](PROPOSAL.md).
 - Read the [agent and contributor handoff](AGENTS.md).
+- Follow the [step-by-step implementation checklist](docs/implementation-plan.md).
 - Follow the [local development guide](docs/development.md).
 - View the [initial interface concept](design/brainlearn-layout-concept-v1.png).
 

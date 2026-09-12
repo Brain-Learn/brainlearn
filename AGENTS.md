@@ -1,6 +1,6 @@
 # BrainLearn agent handoff
 
-This file is the operating brief for any agent working in this repository. Read it together with `PROPOSAL.md` before changing code.
+This file is the operating brief for any agent working in this repository. Read it together with `PROPOSAL.md` and `docs/implementation-plan.md` before changing code. The implementation plan is the authoritative sequential checklist and must be updated as verified work is completed.
 
 ## Mission
 
@@ -69,20 +69,13 @@ paper/                       manuscript files when evidence exists
 
 Python import packages should use `brainlearn_*` names until the final distribution name is checked. Never assume the working name is available on PyPI, npm, GitHub, or as a trademark.
 
-## First implementation assignment
+## Required implementation workflow
 
-Create an executable vertical slice with no real EEG processing yet:
+Work through `docs/implementation-plan.md` in order. Choose the first unchecked step whose dependencies are complete and keep the change inside that step.
 
-1. Scaffold the Python workspace and web app in the package boundaries above.
-2. Define a versioned workflow schema with node instances, ports, typed edges, parameters, and graph metadata.
-3. Implement validation for missing nodes, unknown ports, incompatible port types, cycles, and missing required parameters.
-4. Define a system-capabilities model and a read-only API endpoint that returns OS, architecture, CPU count, Python version, memory when safely available, and optional CUDA/MPS/container indicators.
-5. Add a health endpoint and an example EEG workflow matching the design image.
-6. Build the first frontend shell: top bar, node library, canvas, inspector, and run drawer. Load the example graph from the API. Editing and execution may be stubbed in this slice, but graph rendering and selection must work.
-7. Add focused tests for schema round-trip, validation, and capability response shape.
-8. Add local development instructions and commands that work from a clean checkout.
+An unchecked item remains unchecked until its stated behavior and verification exist. The implementing agent may check verified subitems and must add exact evidence to the completion log. The monitoring agent reviews the implementation, reruns the completion gate, and approves completion of the top-level step. If a later change breaks a completed gate, reopen the affected checkbox before doing expansion work.
 
-The slice is complete only when backend tests pass, frontend checks pass, the API starts, and the UI loads the example workflow. Do not claim EEG analysis support from this scaffold.
+The current assignment is the `Next assignment` named at the end of the implementation plan. Do not begin the following step in the same work unit unless the plan explicitly combines them.
 
 ## Workflow and scientific model
 
@@ -202,5 +195,6 @@ At the end of each work unit, report:
 4. Scientific assumptions introduced or changed.
 5. Remaining risks or blockers.
 6. The next smallest executable work unit.
+7. Checklist items changed and the evidence added to `docs/implementation-plan.md`.
 
 If blocked, show the evidence and continue any independent work that remains possible.
