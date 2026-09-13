@@ -1466,3 +1466,299 @@ test("blurring an unchanged title creates no undo entry", async () => {
   );
   expect(readDraftWorkflow().nodes).toHaveLength(0);
 });
+
+const demoExampleWorkflow: Workflow = {
+  schema_version: "1.0",
+  id: "demo-branched",
+  metadata: {
+    name: "Branched demonstration",
+    description: "Non-scientific demonstration graph.",
+    created_with: "BrainLearn",
+    modality: "EEG",
+    status: "example",
+  },
+  nodes: [
+    {
+      id: "source",
+      type: "demo.copy",
+      label: "Copy",
+      category: "Demonstration",
+      position: { x: 90, y: 90 },
+      ports: [
+        {
+          id: "output",
+          label: "Output",
+          direction: "output",
+          data_type: "raw_eeg",
+          required: true,
+        },
+      ],
+      parameters: [
+        { id: "text", label: "Text", value: "trunk-bytes", required: false },
+      ],
+      pauses_for_review: false,
+    },
+    {
+      id: "gate",
+      type: "demo.review",
+      label: "Review",
+      category: "Demonstration",
+      position: { x: 330, y: 300 },
+      ports: [],
+      parameters: [],
+      pauses_for_review: true,
+    },
+  ],
+  edges: [],
+};
+
+const eegExampleWorkflow: Workflow = {
+  schema_version: "1.0",
+  id: "eeg-first-look",
+  metadata: {
+    name: "EEG first look",
+    description: "",
+    created_with: "BrainLearn",
+    modality: "EEG",
+    status: "example",
+  },
+  nodes: [bidsNode("bids")],
+  edges: [],
+};
+
+function stubExampleFetch() {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/workflows/examples")) {
+        return {
+          ok: true,
+          json: async () => ({
+            examples: [
+              {
+                id: "eeg-first-look",
+                name: "EEG first look",
+                description: "",
+                schema_version: "1.0",
+              },
+              {
+                id: "demo-branched",
+                name: "Branched demonstration",
+                description: "Non-scientific demonstration graph.",
+                schema_version: "1.0",
+              },
+            ],
+          }),
+        };
+      }
+      if (url.endsWith("/api/workflows/examples/demo-branched")) {
+        return { ok: true, json: async () => demoExampleWorkflow };
+      }
+      if (url.endsWith("/api/workflows/examples/eeg-first-look")) {
+        return { ok: true, json: async () => eegExampleWorkflow };
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+}
+
+test("loading the branched example replaces the graph with fresh history", async () => {
+  stubExampleFetch();
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Dataset root");
+
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Branched demonstration/ }),
+  );
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(2);
+  });
+  const draft = readDraftWorkflow();
+  expect(draft.id).toBe("demo-branched");
+  expect(draft.nodes.map((node) => node.type)).toEqual([
+    "demo.copy",
+    "demo.review",
+  ]);
+  expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+  expect(screen.getByText(/Select a node to inspect/)).toBeInTheDocument();
+  expect(
+    await screen.findByText("Loaded example Branched demonstration."),
+  ).toBeInTheDocument();
+});
+
+test("loading the EEG example keeps compatibility", async () => {
+  stubExampleFetch();
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /EEG first look/ }),
+  );
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(1);
+  });
+  expect(readDraftWorkflow().id).toBe("eeg-first-look");
+  expect(
+    await screen.findByText("Loaded example EEG first look."),
+  ).toBeInTheDocument();
+});
+
+function stubDeferredExamples() {
+  const resolvers = new Map<string, (response: unknown) => void>();
+  const rejecters = new Map<string, (reason: unknown) => void>();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/workflows/examples")) {
+        return {
+          ok: true,
+          json: async () => ({
+            examples: [
+              {
+                id: "eeg-first-look",
+                name: "EEG first look",
+                description: "",
+                schema_version: "1.0",
+              },
+              {
+                id: "demo-branched",
+                name: "Branched demonstration",
+                description: "",
+                schema_version: "1.0",
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/api/workflows/examples/")) {
+        const id = url.split("/").pop() as string;
+        const payload =
+          id === "demo-branched" ? demoExampleWorkflow : eegExampleWorkflow;
+        return new Promise<unknown>((resolve, reject) => {
+          resolvers.set(id, () =>
+            resolve({ ok: true, json: async () => payload }),
+          );
+          rejecters.set(id, reject);
+        });
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+  return { resolvers, rejecters };
+}
+
+test("the latest requested example wins when responses arrive out of order", async () => {
+  const { resolvers } = stubDeferredExamples();
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Branched demonstration/ }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /EEG first look/ }),
+  );
+  await waitFor(() => {
+    expect(resolvers.has("demo-branched")).toBe(true);
+    expect(resolvers.has("eeg-first-look")).toBe(true);
+  });
+
+  resolvers.get("eeg-first-look")?.(undefined);
+  await waitFor(() => {
+    expect(readDraftWorkflow().id).toBe("eeg-first-look");
+  });
+  expect(
+    await screen.findByText("Loaded example EEG first look."),
+  ).toBeInTheDocument();
+  resolvers.get("demo-branched")?.(undefined);
+  await waitFor(() => expect(readDraftWorkflow().nodes).toHaveLength(1));
+  expect(readDraftWorkflow().id).toBe("eeg-first-look");
+  expect(
+    screen.getByText("Loaded example EEG first look."),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByText("Ignored a stale example response; canvas unchanged."),
+  ).not.toBeInTheDocument();
+});
+
+test("an older rejection arriving after the latest load changes nothing", async () => {
+  const { resolvers, rejecters } = stubDeferredExamples();
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Branched demonstration/ }),
+  );
+  fireEvent.click(
+    await screen.findByRole("button", { name: /EEG first look/ }),
+  );
+  await waitFor(() => {
+    expect(resolvers.has("demo-branched")).toBe(true);
+    expect(resolvers.has("eeg-first-look")).toBe(true);
+  });
+
+  resolvers.get("eeg-first-look")?.(undefined);
+  await waitFor(() => {
+    expect(readDraftWorkflow().id).toBe("eeg-first-look");
+  });
+  await act(async () => {
+    rejecters.get("demo-branched")?.(new Error("stale network boom"));
+  });
+  expect(readDraftWorkflow().id).toBe("eeg-first-look");
+  expect(readDraftWorkflow().nodes).toHaveLength(1);
+  expect(
+    screen.getByText("Loaded example EEG first look."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/stale network boom/)).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Ignored a stale example response; canvas unchanged."),
+  ).not.toBeInTheDocument();
+});
+
+test("a graph edit during example load keeps the edited graph", async () => {
+  const { resolvers } = stubDeferredExamples();
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Branched demonstration/ }),
+  );
+  await waitFor(() => {
+    expect(resolvers.has("demo-branched")).toBe(true);
+  });
+
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(1);
+  });
+  resolvers.get("demo-branched")?.(undefined);
+  await waitFor(() =>
+    expect(
+      screen.getByText("Ignored a stale example response; canvas unchanged."),
+    ).toBeInTheDocument(),
+  );
+  const draft = readDraftWorkflow();
+  expect(draft.nodes).toHaveLength(1);
+  expect(draft.nodes[0].type).toBe("input.bids_eeg");
+});

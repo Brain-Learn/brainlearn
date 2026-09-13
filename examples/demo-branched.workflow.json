@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0",
+  "id": "demo-branched",
+  "metadata": {
+    "name": "Branched demonstration",
+    "description": "Non-scientific demonstration graph: a copy/relay/copy trunk, an independent delay branch, and a review pause. Produces no scientific result.",
+    "created_with": "BrainLearn 0.1.0",
+    "modality": "EEG",
+    "status": "example"
+  },
+  "nodes": [
+    {
+      "id": "source",
+      "type": "demo.copy",
+      "label": "Copy",
+      "category": "Demonstration",
+      "description": "Non-scientific demonstration node: writes canned text to one output file. Produces no scientific result.",
+      "position": {
+        "x": 90.0,
+        "y": 90.0
+      },
+      "ports": [
+        {
+          "id": "in",
+          "label": "Input",
+          "direction": "input",
+          "data_type": "raw_eeg",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [
+        {
+          "id": "text",
+          "label": "Text",
+          "value": "trunk-bytes",
+          "required": false,
+          "description": "Canned text written to the output file."
+        }
+      ],
+      "pauses_for_review": false
+    },
+    {
+      "id": "bridge",
+      "type": "demo.relay",
+      "label": "Relay",
+      "category": "Demonstration",
+      "description": "Non-scientific demonstration node: forwards one input's bytes to one output. Produces no scientific result.",
+      "position": {
+        "x": 330.0,
+        "y": 90.0
+      },
+      "ports": [
+        {
+          "id": "in",
+          "label": "Input",
+          "direction": "input",
+          "data_type": "raw_eeg",
+          "required": true
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [],
+      "pauses_for_review": false
+    },
+    {
+      "id": "sink",
+      "type": "demo.copy",
+      "label": "Copy",
+      "category": "Demonstration",
+      "description": "Non-scientific demonstration node: writes canned text to one output file. Produces no scientific result.",
+      "position": {
+        "x": 570.0,
+        "y": 90.0
+      },
+      "ports": [
+        {
+          "id": "in",
+          "label": "Input",
+          "direction": "input",
+          "data_type": "raw_eeg",
+          "required": false
+        },
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [
+        {
+          "id": "text",
+          "label": "Text",
+          "value": "sink-bytes",
+          "required": false,
+          "description": "Canned text written to the output file."
+        }
+      ],
+      "pauses_for_review": false
+    },
+    {
+      "id": "timer",
+      "type": "demo.delay",
+      "label": "Delay",
+      "category": "Demonstration",
+      "description": "Non-scientific demonstration node: waits cooperatively, then completes without outputs. Use it for cancellation exercises.",
+      "position": {
+        "x": 90.0,
+        "y": 300.0
+      },
+      "ports": [
+        {
+          "id": "out",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": false
+        }
+      ],
+      "parameters": [
+        {
+          "id": "seconds",
+          "label": "Delay (seconds)",
+          "value": 0.2,
+          "required": false,
+          "description": "Cooperative wait before completing. Clamped to a safe maximum."
+        }
+      ],
+      "pauses_for_review": false
+    },
+    {
+      "id": "gate",
+      "type": "demo.review",
+      "label": "Review",
+      "category": "Demonstration",
+      "description": "Non-scientific demonstration node: pauses for an explicit researcher decision. Use it for review approval/rejection exercises.",
+      "position": {
+        "x": 330.0,
+        "y": 300.0
+      },
+      "ports": [
+        {
+          "id": "out",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": false
+        }
+      ],
+      "parameters": [],
+      "pauses_for_review": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": {
+        "node_id": "source",
+        "port_id": "output"
+      },
+      "target": {
+        "node_id": "bridge",
+        "port_id": "in"
+      }
+    },
+    {
+      "id": "e2",
+      "source": {
+        "node_id": "bridge",
+        "port_id": "output"
+      },
+      "target": {
+        "node_id": "sink",
+        "port_id": "in"
+      }
+    }
+  ]
+}

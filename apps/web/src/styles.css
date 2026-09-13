@@ -110,6 +110,7 @@ input {
 }
 .library {
   border-right: 1px solid #223147;
+  overflow-y: auto;
 }
 .inspector {
   border-left: 1px solid #223147;

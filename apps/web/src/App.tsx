@@ -24,7 +24,13 @@ import {
   Undo2,
 } from "lucide-react";
 
-import { fetchNodeRegistry, validateWorkflow } from "./api";
+import {
+  fetchExampleWorkflow,
+  fetchExampleWorkflows,
+  fetchNodeRegistry,
+  validateWorkflow,
+} from "./api";
+import type { ExampleInfo } from "./api";
 import {
   NODE_REMOVAL_TRANSITION_MS,
   resolveFitViewDuration,
@@ -598,6 +604,8 @@ function Inspector({
 
 function App() {
   const [registry, setRegistry] = useState<NodeManifest[]>([]);
+  const [examples, setExamples] = useState<ExampleInfo[]>([]);
+  const [exampleMessage, setExampleMessage] = useState("");
   const [workflow, setWorkflow] = useState<Workflow>(() => emptyWorkflow());
   const [past, setPast] = useState<Workflow[]>([]);
   const [future, setFuture] = useState<Workflow[]>([]);
@@ -623,6 +631,7 @@ function App() {
   const workflowRev = useRef(0);
   const validationSeq = useRef(0);
   const projectOpSeq = useRef(0);
+  const exampleOpSeq = useRef(0);
 
   const syncIdCounter = useCallback((candidate: Workflow) => {
     nextId.current = Math.max(nextId.current, maxIdSuffix(candidate) + 1);
@@ -638,6 +647,12 @@ function App() {
             : "Unable to load the node registry",
         ),
       );
+  }, []);
+
+  useEffect(() => {
+    fetchExampleWorkflows()
+      .then(setExamples)
+      .catch(() => setExamples([]));
   }, []);
 
   const refreshValidation = useCallback(async (candidate: Workflow) => {
@@ -1052,6 +1067,48 @@ function App() {
     }
   };
 
+  const handleLoadExample = async (exampleId: string) => {
+    const revisionAtStart = workflowRev.current;
+    const operationAtStart = ++exampleOpSeq.current;
+    try {
+      const loaded = await fetchExampleWorkflow(exampleId);
+      if (operationAtStart !== exampleOpSeq.current) {
+        return;
+      }
+      if (workflowRev.current !== revisionAtStart) {
+        setExampleMessage(
+          "Ignored a stale example response; canvas unchanged.",
+        );
+        return;
+      }
+      setPast([]);
+      setFuture([]);
+      setWorkflow(loaded);
+      workflowRev.current += 1;
+      syncIdCounter(loaded);
+      setSelectedId(undefined);
+      setLeavingNodes([]);
+      setExampleMessage(`Loaded example ${loaded.metadata.name}.`);
+      setStatus(`Loaded example ${loaded.metadata.name}`);
+      void refreshValidation(loaded);
+    } catch (reason) {
+      if (operationAtStart !== exampleOpSeq.current) {
+        return;
+      }
+      if (workflowRev.current !== revisionAtStart) {
+        setExampleMessage(
+          "Ignored a stale example response; canvas unchanged.",
+        );
+        return;
+      }
+      setExampleMessage(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to load the example.",
+      );
+    }
+  };
+
   const dismissDraft = () => {
     clearDraft();
     setDraftNotice(null);
@@ -1117,9 +1174,34 @@ function App() {
         </div>
         <div className="library-note">
           Select a manifest to add it, drag it onto the canvas at an exact
-          position, or focus it and press Enter. All registry nodes are
-          non-executing examples.
+          position, or focus it and press Enter. EEG nodes are non-executing
+          examples; Demonstration nodes run locally as explicitly non-scientific
+          examples.
         </div>
+        <div className="panel-heading">
+          <span>Examples</span>
+          <span>{examples.length}</span>
+        </div>
+        <div className="library-list">
+          {examples.map((example) => (
+            <button
+              data-testid={`example-load-${example.id}`}
+              key={example.id}
+              onClick={() => void handleLoadExample(example.id)}
+              title={example.description}
+            >
+              <span>
+                <small>EXAMPLE · v{example.schema_version}</small>
+                {example.name}
+              </span>
+            </button>
+          ))}
+        </div>
+        {exampleMessage && (
+          <div className="project-message" role="status">
+            {exampleMessage}
+          </div>
+        )}
         <div className="panel-heading">
           <span>Local project</span>
         </div>

@@ -1,4 +1,12 @@
-"""Built-in non-executing node manifests for the editable graph prototype."""
+"""Node manifests for the editable graph prototype.
+
+Two families share one registry contract. The EEG manifests below are
+non-executing scientific placeholders for the planned MVP. The ``demo.*``
+manifests are executable, explicitly non-scientific demonstration nodes whose
+ports and versions derive from the authoritative worker contract in
+:mod:`brainlearn_server.demo_nodes`, so the registry can never describe a
+port the worker would refuse.
+"""
 
 from brainlearn_core import (
     CanvasPosition,
@@ -11,6 +19,8 @@ from brainlearn_core import (
     PortDirection,
     ScientificType,
 )
+
+from brainlearn_server.demo_nodes import DEMO_NODES
 
 EXAMPLE_LICENSE = LicenseMetadata(
     name="BSD 3-Clause License",
@@ -33,7 +43,7 @@ def _port(
     )
 
 
-NODE_REGISTRY: tuple[NodeManifest, ...] = (
+_EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     NodeManifest(
         id="input.bids_eeg",
         node_version="0.1.0",
@@ -182,6 +192,106 @@ NODE_REGISTRY: tuple[NodeManifest, ...] = (
         license=EXAMPLE_LICENSE,
     ),
 )
+
+DEMO_PORT_TYPE = ScientificType.RAW_EEG
+
+_DEMO_LABELS: dict[str, tuple[str, str]] = {
+    "demo.delay": (
+        "Delay",
+        "Non-scientific demonstration node: waits cooperatively, then completes "
+        "without outputs. Use it for cancellation exercises.",
+    ),
+    "demo.copy": (
+        "Copy",
+        "Non-scientific demonstration node: writes canned text to one output "
+        "file. Produces no scientific result.",
+    ),
+    "demo.fail": (
+        "Fail",
+        "Non-scientific demonstration node: fails on purpose with a controlled "
+        "message. Use it for failure-propagation exercises.",
+    ),
+    "demo.review": (
+        "Review",
+        "Non-scientific demonstration node: pauses for an explicit researcher "
+        "decision. Use it for review approval/rejection exercises.",
+    ),
+    "demo.relay": (
+        "Relay",
+        "Non-scientific demonstration node: forwards one input's bytes to one "
+        "output. Produces no scientific result.",
+    ),
+}
+
+_DEMO_PORT_LABELS = {"in": "Input", "out": "Output", "output": "Output"}
+
+
+def _demo_parameter_schemas(node_type: str) -> list[ParameterSchema]:
+    """Derive UI parameter schemas from the worker parameter contract."""
+
+    return [
+        ParameterSchema(
+            id=spec.id,
+            label=spec.label,
+            value_type=spec.value_type,
+            default=spec.default,
+            required=spec.required,
+            description=spec.description,
+            minimum=spec.minimum,
+            maximum=spec.maximum,
+        )
+        for spec in DEMO_NODES[node_type].parameters.values()
+    ]
+
+
+def demo_manifest(node_type: str) -> NodeManifest:
+    """Build the registry manifest for one worker demonstration node.
+
+    Ports and the implementation version come from the authoritative worker
+    contract, so the registry cannot drift from what execution accepts. Only
+    display metadata (labels, descriptions, parameter schemas) is authored
+    here, and every description states the node is non-scientific.
+    """
+
+    worker = DEMO_NODES[node_type]
+    label, description = _DEMO_LABELS[node_type]
+    return NodeManifest(
+        id=node_type,
+        node_version=worker.version,
+        label=label,
+        description=description,
+        category="Demonstration",
+        ports=[
+            PortDefinition(
+                id=port_id,
+                label=_DEMO_PORT_LABELS.get(port_id, port_id),
+                direction=PortDirection.INPUT,
+                data_type=DEMO_PORT_TYPE,
+                required=required,
+            )
+            for port_id, required in worker.inputs.items()
+        ]
+        + [
+            PortDefinition(
+                id=port_id,
+                label=_DEMO_PORT_LABELS.get(port_id, port_id),
+                direction=PortDirection.OUTPUT,
+                data_type=DEMO_PORT_TYPE,
+                required=required,
+            )
+            for port_id, required in worker.outputs.items()
+        ],
+        parameters=_demo_parameter_schemas(node_type),
+        review_behavior="required" if node_type == "demo.review" else "none",
+        license=EXAMPLE_LICENSE,
+    )
+
+
+DEMO_MANIFESTS: tuple[NodeManifest, ...] = tuple(
+    demo_manifest(node_type) for node_type in DEMO_NODES
+)
+
+NODE_REGISTRY: tuple[NodeManifest, ...] = _EEG_MANIFESTS + DEMO_MANIFESTS
 
 NODE_REGISTRY_BY_ID = {manifest.id: manifest for manifest in NODE_REGISTRY}
 

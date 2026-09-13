@@ -14,6 +14,7 @@ from brainlearn_core import (
     RunRecord,
     ValidationResult,
     Workflow,
+    migrate_workflow_dict,
     validate_workflow,
 )
 from fastapi import Depends, FastAPI, HTTPException
@@ -32,6 +33,10 @@ from brainlearn_server.worker import ReviewConflictError, WorkerService, build_r
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 EXAMPLE_PATH = REPOSITORY_ROOT / "examples" / "eeg-first-look.workflow.json"
+EXAMPLE_WORKFLOWS: dict[str, Path] = {
+    "eeg-first-look": EXAMPLE_PATH,
+    "demo-branched": REPOSITORY_ROOT / "examples" / "demo-branched.workflow.json",
+}
 
 
 class HealthResponse(BaseModel):
@@ -42,6 +47,36 @@ class HealthResponse(BaseModel):
 class WorkflowValidationResponse(BaseModel):
     workflow: Workflow
     validation: ValidationResult
+
+
+class ExampleInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    description: str = ""
+    schema_version: Literal["1.0"] = "1.0"
+
+
+class ExampleListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    examples: list[ExampleInfo]
+
+
+def load_example_workflow(example_id: str) -> Workflow:
+    """Load one versioned example workflow by its stable route key."""
+
+    path = EXAMPLE_WORKFLOWS.get(example_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail=f"Unknown example workflow {example_id!r}.")
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Example workflow {example_id!r} is unreadable."
+        ) from exc
+    return Workflow.model_validate(migrate_workflow_dict(raw))
 
 
 class ProjectCreateRequest(BaseModel):
@@ -171,7 +206,27 @@ def node_registry_detail(node_type: str) -> NodeManifest:
 
 @app.get("/api/workflows/example", response_model=Workflow)
 def example_workflow() -> Workflow:
-    return Workflow.model_validate(json.loads(EXAMPLE_PATH.read_text(encoding="utf-8")))
+    return load_example_workflow("eeg-first-look")
+
+
+@app.get("/api/workflows/examples", response_model=ExampleListResponse)
+def list_example_workflows() -> ExampleListResponse:
+    infos: list[ExampleInfo] = []
+    for example_id in EXAMPLE_WORKFLOWS:
+        workflow = load_example_workflow(example_id)
+        infos.append(
+            ExampleInfo(
+                id=example_id,
+                name=workflow.metadata.name,
+                description=workflow.metadata.description,
+            )
+        )
+    return ExampleListResponse(examples=infos)
+
+
+@app.get("/api/workflows/examples/{example_id}", response_model=Workflow)
+def example_workflow_by_id(example_id: str) -> Workflow:
+    return load_example_workflow(example_id)
 
 
 @app.get("/api/workflows/example/validation", response_model=ValidationResult)

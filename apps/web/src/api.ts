@@ -97,3 +97,49 @@ export async function validateWorkflow(
     throw new Error(`Validation API returned ${response.status}`);
   return (await response.json()) as WorkflowValidationResponse;
 }
+
+export interface ExampleInfo {
+  id: string;
+  name: string;
+  description: string;
+  schema_version: "1.0";
+}
+
+function isExampleInfo(value: unknown): value is ExampleInfo {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.description === "string" &&
+    value.schema_version === "1.0"
+  );
+}
+
+export async function fetchExampleWorkflows(): Promise<ExampleInfo[]> {
+  const response = await fetch("/api/workflows/examples");
+  if (!response.ok) throw new Error(`Examples API returned ${response.status}`);
+  const payload: unknown = await response.json();
+  if (!isRecord(payload) || !Array.isArray(payload.examples)) {
+    throw new Error(
+      "The examples response does not match contract version 1.0.",
+    );
+  }
+  if (!payload.examples.every(isExampleInfo)) {
+    throw new Error(
+      "The examples response does not match contract version 1.0.",
+    );
+  }
+  return payload.examples;
+}
+
+export async function fetchExampleWorkflow(
+  exampleId: string,
+): Promise<Workflow> {
+  const response = await fetch(
+    `/api/workflows/examples/${encodeURIComponent(exampleId)}`,
+  );
+  if (response.status === 404)
+    throw new Error(`Unknown example workflow '${exampleId}'.`);
+  if (!response.ok) throw new Error(`Examples API returned ${response.status}`);
+  return (await response.json()) as Workflow;
+}

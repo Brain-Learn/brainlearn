@@ -512,6 +512,7 @@ def test_implementation_version_change_invalidates(
             inputs=dict(original.inputs),
             outputs=dict(original.outputs),
             handler=original.handler,
+            parameters=dict(original.parameters),
         ),
     )
     third = _start(client, project, _copy_workflow("versioned"))
@@ -624,6 +625,7 @@ def test_downstream_relay_reads_cached_upstream_bytes(
             inputs=dict(original.inputs),
             outputs=dict(original.outputs),
             handler=original.handler,
+            parameters=dict(original.parameters),
         ),
     )
     second = _start(client, project, _chain_workflow("upstream-bytes"))

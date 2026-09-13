@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 class ControlledFailure(Exception):
@@ -61,8 +61,11 @@ def _require_cancel(ctx: NodeContext) -> None:
 def delay_adapter(ctx: NodeContext) -> list[StagedOutput]:
     """Wait cooperatively; produces no artifacts."""
 
-    raw = ctx.parameters.get("seconds", 0.1)
-    total = max(0.0, min(float(raw), MAX_DELAY_SECONDS))
+    spec = DEMO_NODES["demo.delay"].parameters["seconds"]
+    raw = ctx.parameters.get("seconds", spec.default)
+    lower = spec.minimum if spec.minimum is not None else 0.0
+    upper = spec.maximum if spec.maximum is not None else MAX_DELAY_SECONDS
+    total = max(lower, min(float(raw), upper))
     deadline = time.monotonic() + total
     while time.monotonic() < deadline:
         _require_cancel(ctx)
@@ -75,7 +78,7 @@ def copy_adapter(ctx: NodeContext) -> list[StagedOutput]:
     """Write a small canned text output into staging."""
 
     _require_cancel(ctx)
-    text = str(ctx.parameters.get("text", "brainlearn-demo"))
+    text = str(ctx.parameters.get("text", DEMO_NODES["demo.copy"].parameters["text"].default))
     ctx.staging_dir.mkdir(parents=True, exist_ok=True)
     (ctx.staging_dir / "output.txt").write_text(text, encoding="utf-8")
     return [StagedOutput(port_id="output", relative_path="output.txt", media_type="text/plain")]
@@ -85,7 +88,9 @@ def fail_adapter(ctx: NodeContext) -> list[StagedOutput]:
     """Fail deterministically with a controlled message."""
 
     _require_cancel(ctx)
-    raise ControlledFailure(str(ctx.parameters.get("message", "demonstration failure")))
+    raise ControlledFailure(
+        str(ctx.parameters.get("message", DEMO_NODES["demo.fail"].parameters["message"].default))
+    )
 
 
 def review_adapter(ctx: NodeContext) -> list[StagedOutput]:
@@ -114,33 +119,90 @@ def relay_adapter(ctx: NodeContext) -> list[StagedOutput]:
 
 
 @dataclass(frozen=True)
+class DemoParameter:
+    """One execution-relevant parameter of a demonstration node.
+
+    The single contract for a parameter's name, type, default, and bounds:
+    handlers interpret values through it and the registry derives its UI
+    parameter schemas from it, so the two cannot drift apart. Parameters
+    affect content identity and execution; they are not display metadata.
+    """
+
+    id: str
+    label: str
+    value_type: Literal["string", "number"]
+    default: Any
+    required: bool = False
+    description: str = ""
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+@dataclass(frozen=True)
 class DemoNodeManifest:
     """One authoritative execution manifest per demonstration node type.
 
     ``inputs`` and ``outputs`` map port IDs to required flags: True means the
     port is required (must be declared, and for inputs must be connected via
     an edge; for outputs must be emitted on success), False means optional
-    (may be declared/emitted but is never required).
+    (may be declared/emitted but is never required). ``parameters`` carries
+    the execution-relevant parameter contract shared with the registry.
     """
 
     version: str
     inputs: dict[str, bool]
     outputs: dict[str, bool]
     handler: DemoAdapter
+    parameters: dict[str, DemoParameter] = field(default_factory=dict)
 
 
 DEMO_NODES: dict[str, DemoNodeManifest] = {
     "demo.delay": DemoNodeManifest(
-        version="0.1.0", inputs={}, outputs={"out": False}, handler=delay_adapter
+        version="0.1.0",
+        inputs={},
+        outputs={"out": False},
+        handler=delay_adapter,
+        parameters={
+            "seconds": DemoParameter(
+                id="seconds",
+                label="Delay (seconds)",
+                value_type="number",
+                default=0.1,
+                description="Cooperative wait before completing. Clamped to a safe maximum.",
+                minimum=0.0,
+                maximum=MAX_DELAY_SECONDS,
+            )
+        },
     ),
     "demo.copy": DemoNodeManifest(
         version="0.1.0",
         inputs={"in": False},
         outputs={"output": True},
         handler=copy_adapter,
+        parameters={
+            "text": DemoParameter(
+                id="text",
+                label="Text",
+                value_type="string",
+                default="brainlearn-demo",
+                description="Canned text written to the output file.",
+            )
+        },
     ),
     "demo.fail": DemoNodeManifest(
-        version="0.1.0", inputs={}, outputs={"out": False}, handler=fail_adapter
+        version="0.1.0",
+        inputs={},
+        outputs={"out": False},
+        handler=fail_adapter,
+        parameters={
+            "message": DemoParameter(
+                id="message",
+                label="Failure message",
+                value_type="string",
+                default="demonstration failure",
+                description="Message reported when this node fails on purpose.",
+            )
+        },
     ),
     "demo.review": DemoNodeManifest(
         version="0.1.0", inputs={}, outputs={"out": False}, handler=review_adapter

@@ -4,59 +4,56 @@ Review date: 2026-09-13
 
 ## Current review
 
-Scope: second monitoring review of Step 4E.2 reduced motion and safe
-per-instance presentation customization.
+Scope: fourth monitoring review of Step 4E.3 demonstration manifests,
+branched fixture, example loading, and message ownership.
 
-Status: **approved**. The first-review findings are repaired, the full gate
-passes, and the live application preserves presentation through project
-create/open. Commit this reviewed unit, then continue with Step 4E.3 only.
+Status: **approved**. The final asynchronous-message race is repaired, the
+complete gate passes, and the frontend suite remained green across six
+additional consecutive runs. Step 4E.3 may be committed. Continue separately
+with Step 4E.4; Step 4 remains open.
 
 ## Findings
 
 No blocking findings.
 
-The Step 4 reduced-motion checkbox remains open because its text also requires
-run-state transitions. Those states are not visible until the Step 4E.4 run
-drawer is implemented. The checked presentation checkbox and this approval do
-not claim that later UI work is complete.
+## Repair verified
 
-## Behavior verified
-
-- Absent `presentation` is the canonical default for newly instantiated,
-  reset, and undone nodes; explicit API `null` remains compatible.
-- A violet accent remains violet for ordinary, selected, invalid, and
-  selected-invalid cards. Compact rendering and custom titles are independent
-  of validation and selection state.
-- The inspector remounts on node selection, its CSS animation is active in the
-  live app, node removal has a tested 160 ms leaving state, and reduced motion
-  removes that leaving state and makes viewport fitting immediate.
-- Python trims surrounding title whitespace and rejects whitespace-only
-  titles. Notes remain plain text and field bounds are enforced.
-- Workflow and node content identities exclude presentation, while scientific
-  parameter changes still alter identity. A presentation-only second run
-  reuses cache output.
-- Live browser checks covered title trimming, accent plus compact presentation,
-  selected-invalid styling (`rgb(176, 139, 240)` left border), plain-text notes,
-  Reset, Undo, draft reload, and project create/open persistence. The browser
-  console reported no warnings or errors.
+- A superseded success returns before changing the workflow or message, so the
+  latest loaded example and its success message remain authoritative.
+- A superseded failure follows the same silent path and cannot replace a newer
+  success with an obsolete error.
+- A current operation invalidated by a graph edit preserves the edited graph
+  and reports the canvas-unchanged notice.
+- A current, revision-valid failure remains visible to the researcher.
+- Deterministic deferred-response tests cover older success, older rejection,
+  and current-request invalidation by a graph edit.
+- The earlier sidebar, example API/UI, manifest-authority, insertion-matrix,
+  canonical-fixture, and cache-documentation repairs remain present.
 
 ## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 40 files clean.
+- `uv run ruff format --check .`: 42 files clean.
 - `uv run mypy packages/core/src packages/server/src`: 18 source files clean.
-- `uv run pytest -q`: 294 passed with two upstream Starlette/AnyIO deprecation
-  warnings.
+- `uv run pytest -q`: 315 passed with two upstream Starlette/AnyIO warnings.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
-- `npm --prefix apps/web test -- --run`: 58 passed in 7 files.
+- `npm --prefix apps/web test -- --run`: 86 passed in 9 files.
+- The complete frontend suite passed six further consecutive runs, each with
+  86 tests in 9 files; the previously reported transient failure did not recur.
 - `npm --prefix apps/web run build`: passed, 1,839 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
 - `git diff --check`: passed before this review update.
 
 ## Next assignment
 
-Implement only Step 4E.3: make the non-scientific demonstration manifests
-available through the registry and add a versioned branched fixture that can be
-assembled and validated in the UI. Do not begin run-drawer controls, dataset
-access, or scientific processing in that work unit.
+Implement only Step 4E.4: connect the editor to the existing run API, SSE event
+stream, review decisions, cancellation, and artifact records through a run
+drawer. Show queued/running/waiting-review/succeeded/failed/cancelled state,
+node attempts and cache reuse, ordered events and actionable failures, and safe
+artifact metadata/open actions. Preserve the loaded workflow while a run is in
+progress, handle reconnect/replay without duplicate events, and make run-state
+motion honor reduced-motion preferences. Add focused API/client/component tests
+and live browser probes for success, failure, review/resume, cancellation,
+cache reuse, artifact inspection, and SSE reconnect. Do not begin Step 4E.5 or
+Step 5. Leave the run-drawer and motion checkboxes unchecked for monitoring.

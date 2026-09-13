@@ -49,13 +49,16 @@ def test_example_workflow_is_available_and_valid() -> None:
     assert validation_response.json() == {"valid": True, "issues": []}
 
 
-def test_registry_lists_eight_versioned_example_manifests() -> None:
+def test_registry_lists_versioned_manifests() -> None:
     response = client.get("/api/registry/nodes")
 
     assert response.status_code == 200
     manifests = response.json()
-    assert len(manifests) == 8
+    assert len(manifests) == 13
     assert {manifest["id"] for manifest in manifests} == {manifest.id for manifest in NODE_REGISTRY}
+    assert {"demo.copy", "demo.delay", "demo.fail", "demo.review", "demo.relay"} <= {
+        manifest["id"] for manifest in manifests
+    }
     assert all(manifest["manifest_schema_version"] == "1.0" for manifest in manifests)
     assert all(manifest["status"] == "example" for manifest in manifests)
     assert all(manifest["license"]["spdx_id"] == "BSD-3-Clause" for manifest in manifests)
