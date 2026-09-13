@@ -109,7 +109,7 @@ Goal: execute deterministic demonstration nodes without claiming scientific proc
 - [x] Write outputs atomically and keep partial files out of successful artifact records.
 - [x] Implement cache reuse and downstream invalidation.
 - [ ] Add non-scientific fixture nodes for copy, delay, failure, branching, and review pause.
-- [ ] Support smooth existing-node dragging and palette-to-canvas drag-and-drop with click and keyboard fallbacks.
+- [x] Support smooth existing-node dragging and palette-to-canvas drag-and-drop with click and keyboard fallbacks.
 - [ ] Add reduced-motion-aware transitions for discrete canvas, inspector, viewport, and run-state changes.
 - [ ] Persist safe per-instance node presentation customization separately from scientific parameters and manifest identity.
 - [ ] Display run status, logs, artifacts, cached status, and actionable failures in the run drawer.
@@ -314,6 +314,10 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-12 | Step 4D second-review repairs (2 findings) | Verified; monitoring pending | Cache reuse now catches `CancelledByUser` explicitly and persists the normal pre-execution cancelled record (attempt 0, no timestamps, no artifacts, terminal cancelled run), with a second cancel check after the atomic rename before persistence; every other reuse exception falls back to ordinary execution so nothing escapes to strand the record. `CacheEntry` recomputes `node_content_identity` in its model validator and rejects stale identities at load time; worker field/port checks retained as defense in depth. New regressions: cancellation during copy and after rename (both prove cancelled run/node, attempt 0, no timestamps/artifacts/trees) plus 7 schema-level per-field stale-identity tests. `docs/execution-contracts.md` updated. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 273 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 24 passed in 5 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Cache bullet and Step 4 heading left unchecked for the monitor. | Uncommitted; awaiting monitored review |
 
 | 2026-09-12 | Step 4D final monitored gate | Complete | Reviewer reproduced cancellation during cache copy and after atomic rename: both reached terminal cancelled run/node at attempt 0 with no timestamps, artifacts, staging, or final reuse tree. A direct stale-fixture probe confirmed `CacheEntry.model_validate` rejects repeated fields that no longer match content identity; all 7 schema mutation cases pass. Earlier metadata/port, atomic multi-output, regular-file healing, symlink, corruption, recovery, concurrency, and exact invalidation coverage remains green. Full gate: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 273 passed with only 2 upstream deprecation warnings, focused final group 9 passed, ESLint/Prettier passed, Vitest 24 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Cache/invalidation is approved; Step 4 remains open for 4E. | Monitored review complete |
+| 2026-09-13 | Step 4E.1 direct canvas manipulation | Verified; monitoring pending | Controlled React Flow canvas with transient `onNodesChange` position tracking and single-commit `onNodeDragStop` via `commitDragPositions` (click-without-movement creates no edit, one gesture creates one undo entry); transient state resyncs on workflow replacement while drags suppress clobbering; palette buttons are draggable with MIME payload plus dragover/drop handling converting through `screenToFlowPosition` with pure `clientToFlowPosition` fallback, sharing `insertNodeAt` with click/keyboard so fields match except position; new nodes are selected; drag-over affordance with `user-select:none` and no pointer-tracking animation. New pure helpers in `apps/web/src/graph.ts` (`positionsEqual`, `defaultInsertionPosition`, `insertNodeAt`, `applyPositionChangesToNodes`, `commitDragPositions`, `clientToFlowPosition`, palette payload codec). New Vitest coverage: 6 pure-helper groups plus palette draggable/keyboard/drop-equivalence and invalid/unknown/missing drops. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 273 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 33 passed in 5 files; production build passed; `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. All Step 4E and Step 4 boxes left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-13 | Step 4E.1 monitoring review | Changes requested | Full baseline reproduced: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 273 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 33 passed in 5 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Live probes verified continuous drag, single-step undo, palette drop under fit-view transform, and one-node keyboard activation. Review found that workflow replacement during an active drag is suppressed without a guaranteed post-drag resync and can show or commit stale graph state; the coordinate-conversion exception path fabricates an identity viewport and can misplace a drop after pan/zoom. Focused repairs and regressions are specified in `REVIEW.md`. | Uncommitted; monitoring review failed |
+| 2026-09-13 | Step 4E.1 repairs (2 findings) | Verified; monitoring pending | Each drag now captures the canonical workflow object at drag start (`dragBase`) alongside a latest-props ref; `decideDragCommit` discards gestures whose base no longer matches the latest workflow (different and overlapping node IDs), ignores no-movement stops, and commits real moves once, with the parent rechecking base identity before creating an undo entry. Every non-commit stop explicitly resynchronizes transient nodes to the latest workflow/selection/validation, closing the suppressed-effect gap. Drop conversion failure now rejects the drop with no insertion; the fabricated identity-viewport fallback and its pure helper were removed, keeping `screenToFlowPosition` as the single authoritative path. New `apps/web/src/canvas.test.tsx` (6 tests with stubbed ReactFlow: mid-drag replacement with different IDs, overlapping IDs, no-movement resync of suppressed selection, ordinary single-commit drag, converter-failure no-insertion, transformed-viewport converter-path drop at exact coordinates) plus `decideDragCommit` unit tests. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 273 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 39 passed in 6 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. All Step 4E and Step 4 boxes left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-13 | Step 4E.1 final monitored gate | Complete | Reviewer inspected both implementation layers and reproduced the full gate: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 273 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 39 passed in 6 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Six focused component regressions prove stale-gesture rejection for different/overlapping IDs, post-drag selection resynchronization, one ordinary commit, failed-converter no-op, and exact transformed coordinates. Live browser verification confirmed continuous existing-node drag, one-step undo, zoom, and palette drop at the pointer-selected transformed position with selection. The direct-manipulation checkbox is approved; Step 4 remains open for 4E.2–4E.5. | Monitored review complete |
 
 ## Next assignment
 
@@ -322,52 +326,45 @@ Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`,
 approved in commits/history through the final monitored gate. Preserve every
 completion-log row.
 
-### Step 4E.1 — direct canvas manipulation
+### Step 4E.2 — reduced motion and safe presentation customization
 
-Implement only the first interaction unit. Do not add presentation fields, run
-controls, demonstration manifests, scientific EEG processing, or dataset
-downloading in this unit.
+Implement only motion and per-instance presentation. Do not add demonstration
+manifests, run controls, scientific processing, or dataset access in this unit.
 
-1. Add controlled React Flow node-change handling. Apply position changes to a
-   transient canvas representation during pointer movement so the node follows
-   continuously without validating, persisting a draft revision, or adding an
-   undo entry for every movement event.
-2. On drag completion, copy the final position into `Workflow` exactly once and
-   create exactly one undo entry. A click without movement must create no graph
-   edit. Undo and redo must restore the precise start and final positions.
-3. Keep transient canvas state synchronized when a workflow is replaced by
-   undo, redo, project open/create/save response, or recovered draft. The final
-   position must survive draft persistence and project save/open.
-4. Make each node-library item draggable and add canvas `dragover`/`drop`
-   handling. Convert the pointer's client coordinates through the active React
-   Flow viewport before calling the same node-construction helper used by click
-   insertion. Dropping outside the canvas or an invalid/missing payload changes
-   nothing.
-5. Preserve the native button click and keyboard activation path. Click,
-   Enter/Space, and drop must produce the same node fields except for the
-   intentionally different insertion position. Select every newly inserted
-   node.
-6. Add a small drag preview/drop affordance and prevent accidental palette text
-   selection. Do not animate direct pointer tracking. Motion and reduced-motion
-   work belongs to 4E.2.
-7. Prefer focused pure helpers in `apps/web/src/graph.ts` for position updates
-   and insertion so coordinate, equality, and undo behavior can be tested
-   without relying entirely on jsdom's incomplete layout implementation.
-8. Add Vitest coverage for continuous node changes, one-entry drag commit,
-   click-without-movement, undo/redo, viewport-aware drop coordinates,
-   click/keyboard/drop equivalence, invalid and outside drops, and workflow
-   replacement synchronization. Retain all existing tests.
-9. Run the full Python and frontend baseline plus `git diff --check`. Append an
-   exact completion-log row, leave all Step 4E and top-level Step 4 checkboxes
-   unchecked, and request monitoring review before committing.
+1. Define a strict, version-compatible nested presentation contract for a node
+   instance. Support a bounded custom title, an allowlisted accent, compact
+   display, and bounded plain-text notes. Existing version-1.0 workflows without
+   presentation data must still load. Unknown fields and invalid values must be
+   rejected with useful errors.
+2. Keep presentation separate from manifest data and scientific parameters.
+   Do not overwrite the manifest label, description, ports, parameters, or node
+   version. Update the TypeScript and Pydantic models, migration/round-trip
+   coverage, fixtures as needed, and user-facing inspector controls.
+3. Prove presentation-only changes leave `workflow_identity`, every node
+   `content_identity`, and cache reuse unchanged. A scientific parameter change
+   must still invalidate the affected computation. Persist presentation through
+   draft recovery and project save/open, with undo/redo as one edit per control
+   action.
+4. Render the custom title/accent/compactness on the canvas and notes in the
+   inspector. Treat notes as text; do not render user HTML. Provide a clear reset
+   to manifest defaults and keep color meaning independent of run/error status.
+5. Add restrained CSS transitions for discrete node insertion/removal,
+   selection, inspector content, validation state, viewport fit, and later-ready
+   run-state surfaces. Do not add transform transitions to nodes while the user
+   drags them.
+6. Respect `prefers-reduced-motion` through CSS and a small testable UI policy.
+   With reduced motion enabled, nonessential animation and smooth scrolling must
+   be disabled while state remains immediately understandable.
+7. Add focused Python and Vitest coverage for schema compatibility and rejection,
+   presentation persistence, reset, undo/redo, identity/cache invariance,
+   parameter sensitivity, visible customization, ordinary motion classes, and
+   reduced-motion behavior. Avoid snapshot-only evidence.
+8. Run the full repository gate and a live browser probe that customizes a node,
+   saves/reopens or reloads its draft, verifies identity/cache invariance, and
+   checks both motion preferences. Append exact evidence, leave the top-level
+   Step 4 heading unchecked, and request monitoring review before committing.
 
-Acceptance probe: start with an empty canvas; add one node by click, one by
-keyboard, and one by palette drop after pan and zoom; drag an existing node
-through several pointer positions; verify continuous movement, exact final
-coordinates, one-step undo/redo, draft recovery, and save/open persistence.
-
-After monitored approval, continue in separate units: 4E.2 reduced-motion-aware
-transitions and presentation customization; 4E.3 demonstration manifests and
-branched fixture; 4E.4 run API/SSE/review/cancel/artifact UI; 4E.5 complete Step
-4 automated and manual gate. Step 5A then begins the curated OpenNeuro-first
-dataset library and secure local download lifecycle.
+After monitored approval, continue separately with 4E.3 demonstration manifests
+and the branched fixture, 4E.4 run API/SSE/review/cancel/artifact UI, and 4E.5 the
+complete Step 4 automated and manual gate. Step 5A then begins the curated
+OpenNeuro-first dataset library and secure local download lifecycle.

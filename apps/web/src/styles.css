@@ -161,6 +161,22 @@ input {
   background: #101e2e;
   border: 1px solid #26374b;
   border-radius: 7px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.palette-button {
+  cursor: grab;
+}
+.palette-button:active {
+  cursor: grabbing;
+}
+.canvas-flow {
+  position: absolute;
+  inset: 0;
+}
+.canvas-flow.drag-over .react-flow__viewport {
+  outline: 2px dashed #4bd5bb;
+  outline-offset: -12px;
 }
 .library-list button svg {
   color: #50c9b2;

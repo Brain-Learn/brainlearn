@@ -5,9 +5,11 @@ import {
   MarkerType,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
+  type NodeChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -39,13 +41,21 @@ import {
 } from "./projects";
 import {
   allocateUniqueId,
+  applyPositionChangesToNodes,
   buildConnectionCandidate,
+  commitDragPositions,
+  decodePalettePayload,
+  decideDragCommit,
+  defaultInsertionPosition,
   emptyWorkflow,
-  instantiateNode,
+  encodePaletteDrag,
+  insertNodeAt,
   maxIdSuffix,
+  PALETTE_DRAG_MIME,
   removeEdges,
   removeNodes,
   updateParameter,
+  type CanvasPosition,
 } from "./graph";
 import type {
   NodeManifest,
@@ -58,6 +68,214 @@ import type {
 import { WorkflowCard, type WorkflowCardNode } from "./WorkflowCard";
 
 const nodeTypes = { workflow: WorkflowCard };
+
+function toCanvasNodes(
+  workflow: Workflow,
+  selectedId: string | undefined,
+  validation: ValidationResult,
+): WorkflowCardNode[] {
+  return workflow.nodes.map((node) => ({
+    id: node.id,
+    type: "workflow",
+    position: { ...node.position },
+    data: {
+      ...node,
+      selected: node.id === selectedId,
+      issues: validation.issues
+        .filter((issue) => issue.node_id === node.id)
+        .map((issue) => issue.message),
+    },
+  }));
+}
+
+function toCanvasEdges(
+  workflow: Workflow,
+  validation: ValidationResult,
+): Edge[] {
+  return workflow.edges.map((edge) => {
+    const invalid = validation.issues.some(
+      (issue) => issue.edge_id === edge.id,
+    );
+    return {
+      id: edge.id,
+      source: edge.source.node_id,
+      sourceHandle: edge.source.port_id,
+      target: edge.target.node_id,
+      targetHandle: edge.target.port_id,
+      markerEnd: { type: MarkerType.ArrowClosed },
+      className: invalid ? "invalid-edge" : undefined,
+    };
+  });
+}
+
+export function WorkflowCanvas({
+  workflow,
+  selectedId,
+  validation,
+  registry,
+  onSelect,
+  onCommitDrag,
+  onDropNode,
+  onConnect,
+  onEdgesDelete,
+  onNodesDelete,
+}: {
+  workflow: Workflow;
+  selectedId: string | undefined;
+  validation: ValidationResult;
+  registry: NodeManifest[];
+  onSelect: (id: string) => void;
+  onCommitDrag: (
+    base: Workflow,
+    positions: Record<string, CanvasPosition>,
+  ) => void;
+  onDropNode: (manifest: NodeManifest, position: CanvasPosition) => void;
+  onConnect: (connection: Connection) => void;
+  onEdgesDelete: (deleted: Edge[]) => void;
+  onNodesDelete: (deleted: Node[]) => void;
+}) {
+  const { screenToFlowPosition } = useReactFlow();
+  const [canvasNodes, setCanvasNodes] = useState<WorkflowCardNode[]>(() =>
+    toCanvasNodes(workflow, selectedId, validation),
+  );
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragActive = useRef(false);
+  const dragBase = useRef<Workflow | null>(null);
+  const latest = useRef({ workflow, selectedId, validation });
+  latest.current = { workflow, selectedId, validation };
+
+  useEffect(() => {
+    if (dragActive.current) return;
+    setCanvasNodes(toCanvasNodes(workflow, selectedId, validation));
+  }, [workflow, selectedId, validation]);
+
+  const canvasEdges = useMemo(
+    () => toCanvasEdges(workflow, validation),
+    [workflow, validation],
+  );
+
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<WorkflowCardNode>[]) => {
+      const positions: Array<{ id: string; position: CanvasPosition }> = [];
+      for (const change of changes) {
+        if (change.type === "position" && change.position) {
+          positions.push({ id: change.id, position: { ...change.position } });
+        }
+      }
+      if (!positions.length) return;
+      setCanvasNodes((prev) => applyPositionChangesToNodes(prev, positions));
+    },
+    [],
+  );
+
+  const handleDragStart = useCallback(() => {
+    dragActive.current = true;
+    dragBase.current = latest.current.workflow;
+  }, []);
+
+  const handleDragStop = useCallback(
+    (_event: unknown, _node: unknown, nodes: Node[]) => {
+      const snapshot = latest.current;
+      const base = dragBase.current;
+      dragBase.current = null;
+      dragActive.current = false;
+      const positions: Record<string, CanvasPosition> = {};
+      for (const item of nodes) {
+        positions[item.id] = { x: item.position.x, y: item.position.y };
+      }
+      if (
+        decideDragCommit(base, snapshot.workflow, positions).action !== "commit"
+      ) {
+        setCanvasNodes(
+          toCanvasNodes(
+            snapshot.workflow,
+            snapshot.selectedId,
+            snapshot.validation,
+          ),
+        );
+        return;
+      }
+      onCommitDrag(base ?? snapshot.workflow, positions);
+    },
+    [onCommitDrag],
+  );
+
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      setIsDragOver(false);
+      const transfer = event.dataTransfer;
+      if (!transfer) return;
+      let raw: string | null = null;
+      try {
+        raw = transfer.getData(PALETTE_DRAG_MIME);
+      } catch {
+        raw = null;
+      }
+      if (!raw) {
+        try {
+          raw = transfer.getData("text/plain");
+        } catch {
+          raw = null;
+        }
+      }
+      const manifestId = decodePalettePayload(raw);
+      if (!manifestId) return;
+      const manifest = registry.find((item) => item.id === manifestId);
+      if (!manifest) return;
+      let position: CanvasPosition;
+      try {
+        position = screenToFlowPosition({
+          x: event.clientX,
+          y: event.clientY,
+        });
+      } catch {
+        return;
+      }
+      if (!Number.isFinite(position.x) || !Number.isFinite(position.y)) return;
+      onDropNode(manifest, position);
+    },
+    [onDropNode, registry, screenToFlowPosition],
+  );
+
+  return (
+    <div
+      className={`canvas-flow${isDragOver ? " drag-over" : ""}`}
+      data-testid="canvas-drop-zone"
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={(event) => handleDrop(event)}
+    >
+      <ReactFlow
+        deleteKeyCode={["Backspace", "Delete"]}
+        edges={canvasEdges}
+        fitView
+        nodes={canvasNodes}
+        nodeTypes={nodeTypes}
+        onConnect={onConnect}
+        onEdgesDelete={onEdgesDelete}
+        onNodeClick={(_, node) => onSelect(node.id)}
+        onNodeDragStart={handleDragStart}
+        onNodeDragStop={handleDragStop}
+        onNodesChange={handleNodesChange}
+        onNodesDelete={onNodesDelete}
+      >
+        <Background color="#27364a" gap={22} size={1} />
+        <Controls showInteractive={false} />
+      </ReactFlow>
+    </div>
+  );
+}
 
 function parameterValue(
   schema: ParameterSchema,
@@ -333,22 +551,96 @@ function App() {
     void refreshValidation(next);
   };
 
-  const addManifestNode = (manifest: NodeManifest) => {
-    const id = allocateUniqueId(
-      manifest.id.replaceAll(".", "-"),
-      workflow,
-      nextId,
-    );
-    const node = instantiateNode(manifest, id, {
-      x: 90 + ((workflow.nodes.length * 210) % 840),
-      y: 90 + (Math.floor(workflow.nodes.length / 4) % 3) * 180,
-    });
-    commit(
-      { ...workflow, nodes: [...workflow.nodes, node] },
-      `Added ${manifest.label}`,
-    );
+  const addNodeAt = useCallback(
+    (manifest: NodeManifest, position: CanvasPosition) => {
+      const id = allocateUniqueId(
+        manifest.id.replaceAll(".", "-"),
+        workflow,
+        nextId,
+      );
+      commit(
+        insertNodeAt(workflow, manifest, id, position),
+        `Added ${manifest.label}`,
+      );
+      setSelectedId(id);
+    },
+    [commit, workflow],
+  );
+
+  const addManifestNode = useCallback(
+    (manifest: NodeManifest, position?: CanvasPosition) => {
+      addNodeAt(manifest, position ?? defaultInsertionPosition(workflow));
+    },
+    [addNodeAt, workflow],
+  );
+
+  const handlePaletteDragStart = useCallback(
+    (event: React.DragEvent, manifest: NodeManifest) => {
+      try {
+        event.dataTransfer.setData(
+          PALETTE_DRAG_MIME,
+          encodePaletteDrag(manifest.id),
+        );
+        event.dataTransfer.setData("text/plain", manifest.id);
+        event.dataTransfer.effectAllowed = "copy";
+      } catch {
+        // Drag payloads are best-effort; click insertion still works.
+      }
+    },
+    [],
+  );
+
+  const handlePaletteKeyDown = useCallback(
+    (event: React.KeyboardEvent, manifest: NodeManifest) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        addManifestNode(manifest);
+      }
+    },
+    [addManifestNode],
+  );
+
+  const commitDrag = useCallback(
+    (base: Workflow, positions: Record<string, CanvasPosition>) => {
+      if (base !== workflow) return;
+      const result = commitDragPositions(workflow, positions);
+      if (!result.changed) return;
+      commit(result.workflow, "Moved node");
+    },
+    [commit, workflow],
+  );
+
+  const handleDropNode = useCallback(
+    (manifest: NodeManifest, position: CanvasPosition) => {
+      addNodeAt(manifest, position);
+    },
+    [addNodeAt],
+  );
+
+  const handleSelect = useCallback((id: string) => {
     setSelectedId(id);
-  };
+  }, []);
+
+  const handleEdgesDelete = useCallback(
+    (deleted: Edge[]) => {
+      commit(
+        removeEdges(workflow, new Set(deleted.map((edge) => edge.id))),
+        "Disconnected ports",
+      );
+    },
+    [commit, workflow],
+  );
+
+  const handleNodesDelete = useCallback(
+    (deleted: Node[]) => {
+      const ids = new Set(deleted.map((node) => node.id));
+      commit(removeNodes(workflow, ids), "Removed node");
+      setSelectedId((current) =>
+        current && ids.has(current) ? undefined : current,
+      );
+    },
+    [commit, workflow],
+  );
 
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -555,40 +847,6 @@ function App() {
     setDraftNotice(null);
   };
 
-  const nodes = useMemo<WorkflowCardNode[]>(
-    () =>
-      workflow.nodes.map((node) => ({
-        id: node.id,
-        type: "workflow",
-        position: node.position,
-        data: {
-          ...node,
-          selected: node.id === selectedId,
-          issues: validation.issues
-            .filter((issue) => issue.node_id === node.id)
-            .map((issue) => issue.message),
-        },
-      })),
-    [workflow.nodes, selectedId, validation.issues],
-  );
-  const edges = useMemo<Edge[]>(
-    () =>
-      workflow.edges.map((edge) => {
-        const invalid = validation.issues.some(
-          (issue) => issue.edge_id === edge.id,
-        );
-        return {
-          id: edge.id,
-          source: edge.source.node_id,
-          sourceHandle: edge.source.port_id,
-          target: edge.target.node_id,
-          targetHandle: edge.target.port_id,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          className: invalid ? "invalid-edge" : undefined,
-        };
-      }),
-    [workflow.edges, validation.issues],
-  );
   const selected = workflow.nodes.find((node) => node.id === selectedId);
   const selectedManifest = registry.find(
     (manifest) => manifest.id === selected?.type,
@@ -631,7 +889,15 @@ function App() {
         </div>
         <div className="library-list">
           {registry.map((manifest) => (
-            <button key={manifest.id} onClick={() => addManifestNode(manifest)}>
+            <button
+              className="palette-button"
+              data-testid={`palette-add-${manifest.id}`}
+              draggable
+              key={manifest.id}
+              onClick={() => addManifestNode(manifest)}
+              onDragStart={(event) => handlePaletteDragStart(event, manifest)}
+              onKeyDown={(event) => handlePaletteKeyDown(event, manifest)}
+            >
               <span>
                 <small>{manifest.category} · EXAMPLE</small>
                 {manifest.label}
@@ -640,8 +906,9 @@ function App() {
           ))}
         </div>
         <div className="library-note">
-          Select a manifest to add it. All registry nodes are non-executing
-          examples.
+          Select a manifest to add it, drag it onto the canvas at an exact
+          position, or focus it and press Enter. All registry nodes are
+          non-executing examples.
         </div>
         <div className="panel-heading">
           <span>Local project</span>
@@ -732,45 +999,18 @@ function App() {
           </div>
         ) : (
           <ReactFlowProvider>
-            <ReactFlow
-              deleteKeyCode={["Backspace", "Delete"]}
-              edges={edges}
-              fitView
-              nodes={nodes}
-              nodeTypes={nodeTypes}
+            <WorkflowCanvas
+              onCommitDrag={commitDrag}
               onConnect={(connection) => void onConnect(connection)}
-              onEdgesDelete={(deleted) =>
-                commit(
-                  removeEdges(
-                    workflow,
-                    new Set(deleted.map((edge) => edge.id)),
-                  ),
-                  "Disconnected ports",
-                )
-              }
-              onNodeClick={(_, node) => setSelectedId(node.id)}
-              onNodeDragStop={(_, node) =>
-                commit(
-                  {
-                    ...workflow,
-                    nodes: workflow.nodes.map((item) =>
-                      item.id === node.id
-                        ? { ...item, position: node.position }
-                        : item,
-                    ),
-                  },
-                  "Moved node",
-                )
-              }
-              onNodesDelete={(deleted: Node[]) => {
-                const ids = new Set(deleted.map((node) => node.id));
-                commit(removeNodes(workflow, ids), "Removed node");
-                if (selectedId && ids.has(selectedId)) setSelectedId(undefined);
-              }}
-            >
-              <Background color="#27364a" gap={22} size={1} />
-              <Controls showInteractive={false} />
-            </ReactFlow>
+              onDropNode={handleDropNode}
+              onEdgesDelete={handleEdgesDelete}
+              onNodesDelete={handleNodesDelete}
+              onSelect={handleSelect}
+              registry={registry}
+              selectedId={selectedId}
+              validation={validation}
+              workflow={workflow}
+            />
           </ReactFlowProvider>
         )}
         {!workflow.nodes.length && !error && (

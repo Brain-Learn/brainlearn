@@ -1044,3 +1044,88 @@ test("selecting a recent project does not rename the active project", async () =
     name: "Project A",
   });
 });
+
+function readDraftWorkflow(): Workflow {
+  const raw = localStorage.getItem("brainlearn.unsaved-workflow.v1");
+  if (!raw) throw new Error("Expected a persisted draft workflow");
+  return (JSON.parse(raw) as { workflow: Workflow }).workflow;
+}
+
+function dropPayload(manifestId: string) {
+  return {
+    getData: (format: string) =>
+      format === "application/x-brainlearn-node" || format === "text/plain"
+        ? manifestId
+        : "",
+    setData: () => {},
+    dropEffect: "copy",
+    effectAllowed: "copy",
+    files: [],
+    types: ["application/x-brainlearn-node"],
+  };
+}
+
+test("palette buttons are draggable and keyboard insertion matches click", async () => {
+  render(<App />);
+  const addButton = await screen.findByRole("button", { name: /BIDS EEG/ });
+  expect(addButton).toHaveAttribute("draggable", "true");
+
+  fireEvent.keyDown(addButton, { key: "Enter" });
+  await screen.findByLabelText("Dataset root");
+  const draft = readDraftWorkflow();
+  expect(draft.nodes).toHaveLength(1);
+  const keyboardNode = draft.nodes[0];
+  expect(keyboardNode.type).toBe("input.bids_eeg");
+  expect(keyboardNode.label).toBe("BIDS EEG");
+});
+
+function dispatchDrop(
+  zone: HTMLElement,
+  clientX: number,
+  clientY: number,
+  manifestId: string | null,
+) {
+  const event = new Event("drop", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clientX", { value: clientX });
+  Object.defineProperty(event, "clientY", { value: clientY });
+  if (manifestId !== null) {
+    Object.defineProperty(event, "dataTransfer", {
+      value: dropPayload(manifestId),
+    });
+  } else {
+    Object.defineProperty(event, "dataTransfer", { value: null });
+  }
+  zone.dispatchEvent(event);
+}
+
+test("dropping a palette node inserts and selects the same fields as click", async () => {
+  render(<App />);
+  await screen.findByRole("button", { name: /BIDS EEG/ });
+  const zone = screen.getByTestId("canvas-drop-zone");
+
+  fireEvent.dragOver(zone, { dataTransfer: dropPayload("input.bids_eeg") });
+  expect(zone.className).toMatch(/drag-over/);
+  dispatchDrop(zone as HTMLElement, 300, 250, "input.bids_eeg");
+
+  await screen.findByLabelText("Dataset root");
+  const draft = readDraftWorkflow();
+  expect(draft.nodes).toHaveLength(1);
+  expect(draft.nodes[0].type).toBe("input.bids_eeg");
+  expect(draft.nodes[0].label).toBe("BIDS EEG");
+  expect(typeof draft.nodes[0].position.x).toBe("number");
+  expect(typeof draft.nodes[0].position.y).toBe("number");
+});
+
+test("invalid, unknown, and missing drop payloads change nothing", async () => {
+  render(<App />);
+  await screen.findByRole("button", { name: /BIDS EEG/ });
+  const zone = screen.getByTestId("canvas-drop-zone") as HTMLElement;
+
+  dispatchDrop(zone, 300, 250, "../evil");
+  dispatchDrop(zone, 300, 250, "unknown.node");
+  dispatchDrop(zone, 300, 250, null);
+  await waitFor(() =>
+    expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument(),
+  );
+  expect(readDraftWorkflow().nodes).toHaveLength(0);
+});

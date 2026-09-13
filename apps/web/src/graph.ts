@@ -115,6 +115,98 @@ export function updateParameter(
   };
 }
 
+export interface CanvasPosition {
+  x: number;
+  y: number;
+}
+
+export function positionsEqual(a: CanvasPosition, b: CanvasPosition): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+export function defaultInsertionPosition(workflow: Workflow): CanvasPosition {
+  return {
+    x: 90 + ((workflow.nodes.length * 210) % 840),
+    y: 90 + (Math.floor(workflow.nodes.length / 4) % 3) * 180,
+  };
+}
+
+export function insertNodeAt(
+  workflow: Workflow,
+  manifest: NodeManifest,
+  id: string,
+  position: CanvasPosition,
+): Workflow {
+  return {
+    ...workflow,
+    nodes: [...workflow.nodes, instantiateNode(manifest, id, position)],
+  };
+}
+
+export function applyPositionChangesToNodes<
+  NodeT extends { id: string; position: CanvasPosition },
+>(
+  nodes: NodeT[],
+  changes: Array<{ id: string; position: CanvasPosition }>,
+): NodeT[] {
+  if (!changes.length) return nodes;
+  const nextById = new Map(
+    changes.map((change) => [change.id, change.position]),
+  );
+  let touched = false;
+  const next = nodes.map((node) => {
+    const position = nextById.get(node.id);
+    if (!position || positionsEqual(node.position, position)) return node;
+    touched = true;
+    return { ...node, position: { ...position } };
+  });
+  return touched ? next : nodes;
+}
+
+export function commitDragPositions(
+  workflow: Workflow,
+  finalPositions: Record<string, CanvasPosition>,
+): { workflow: Workflow; changed: boolean } {
+  let changed = false;
+  const nodes = workflow.nodes.map((node) => {
+    const final = finalPositions[node.id];
+    if (!final || positionsEqual(node.position, final)) return node;
+    changed = true;
+    return { ...node, position: { ...final } };
+  });
+  if (!changed) return { workflow, changed: false };
+  return { workflow: { ...workflow, nodes }, changed: true };
+}
+
+export type DragCommitDecision =
+  { readonly action: "discard" | "ignore" } | { readonly action: "commit" };
+
+export function decideDragCommit(
+  base: Workflow | null,
+  latest: Workflow,
+  finalPositions: Record<string, CanvasPosition>,
+): DragCommitDecision {
+  if (base !== null && base !== latest) return { action: "discard" };
+  return commitDragPositions(latest, finalPositions).changed
+    ? { action: "commit" }
+    : { action: "ignore" };
+}
+
+export const PALETTE_DRAG_MIME = "application/x-brainlearn-node";
+
+export function encodePaletteDrag(manifestId: string): string {
+  return manifestId;
+}
+
+export function decodePalettePayload(
+  raw: string | null | undefined,
+): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!/^[A-Za-z0-9_.-]+$/.test(trimmed)) return null;
+  return trimmed;
+}
 export function maxIdSuffix(workflow: Workflow): number {
   let max = 0;
   const collect = (id: string) => {
