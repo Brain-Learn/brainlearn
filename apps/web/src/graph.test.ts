@@ -8,13 +8,19 @@ import {
   decodePalettePayload,
   decideDragCommit,
   defaultInsertionPosition,
+  defaultPresentation,
   emptyWorkflow,
+  hasPresentationOverrides,
   insertNodeAt,
   instantiateNode,
+  isPresentationAccent,
   maxIdSuffix,
   positionsEqual,
   removeEdges,
   removeNodes,
+  resetPresentation,
+  resolvePresentation,
+  updatePresentation,
 } from "./graph";
 import type { NodeManifest } from "./types";
 
@@ -203,4 +209,111 @@ test("palette payload decoding rejects invalid and missing payloads", () => {
   expect(decodePalettePayload("../evil")).toBeNull();
   expect(decodePalettePayload("has space")).toBeNull();
   expect(decodePalettePayload('{"id":"x"}')).toBeNull();
+});
+
+test("new nodes omit presentation and resolve to manifest defaults", () => {
+  const node = instantiateNode(manifest, "n1", { x: 0, y: 0 });
+  expect(node.presentation).toBeUndefined();
+  expect(resolvePresentation(node)).toEqual(defaultPresentation());
+  expect(hasPresentationOverrides(node)).toBe(false);
+});
+
+test("presentation resolution falls back to defaults for missing or invalid values", () => {
+  expect(resolvePresentation({})).toEqual({
+    title: null,
+    accent: "teal",
+    compact: false,
+    notes: "",
+  });
+  expect(
+    resolvePresentation({
+      presentation: {
+        title: "  ",
+        accent: "neon",
+        compact: 1,
+        notes: 7,
+      } as unknown as {
+        title: string | null;
+        accent: "teal";
+        compact: boolean;
+        notes: string;
+      },
+    }),
+  ).toEqual({ title: null, accent: "teal", compact: false, notes: "" });
+  expect(isPresentationAccent("violet")).toBe(true);
+  expect(isPresentationAccent("neon")).toBe(false);
+  expect(isPresentationAccent(null)).toBe(false);
+});
+
+test("presentation updates normalize bounds and keep scientific fields untouched", () => {
+  const base = {
+    ...emptyWorkflow(),
+    nodes: [instantiateNode(manifest, "n1", { x: 0, y: 0 })],
+  };
+  const renamed = updatePresentation(base, "n1", { title: "  My step  " });
+  expect(renamed.nodes[0].presentation).toMatchObject({ title: "My step" });
+  expect(renamed.nodes[0].type).toBe("input.test");
+  expect(renamed.nodes[0].ports).toBe(base.nodes[0].ports);
+  expect(renamed.nodes[0].parameters).toBe(base.nodes[0].parameters);
+
+  const long = updatePresentation(base, "n1", {
+    title: "t".repeat(200),
+    accent: "rose",
+    compact: true,
+    notes: "n".repeat(5000),
+  });
+  expect(long.nodes[0].presentation?.title).toHaveLength(80);
+  expect(long.nodes[0].presentation?.notes).toHaveLength(2000);
+  expect(hasPresentationOverrides(long.nodes[0])).toBe(true);
+
+  const cleared = updatePresentation(long, "n1", {
+    title: null,
+    accent: "teal",
+    compact: false,
+    notes: "",
+  });
+  expect(cleared.nodes[0].presentation).toBeUndefined();
+
+  const withTitle = updatePresentation(base, "n1", { title: "Keep me" });
+  const invalidAccent = updatePresentation(withTitle, "n1", {
+    accent: "neon" as "teal",
+  });
+  expect(invalidAccent.nodes[0].presentation).toMatchObject({
+    title: "Keep me",
+    accent: "teal",
+  });
+});
+
+test("presentation reset removes overrides and leaves other nodes alone", () => {
+  const first = instantiateNode(manifest, "n1", { x: 0, y: 0 });
+  const second = instantiateNode(manifest, "n2", { x: 10, y: 10 });
+  const base = { ...emptyWorkflow(), nodes: [first, second] };
+  const customized = updatePresentation(base, "n1", { title: "Custom" });
+  expect(customized.nodes[0].presentation?.title).toBe("Custom");
+
+  const reset = resetPresentation(customized, "n1");
+  expect(reset.nodes[0].presentation).toBeUndefined();
+  expect(reset.nodes[1]).toBe(second);
+
+  const untouched = resetPresentation(reset, "n1");
+  expect(untouched).toEqual(reset);
+});
+
+test("nullable wire presentation resolves to defaults and stays editable", () => {
+  const node = {
+    ...instantiateNode(manifest, "n1", { x: 0, y: 0 }),
+    presentation: null,
+  };
+  expect(resolvePresentation(node)).toEqual(defaultPresentation());
+  expect(hasPresentationOverrides(node)).toBe(false);
+
+  const edited = updatePresentation(
+    { ...emptyWorkflow(), nodes: [node] },
+    "n1",
+    { title: "From null" },
+  );
+  expect(edited.nodes[0].presentation?.title).toBe("From null");
+
+  const reset = resetPresentation({ ...emptyWorkflow(), nodes: [node] }, "n1");
+  expect(reset.nodes[0].presentation).toBeUndefined();
 });

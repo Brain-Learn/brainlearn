@@ -111,7 +111,7 @@ Goal: execute deterministic demonstration nodes without claiming scientific proc
 - [ ] Add non-scientific fixture nodes for copy, delay, failure, branching, and review pause.
 - [x] Support smooth existing-node dragging and palette-to-canvas drag-and-drop with click and keyboard fallbacks.
 - [ ] Add reduced-motion-aware transitions for discrete canvas, inspector, viewport, and run-state changes.
-- [ ] Persist safe per-instance node presentation customization separately from scientific parameters and manifest identity.
+- [x] Persist safe per-instance node presentation customization separately from scientific parameters and manifest identity.
 - [ ] Display run status, logs, artifacts, cached status, and actionable failures in the run drawer.
 
 Completion gate: a branched fixture workflow can be assembled by click, keyboard, or drag-and-drop; node movement is continuous and persists as one undoable action; presentation customization survives save/open without changing computation identity; the workflow runs, reuses its cache on the second run, invalidates only affected descendants after a parameter change, survives service restart, and cancels without producing successful partial artifacts.
@@ -319,52 +319,45 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-13 | Step 4E.1 repairs (2 findings) | Verified; monitoring pending | Each drag now captures the canonical workflow object at drag start (`dragBase`) alongside a latest-props ref; `decideDragCommit` discards gestures whose base no longer matches the latest workflow (different and overlapping node IDs), ignores no-movement stops, and commits real moves once, with the parent rechecking base identity before creating an undo entry. Every non-commit stop explicitly resynchronizes transient nodes to the latest workflow/selection/validation, closing the suppressed-effect gap. Drop conversion failure now rejects the drop with no insertion; the fabricated identity-viewport fallback and its pure helper were removed, keeping `screenToFlowPosition` as the single authoritative path. New `apps/web/src/canvas.test.tsx` (6 tests with stubbed ReactFlow: mid-drag replacement with different IDs, overlapping IDs, no-movement resync of suppressed selection, ordinary single-commit drag, converter-failure no-insertion, transformed-viewport converter-path drop at exact coordinates) plus `decideDragCommit` unit tests. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 38 files clean; `mypy` 18 files clean; `uv run pytest -q` 273 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 39 passed in 6 files; production build passed (1,837 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. All Step 4E and Step 4 boxes left unchecked for the monitor. | Uncommitted; awaiting monitored review |
 | 2026-09-13 | Step 4E.1 final monitored gate | Complete | Reviewer inspected both implementation layers and reproduced the full gate: Ruff and format passed (38 files), strict mypy passed (18 files), pytest 273 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 39 passed in 6 files, production build passed (1,837 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Six focused component regressions prove stale-gesture rejection for different/overlapping IDs, post-drag selection resynchronization, one ordinary commit, failed-converter no-op, and exact transformed coordinates. Live browser verification confirmed continuous existing-node drag, one-step undo, zoom, and palette drop at the pointer-selected transformed position with selection. The direct-manipulation checkbox is approved; Step 4 remains open for 4E.2–4E.5. | Monitored review complete |
 
+| 2026-09-13 | Step 4E.2 monitoring review | Changes requested | Python behavior tests passed (291 with 2 upstream warnings), strict mypy passed (18 files), production build passed (1,839 modules), audit found 0 vulnerabilities, and `git diff --check` passed. The claimed full gate failed: Ruff import ordering (1 error), Ruff formatting (2 files), ESLint (1 unused import), Prettier (6 files), and Vitest (51 passed, 1 failed) on inconsistent default-presentation Undo semantics. Code review also found selected/invalid rules overwriting custom accents; inspector animation only running at initial mount; no removal transition; Python accepting whitespace-only/untrimmed titles while the UI normalizes them; a nullable backend presentation not represented in the TypeScript wire type; and missing documentation/evidence. Repairs are specified in `REVIEW.md`. | Uncommitted; monitoring review failed |
+| 2026-09-13 | Step 4E.2 repairs (review findings) | Verified; monitoring pending | Absent `presentation` is now the single canonical default: `instantiateNode` omits it, Reset/Undo restore omission, and no-op blurs add no history. Custom accents survive all card states via a `border-left-color` reapply rule after the selected/invalid rules, covered by a four-state rendering test. Inspector remounts on selection change only (keyed `Inspector`; validation updates keep DOM identity and focus), and node removal commits immediately while a 160ms non-interactive leaving overlay fades the card, bypassed entirely under reduced motion; both covered by behavioral timer/media-query tests. Python trims titles and rejects blank ones (model + API regressions); the TypeScript wire type accepts `presentation: null` with null-to-defaults resolution. New `docs/node-presentation.md` documents fields, bounds, reset, persistence, identity/cache exclusion, and reduced motion; `docs/execution-contracts.md` records the exclusion. Also fixed an infinite render loop from an unstable default `leavingNodes` prop found via a worker crash. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 40 files clean; `mypy` 18 files clean; `uv run pytest -q` 294 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 58 passed in 7 files; production build passed (1,839 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Live API probe against `uvicorn` on loopback: padded title trimmed on echo, absent/explicit-null accepted, blank title and unknown accent rejected (422). Step 4E.2 bullets and Step 4 left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-13 | Step 4E.2 final monitored gate | Complete | Reviewer reproduced the complete gate: Ruff and format passed (40 files), strict mypy passed (18 files), pytest 294 passed with 2 upstream deprecation warnings, ESLint/Prettier passed, Vitest 58 passed in 7 files, production build passed (1,839 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Live browser checks verified trimmed custom title, violet accent in selected-invalid state with the expected computed border color, compact rendering, plain-text notes, Reset/Undo, recovered draft, and project create/open persistence; the browser console was clean. Presentation is approved and checked. The motion checkbox remains open because run-state transitions depend on the Step 4E.4 run drawer; current canvas, inspector, removal, validation, and viewport motion plus reduced-motion behavior are approved foundations. | Monitored review complete |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`,
-`docs/ui-dataset-roadmap.md`, and this plan before acting. Steps 4A–4D are
-approved in commits/history through the final monitored gate. Preserve every
-completion-log row.
+`docs/ui-dataset-roadmap.md`, and this plan before acting. Steps 4A–4D and
+Step 4E.1 are approved in commits/history. Step 4E.2 is approved by the final
+monitored gate above and should be committed before this assignment begins.
+Preserve every completion-log row.
 
-### Step 4E.2 — reduced motion and safe presentation customization
+### Step 4E.3 — demonstration manifests and branched fixture
 
-Implement only motion and per-instance presentation. Do not add demonstration
-manifests, run controls, scientific processing, or dataset access in this unit.
+Implement only this fixture/registry slice. Do not begin the run drawer,
+dataset access, or scientific processing.
 
-1. Define a strict, version-compatible nested presentation contract for a node
-   instance. Support a bounded custom title, an allowlisted accent, compact
-   display, and bounded plain-text notes. Existing version-1.0 workflows without
-   presentation data must still load. Unknown fields and invalid values must be
-   rejected with useful errors.
-2. Keep presentation separate from manifest data and scientific parameters.
-   Do not overwrite the manifest label, description, ports, parameters, or node
-   version. Update the TypeScript and Pydantic models, migration/round-trip
-   coverage, fixtures as needed, and user-facing inspector controls.
-3. Prove presentation-only changes leave `workflow_identity`, every node
-   `content_identity`, and cache reuse unchanged. A scientific parameter change
-   must still invalidate the affected computation. Persist presentation through
-   draft recovery and project save/open, with undo/redo as one edit per control
-   action.
-4. Render the custom title/accent/compactness on the canvas and notes in the
-   inspector. Treat notes as text; do not render user HTML. Provide a clear reset
-   to manifest defaults and keep color meaning independent of run/error status.
-5. Add restrained CSS transitions for discrete node insertion/removal,
-   selection, inspector content, validation state, viewport fit, and later-ready
-   run-state surfaces. Do not add transform transitions to nodes while the user
-   drags them.
-6. Respect `prefers-reduced-motion` through CSS and a small testable UI policy.
-   With reduced motion enabled, nonessential animation and smooth scrolling must
-   be disabled while state remains immediately understandable.
-7. Add focused Python and Vitest coverage for schema compatibility and rejection,
-   presentation persistence, reset, undo/redo, identity/cache invariance,
-   parameter sensitivity, visible customization, ordinary motion classes, and
-   reduced-motion behavior. Avoid snapshot-only evidence.
-8. Run the full repository gate and a live browser probe that customizes a node,
-   saves/reopens or reloads its draft, verifies identity/cache invariance, and
-   checks both motion preferences. Append exact evidence, leave the top-level
-   Step 4 heading unchecked, and request monitoring review before committing.
+1. Expose manifest-backed, explicitly non-scientific `demo.copy`, `demo.delay`,
+   `demo.fail`, `demo.review`, and `demo.relay` nodes through the registry used
+   by the UI. Reuse the authoritative worker manifest contract rather than
+   creating a second incompatible description.
+2. Add a versioned branched demonstration workflow with a successful trunk,
+   an independent branch, a review pause, and parameters suitable for later
+   cache/invalidation and cancellation probes. Keep graph ports scientifically
+   typed and the topology acyclic.
+3. Make the fixture loadable and editable through the existing API/UI paths.
+   Verify click, keyboard, and palette drag insertion for every newly exposed
+   type, plus validation of the complete fixture.
+4. Preserve license/citation metadata and label every demo node and fixture as
+   non-scientific example behavior. Do not imply numerical or neuroscience
+   validity.
+5. Add focused registry/schema/round-trip/UI tests and documentation explaining
+   the fixture's topology, intended failure/review/cancel/cache exercises, and
+   limitations.
+6. Run the complete Python/frontend gate and a live browser probe. Append exact
+   evidence, keep the fixture bullet and Step 4 unchecked, and request monitored
+   review before committing.
 
-After monitored approval, continue separately with 4E.3 demonstration manifests
-and the branched fixture, 4E.4 run API/SSE/review/cancel/artifact UI, and 4E.5 the
-complete Step 4 automated and manual gate. Step 5A then begins the curated
-OpenNeuro-first dataset library and secure local download lifecycle.
+After approval, continue separately with Step 4E.4 run API/SSE/review/cancel/
+artifact UI. Step 4E.5 then performs the complete Step 4 automated and manual
+gate, including the remaining run-state motion requirement. Step 5A begins only
+after Step 4 is approved.

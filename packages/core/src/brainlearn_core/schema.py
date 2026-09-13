@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ScientificType(StrEnum):
@@ -108,6 +108,40 @@ class CanvasPosition(BaseModel):
     y: float
 
 
+PRESENTATION_ACCENTS: tuple[str, ...] = ("teal", "blue", "violet", "amber", "rose", "slate")
+PRESENTATION_TITLE_MAX_LENGTH = 80
+PRESENTATION_NOTES_MAX_LENGTH = 2000
+
+
+class NodePresentation(BaseModel):
+    """Display-only per-instance customization for one node.
+
+    Presentation never affects computation: it is excluded from workflow
+    and node content identities by construction, so title, accent,
+    compactness, and notes changes never invalidate cached work. Absent
+    presentation (the form of every pre-4E.2 workflow) means manifest
+    defaults: the manifest label, the default accent, expanded display,
+    and no notes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = Field(default=None, min_length=1, max_length=PRESENTATION_TITLE_MAX_LENGTH)
+    accent: Literal["teal", "blue", "violet", "amber", "rose", "slate"] = "teal"
+    compact: bool = False
+    notes: str = Field(default="", max_length=PRESENTATION_NOTES_MAX_LENGTH)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _normalize_title(cls, value: Any) -> Any:
+        if value is None or not isinstance(value, str):
+            return value
+        trimmed = value.strip()
+        if trimmed == "":
+            raise ValueError("Node presentation title must contain a non-whitespace character.")
+        return trimmed
+
+
 class NodeInstance(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -120,6 +154,7 @@ class NodeInstance(BaseModel):
     ports: list[PortDefinition] = Field(default_factory=list)
     parameters: list[ParameterDefinition] = Field(default_factory=list)
     pauses_for_review: bool = False
+    presentation: NodePresentation | None = None
 
 
 class EdgeEndpoint(BaseModel):

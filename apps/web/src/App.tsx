@@ -18,12 +18,18 @@ import {
   MonitorCog,
   Play,
   Redo2,
+  RotateCcw,
   Search,
   Trash2,
   Undo2,
 } from "lucide-react";
 
 import { fetchNodeRegistry, validateWorkflow } from "./api";
+import {
+  NODE_REMOVAL_TRANSITION_MS,
+  resolveFitViewDuration,
+  usePrefersReducedMotion,
+} from "./motion";
 import {
   clearDraft,
   loadDraft,
@@ -46,35 +52,49 @@ import {
   commitDragPositions,
   decodePalettePayload,
   decideDragCommit,
+  DEFAULT_PRESENTATION_ACCENT,
   defaultInsertionPosition,
   emptyWorkflow,
   encodePaletteDrag,
+  hasPresentationOverrides,
   insertNodeAt,
+  isPresentationAccent,
   maxIdSuffix,
   PALETTE_DRAG_MIME,
   removeEdges,
   removeNodes,
+  resetPresentation,
   updateParameter,
+  updatePresentation,
   type CanvasPosition,
 } from "./graph";
 import type {
   NodeManifest,
+  NodePresentation,
   ParameterSchema,
   ValidationIssue,
   ValidationResult,
   Workflow,
   WorkflowNode,
 } from "./types";
+import {
+  PRESENTATION_ACCENTS,
+  PRESENTATION_NOTES_MAX_LENGTH,
+  PRESENTATION_TITLE_MAX_LENGTH,
+} from "./types";
 import { WorkflowCard, type WorkflowCardNode } from "./WorkflowCard";
 
 const nodeTypes = { workflow: WorkflowCard };
+
+const NO_LEAVING_NODES: WorkflowNode[] = [];
 
 function toCanvasNodes(
   workflow: Workflow,
   selectedId: string | undefined,
   validation: ValidationResult,
+  leaving: WorkflowNode[] = [],
 ): WorkflowCardNode[] {
-  return workflow.nodes.map((node) => ({
+  const nodes: WorkflowCardNode[] = workflow.nodes.map((node) => ({
     id: node.id,
     type: "workflow",
     position: { ...node.position },
@@ -86,6 +106,18 @@ function toCanvasNodes(
         .map((issue) => issue.message),
     },
   }));
+  const liveIds = new Set(workflow.nodes.map((node) => node.id));
+  for (const node of leaving) {
+    if (liveIds.has(node.id)) continue;
+    nodes.push({
+      id: node.id,
+      type: "workflow",
+      position: { ...node.position },
+      className: "leaving",
+      data: { ...node, selected: false, issues: [] },
+    });
+  }
+  return nodes;
 }
 
 function toCanvasEdges(
@@ -119,6 +151,7 @@ export function WorkflowCanvas({
   onConnect,
   onEdgesDelete,
   onNodesDelete,
+  leavingNodes = NO_LEAVING_NODES,
 }: {
   workflow: Workflow;
   selectedId: string | undefined;
@@ -133,21 +166,25 @@ export function WorkflowCanvas({
   onConnect: (connection: Connection) => void;
   onEdgesDelete: (deleted: Edge[]) => void;
   onNodesDelete: (deleted: Node[]) => void;
+  leavingNodes?: WorkflowNode[];
 }) {
   const { screenToFlowPosition } = useReactFlow();
+  const reducedMotion = usePrefersReducedMotion();
   const [canvasNodes, setCanvasNodes] = useState<WorkflowCardNode[]>(() =>
-    toCanvasNodes(workflow, selectedId, validation),
+    toCanvasNodes(workflow, selectedId, validation, leavingNodes),
   );
   const [isDragOver, setIsDragOver] = useState(false);
   const dragActive = useRef(false);
   const dragBase = useRef<Workflow | null>(null);
-  const latest = useRef({ workflow, selectedId, validation });
-  latest.current = { workflow, selectedId, validation };
+  const latest = useRef({ workflow, selectedId, validation, leavingNodes });
+  latest.current = { workflow, selectedId, validation, leavingNodes };
 
   useEffect(() => {
     if (dragActive.current) return;
-    setCanvasNodes(toCanvasNodes(workflow, selectedId, validation));
-  }, [workflow, selectedId, validation]);
+    setCanvasNodes(
+      toCanvasNodes(workflow, selectedId, validation, leavingNodes),
+    );
+  }, [workflow, selectedId, validation, leavingNodes]);
 
   const canvasEdges = useMemo(
     () => toCanvasEdges(workflow, validation),
@@ -191,6 +228,7 @@ export function WorkflowCanvas({
             snapshot.workflow,
             snapshot.selectedId,
             snapshot.validation,
+            snapshot.leavingNodes,
           ),
         );
         return;
@@ -260,6 +298,7 @@ export function WorkflowCanvas({
         deleteKeyCode={["Backspace", "Delete"]}
         edges={canvasEdges}
         fitView
+        fitViewOptions={{ duration: resolveFitViewDuration(reducedMotion) }}
         nodes={canvasNodes}
         nodeTypes={nodeTypes}
         onConnect={onConnect}
@@ -291,11 +330,130 @@ function parameterValue(
   return raw;
 }
 
+function PresentationEditor({
+  node,
+  onPatch,
+  onReset,
+}: {
+  node: WorkflowNode;
+  onPatch: (patch: Partial<NodePresentation>, message: string) => void;
+  onReset: () => void;
+}) {
+  const committedTitle = node.presentation?.title ?? "";
+  const committedNotes = node.presentation?.notes ?? "";
+  const [titleDraft, setTitleDraft] = useState(committedTitle);
+  const [notesDraft, setNotesDraft] = useState(committedNotes);
+  useEffect(() => {
+    setTitleDraft(committedTitle);
+  }, [committedTitle]);
+  useEffect(() => {
+    setNotesDraft(committedNotes);
+  }, [committedNotes]);
+  const accent = node.presentation?.accent ?? DEFAULT_PRESENTATION_ACCENT;
+  const compact = node.presentation?.compact ?? false;
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim();
+    const next = trimmed === "" ? null : trimmed;
+    if (next !== (node.presentation?.title ?? null)) {
+      onPatch(
+        { title: next },
+        next === null ? "Cleared custom title" : "Changed custom title",
+      );
+    }
+  };
+  const commitNotes = () => {
+    if (notesDraft !== committedNotes) {
+      onPatch({ notes: notesDraft }, "Changed display notes");
+    }
+  };
+
+  return (
+    <div>
+      <label className="parameter">
+        <span>Custom title</span>
+        <input
+          aria-label="Custom title"
+          maxLength={PRESENTATION_TITLE_MAX_LENGTH}
+          onBlur={commitTitle}
+          onChange={(event) => setTitleDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter")
+              (event.target as HTMLInputElement).blur();
+          }}
+          placeholder={node.label}
+          type="text"
+          value={titleDraft}
+        />
+      </label>
+      <label className="parameter">
+        <span>Accent color</span>
+        <select
+          aria-label="Accent color"
+          onChange={(event) => {
+            const next = event.target.value;
+            onPatch(
+              {
+                accent: isPresentationAccent(next)
+                  ? next
+                  : DEFAULT_PRESENTATION_ACCENT,
+              },
+              "Changed accent color",
+            );
+          }}
+          value={accent}
+        >
+          {PRESENTATION_ACCENTS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="parameter checkbox">
+        <input
+          checked={compact}
+          onChange={(event) =>
+            onPatch(
+              { compact: event.target.checked },
+              event.target.checked
+                ? "Enabled compact display"
+                : "Disabled compact display",
+            )
+          }
+          type="checkbox"
+        />
+        <span>Compact display</span>
+      </label>
+      <label className="parameter">
+        <span>Notes (plain text)</span>
+        <textarea
+          aria-label="Display notes"
+          maxLength={PRESENTATION_NOTES_MAX_LENGTH}
+          onBlur={commitNotes}
+          onChange={(event) => setNotesDraft(event.target.value)}
+          rows={3}
+          value={notesDraft}
+        />
+      </label>
+      <button
+        className="reset-button"
+        disabled={!hasPresentationOverrides(node)}
+        onClick={onReset}
+      >
+        <RotateCcw size={14} /> Reset to manifest defaults
+      </button>
+    </div>
+  );
+}
+
 function Inspector({
   node,
   manifest,
   issues,
   onParameterChange,
+  onPresentationPatch,
+  onPresentationReset,
   onRemove,
 }: {
   node?: WorkflowNode;
@@ -306,6 +464,11 @@ function Inspector({
     raw: string,
     checked: boolean,
   ) => void;
+  onPresentationPatch: (
+    patch: Partial<NodePresentation>,
+    message: string,
+  ) => void;
+  onPresentationReset: () => void;
   onRemove: () => void;
 }) {
   if (!node || !manifest) {
@@ -404,6 +567,16 @@ function Inspector({
           This example node has no configurable parameters.
         </p>
       )}
+      <h3>Presentation</h3>
+      <p className="presentation-note">
+        Display only — never affects computation identity or cache reuse.
+      </p>
+      <PresentationEditor
+        key={node.id}
+        node={node}
+        onPatch={onPresentationPatch}
+        onReset={onPresentationReset}
+      />
       <h3>Scientific ports</h3>
       {manifest.ports.map((port) => (
         <div className="port-row" key={port.id}>
@@ -443,6 +616,9 @@ function App() {
   const [recent, setRecent] = useState<RecentEntry[]>([]);
   const [projectMessage, setProjectMessage] = useState("");
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [leavingNodes, setLeavingNodes] = useState<WorkflowNode[]>([]);
+  const reducedMotion = usePrefersReducedMotion();
+  const leavingTimer = useRef<number | null>(null);
   const nextId = useRef(1);
   const workflowRev = useRef(0);
   const validationSeq = useRef(0);
@@ -515,6 +691,25 @@ function App() {
   useEffect(() => {
     saveSessionToken(sessionToken);
   }, [sessionToken]);
+
+  useEffect(
+    () => () => {
+      if (leavingTimer.current !== null) {
+        window.clearTimeout(leavingTimer.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    setLeavingNodes((prev) => {
+      if (prev.length === 0) return prev;
+      const next = prev.filter(
+        (node) => !workflow.nodes.some((item) => item.id === node.id),
+      );
+      return next.length === prev.length ? prev : next;
+    });
+  }, [workflow]);
 
   const commit = useCallback(
     (next: Workflow, message: string) => {
@@ -631,23 +826,38 @@ function App() {
     [commit, workflow],
   );
 
+  const removeNodesWithTransition = useCallback(
+    (ids: Set<string>, message: string) => {
+      if (ids.size === 0) return;
+      const gone = workflow.nodes.filter((node) => ids.has(node.id));
+      commit(removeNodes(workflow, ids), message);
+      if (gone.length === 0 || reducedMotion) return;
+      setLeavingNodes(gone);
+      if (leavingTimer.current !== null) {
+        window.clearTimeout(leavingTimer.current);
+      }
+      leavingTimer.current = window.setTimeout(() => {
+        setLeavingNodes([]);
+        leavingTimer.current = null;
+      }, NODE_REMOVAL_TRANSITION_MS);
+    },
+    [commit, workflow, reducedMotion],
+  );
+
   const handleNodesDelete = useCallback(
     (deleted: Node[]) => {
       const ids = new Set(deleted.map((node) => node.id));
-      commit(removeNodes(workflow, ids), "Removed node");
+      removeNodesWithTransition(ids, "Removed node");
       setSelectedId((current) =>
         current && ids.has(current) ? undefined : current,
       );
     },
-    [commit, workflow],
+    [removeNodesWithTransition],
   );
 
   const deleteSelected = () => {
     if (!selectedId) return;
-    commit(
-      removeNodes(workflow, new Set([selectedId])),
-      "Removed selected node",
-    );
+    removeNodesWithTransition(new Set([selectedId]), "Removed selected node");
     setSelectedId(undefined);
   };
 
@@ -1010,6 +1220,7 @@ function App() {
               selectedId={selectedId}
               validation={validation}
               workflow={workflow}
+              leavingNodes={leavingNodes}
             />
           </ReactFlowProvider>
         )}
@@ -1031,6 +1242,7 @@ function App() {
           <MonitorCog size={16} />
         </div>
         <Inspector
+          key={selected?.id ?? "none"}
           issues={selectedIssues}
           manifest={selectedManifest}
           node={selected}
@@ -1044,6 +1256,17 @@ function App() {
                 parameterValue(schema, raw, checked),
               ),
               `Changed ${schema.label}`,
+            );
+          }}
+          onPresentationPatch={(patch, message) => {
+            if (!selected) return;
+            commit(updatePresentation(workflow, selected.id, patch), message);
+          }}
+          onPresentationReset={() => {
+            if (!selected) return;
+            commit(
+              resetPresentation(workflow, selected.id),
+              "Reset presentation to manifest defaults",
             );
           }}
           onRemove={deleteSelected}

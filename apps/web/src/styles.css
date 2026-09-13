@@ -208,14 +208,51 @@ input {
 .workflow-card {
   width: 174px;
   min-height: 86px;
-  padding: 12px 13px;
+  padding: 12px 13px 12px 10px;
   background: #111e2e;
   border: 1px solid #34455b;
+  border-left: 3px solid var(--node-accent, #4bd5bb);
   border-radius: 8px;
   box-shadow: 0 7px 20px #02060c99;
   transition:
     border-color 0.15s,
-    box-shadow 0.15s;
+    box-shadow 0.15s,
+    opacity 0.15s;
+  animation: node-enter 0.15s ease-out;
+}
+.workflow-card.accent-teal {
+  --node-accent: #4bd5bb;
+}
+.workflow-card.accent-blue {
+  --node-accent: #6aa9f2;
+}
+.workflow-card.accent-violet {
+  --node-accent: #b08bf0;
+}
+.workflow-card.accent-amber {
+  --node-accent: #e4a866;
+}
+.workflow-card.accent-rose {
+  --node-accent: #ef8fa3;
+}
+.workflow-card.accent-slate {
+  --node-accent: #8fa1b5;
+}
+.workflow-card.compact {
+  width: 150px;
+  min-height: 0;
+  padding: 8px 10px 8px 8px;
+}
+.workflow-card.compact .node-title {
+  font-size: 11px;
+}
+@keyframes node-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .workflow-card.selected {
   border-color: #4bd5bb;
@@ -225,6 +262,20 @@ input {
 }
 .workflow-card.invalid {
   border-color: #df737c;
+}
+.workflow-card.selected,
+.workflow-card.invalid {
+  border-left-color: var(--node-accent, #4bd5bb);
+}
+.react-flow__node.leaving {
+  pointer-events: none;
+}
+.react-flow__node.leaving .workflow-card {
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
 }
 .react-flow__edge.invalid-edge .react-flow__edge-path {
   stroke: #df737c;
@@ -284,6 +335,16 @@ input {
   padding: 18px;
   overflow: auto;
   height: calc(100% - 48px);
+  scroll-behavior: smooth;
+  animation: panel-enter 0.15s ease-out;
+}
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .eyebrow {
   color: #4ed3b9;
@@ -343,6 +404,16 @@ input {
   background: #101d2c;
   font-size: 11px;
 }
+.parameter textarea {
+  border: 1px solid #304057;
+  border-radius: 6px;
+  padding: 8px;
+  color: #d9e5f3;
+  background: #101d2c;
+  font-size: 11px;
+  font-family: inherit;
+  resize: vertical;
+}
 .parameter small {
   color: #65768b;
   line-height: 1.4;
@@ -365,6 +436,9 @@ input {
   background: #29191f;
   font-size: 10px;
   line-height: 1.4;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
 }
 .remove-button {
   width: 100%;
@@ -423,6 +497,9 @@ input {
   border-radius: 50%;
   background: #4dd1b8;
   box-shadow: 0 0 8px #4dd1b8;
+  transition:
+    background-color 0.15s,
+    box-shadow 0.15s;
 }
 .status-dot.invalid {
   background: #e36f79;
@@ -551,4 +628,37 @@ input {
   padding: 4px 8px;
   color: #efb66f;
   background: transparent;
+}
+.presentation-note {
+  color: #65768b;
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.reset-button {
+  width: 100%;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #304057;
+  border-radius: 7px;
+  padding: 8px;
+  color: #b9c7d8;
+  background: #111e2e;
+}
+.reset-button:disabled {
+  color: #536278;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

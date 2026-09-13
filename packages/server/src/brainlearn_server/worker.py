@@ -311,9 +311,10 @@ def service_environment() -> EnvironmentRecord:
 def workflow_identity(workflow: Workflow) -> str:
     """Identity over computation-relevant workflow content only.
 
-    Canvas positions, display labels, descriptions, and edge IDs are
-    excluded: renaming an edge or rearranging the graph never changes the
-    identity. Edges sort by their endpoints, so list insertion order is
+    Canvas positions, display labels, descriptions, per-instance
+    presentation (custom title, accent, compactness, notes), and edge IDs
+    are excluded: renaming an edge or rearranging the graph never changes
+    the identity. Edges sort by their endpoints, so list insertion order is
     inert while endpoint or topology changes alter the hash.
     """
 

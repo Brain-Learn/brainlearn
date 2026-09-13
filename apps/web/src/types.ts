@@ -55,6 +55,27 @@ export interface NodeManifest {
   }>;
 }
 
+export const PRESENTATION_ACCENTS = [
+  "teal",
+  "blue",
+  "violet",
+  "amber",
+  "rose",
+  "slate",
+] as const;
+
+export type PresentationAccent = (typeof PRESENTATION_ACCENTS)[number];
+
+export const PRESENTATION_TITLE_MAX_LENGTH = 80;
+export const PRESENTATION_NOTES_MAX_LENGTH = 2000;
+
+export interface NodePresentation {
+  title: string | null;
+  accent: PresentationAccent;
+  compact: boolean;
+  notes: string;
+}
+
 export interface WorkflowNode {
   id: string;
   type: string;
@@ -65,6 +86,7 @@ export interface WorkflowNode {
   ports: PortDefinition[];
   parameters: ParameterDefinition[];
   pauses_for_review: boolean;
+  presentation?: NodePresentation | null;
 }
 
 export interface WorkflowEdge {

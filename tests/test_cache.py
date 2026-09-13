@@ -219,6 +219,29 @@ def test_second_identical_run_reuses_cache(client: TestClient, tmp_path: Path) -
     assert body == (project / node_first["artifacts"][0]["path"]).read_bytes() == b"hello-cache"
 
 
+def test_presentation_only_change_still_reuses_cache(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(client, tmp_path)
+    first = _start(client, project, _copy_workflow("present-bytes"))
+    finished_first = _wait_for_state(client, project, first["run_id"], {"succeeded"})
+    node_first = _by_id(finished_first)["writer"]
+    assert node_first["state"] == "succeeded"
+
+    customized = _copy_workflow("present-bytes")
+    customized["nodes"][0]["presentation"] = {
+        "title": "Renamed step",
+        "accent": "rose",
+        "compact": True,
+        "notes": "Display only; computation unchanged.",
+    }
+    second = _start(client, project, customized)
+    finished_second = _wait_for_state(client, project, second["run_id"], {"succeeded"})
+    node_second = _by_id(finished_second)["writer"]
+    assert node_second["state"] == "cache_reused"
+    assert node_second["attempt"] == 0
+    assert node_second["content_identity"] == node_first["content_identity"]
+    assert len(_cache_entries(project)) == 1
+
+
 def test_reused_run_lists_cache_backed_artifacts(client: TestClient, tmp_path: Path) -> None:
     project = _make_project(client, tmp_path)
     first = _start(client, project, _copy_workflow("exact-bytes"))

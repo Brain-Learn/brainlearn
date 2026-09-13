@@ -1,9 +1,16 @@
 import type {
   NodeManifest,
+  NodePresentation,
   ParameterDefinition,
+  PresentationAccent,
   Workflow,
   WorkflowEdge,
   WorkflowNode,
+} from "./types";
+import {
+  PRESENTATION_ACCENTS,
+  PRESENTATION_NOTES_MAX_LENGTH,
+  PRESENTATION_TITLE_MAX_LENGTH,
 } from "./types";
 
 export function emptyWorkflow(): Workflow {
@@ -46,6 +53,124 @@ export function instantiateNode(
     ports: manifest.ports,
     parameters,
     pauses_for_review: manifest.review_behavior === "required",
+  };
+}
+
+export const DEFAULT_PRESENTATION_ACCENT: PresentationAccent = "teal";
+
+export function defaultPresentation(): NodePresentation {
+  return {
+    title: null,
+    accent: DEFAULT_PRESENTATION_ACCENT,
+    compact: false,
+    notes: "",
+  };
+}
+
+export function isPresentationAccent(
+  value: unknown,
+): value is PresentationAccent {
+  return (
+    typeof value === "string" &&
+    (PRESENTATION_ACCENTS as readonly string[]).includes(value)
+  );
+}
+
+export interface ResolvedPresentation {
+  title: string | null;
+  accent: PresentationAccent;
+  compact: boolean;
+  notes: string;
+}
+
+export function resolvePresentation(node: {
+  presentation?: NodePresentation | null;
+}): ResolvedPresentation {
+  const raw = node.presentation;
+  const title =
+    typeof raw?.title === "string" && raw.title.trim() !== ""
+      ? raw.title
+      : null;
+  return {
+    title,
+    accent: isPresentationAccent(raw?.accent)
+      ? raw.accent
+      : DEFAULT_PRESENTATION_ACCENT,
+    compact: raw?.compact === true,
+    notes: typeof raw?.notes === "string" ? raw.notes : "",
+  };
+}
+
+export function isDefaultPresentation(presentation: NodePresentation): boolean {
+  return (
+    presentation.title === null &&
+    presentation.accent === DEFAULT_PRESENTATION_ACCENT &&
+    presentation.compact === false &&
+    presentation.notes === ""
+  );
+}
+
+export function hasPresentationOverrides(node: {
+  presentation?: NodePresentation | null;
+}): boolean {
+  return node.presentation != null && !isDefaultPresentation(node.presentation);
+}
+
+function normalizePresentation(
+  patch: Partial<NodePresentation>,
+): NodePresentation {
+  const base = defaultPresentation();
+  const title =
+    typeof patch.title === "string"
+      ? patch.title.trim().slice(0, PRESENTATION_TITLE_MAX_LENGTH) || null
+      : base.title;
+  return {
+    title,
+    accent: isPresentationAccent(patch.accent) ? patch.accent : base.accent,
+    compact: patch.compact === true,
+    notes:
+      typeof patch.notes === "string"
+        ? patch.notes.slice(0, PRESENTATION_NOTES_MAX_LENGTH)
+        : base.notes,
+  };
+}
+
+export function updatePresentation(
+  workflow: Workflow,
+  nodeId: string,
+  patch: Partial<NodePresentation>,
+): Workflow {
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((node) => {
+      if (node.id !== nodeId) return node;
+      const merged = normalizePresentation({
+        ...defaultPresentation(),
+        ...node.presentation,
+        ...patch,
+      });
+      if (isDefaultPresentation(merged)) {
+        const rest: WorkflowNode = { ...node };
+        delete rest.presentation;
+        return rest;
+      }
+      return { ...node, presentation: merged };
+    }),
+  };
+}
+
+export function resetPresentation(
+  workflow: Workflow,
+  nodeId: string,
+): Workflow {
+  return {
+    ...workflow,
+    nodes: workflow.nodes.map((node) => {
+      if (node.id !== nodeId || !("presentation" in node)) return node;
+      const rest: WorkflowNode = { ...node };
+      delete rest.presentation;
+      return rest;
+    }),
   };
 }
 

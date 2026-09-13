@@ -104,6 +104,14 @@ generated code agree; genuinely different floats keep distinct hashes, and
 non-finite floats are rejected. The embedded `schema_version` marker always
 wins over caller fields, so it cannot be spoofed under the trusted prefix.
 
+Per-instance `presentation` (custom title, accent, compactness, notes) is
+display-only metadata and is excluded from both identities by construction:
+neither `node_content_identity` nor `workflow_identity` accepts it as input.
+A presentation-only change therefore leaves every identity unchanged and
+reuses cached work, while any parameter, input, implementation, environment,
+seed, or setting change still invalidates exactly the affected computation.
+See `docs/node-presentation.md` for fields, bounds, and reduced motion.
+
 Cache reuse (Step 4D) compares these identities: equal identities mean the
 same computation and may reuse stored outputs; any declared input change
 must change the hash and therefore invalidate dependent work.

@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -93,6 +94,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 test("adds and removes a registry node from an empty canvas", async () => {
@@ -1124,6 +1126,341 @@ test("invalid, unknown, and missing drop payloads change nothing", async () => {
   dispatchDrop(zone, 300, 250, "../evil");
   dispatchDrop(zone, 300, 250, "unknown.node");
   dispatchDrop(zone, 300, 250, null);
+  await waitFor(() =>
+    expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument(),
+  );
+  expect(readDraftWorkflow().nodes).toHaveLength(0);
+});
+
+test("custom title persists, renders on canvas, and undoes in one step", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  const titleInput = (await screen.findByLabelText(
+    "Custom title",
+  )) as HTMLInputElement;
+
+  fireEvent.change(titleInput, { target: { value: "My harvest step" } });
+  fireEvent.blur(titleInput);
+
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation).toMatchObject({
+      title: "My harvest step",
+    });
+  });
+  expect(await screen.findByText("My harvest step")).toBeInTheDocument();
+  const draft = readDraftWorkflow();
+  expect(draft.nodes[0].type).toBe("input.bids_eeg");
+  expect(draft.nodes[0].label).toBe("BIDS EEG");
+  expect(draft.nodes[0].parameters).toHaveLength(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation).toBeUndefined();
+  });
+  expect(screen.queryByText("My harvest step")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument(),
+  );
+  expect(readDraftWorkflow().nodes).toHaveLength(0);
+  expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+});
+
+test("accent and compact choices render on the canvas card", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Custom title");
+
+  fireEvent.change(screen.getByLabelText("Accent color"), {
+    target: { value: "violet" },
+  });
+  fireEvent.click(screen.getByRole("checkbox", { name: "Compact display" }));
+
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation).toMatchObject({
+      accent: "violet",
+      compact: true,
+    });
+  });
+  expect(
+    document.querySelector(".workflow-card.accent-violet.compact"),
+  ).not.toBeNull();
+});
+
+test("notes are stored as plain text and never rendered as HTML", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  const notesInput = (await screen.findByLabelText(
+    "Display notes",
+  )) as HTMLTextAreaElement;
+  const payload = '<img src="x" onerror="alert(1)">remember this';
+
+  fireEvent.change(notesInput, { target: { value: payload } });
+  fireEvent.blur(notesInput);
+
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation?.notes).toBe(payload);
+  });
+  expect(screen.getByLabelText("Display notes")).toHaveValue(payload);
+  expect(document.querySelector(".inspector-content img")).toBeNull();
+});
+
+test("reset removes presentation overrides", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  const titleInput = (await screen.findByLabelText(
+    "Custom title",
+  )) as HTMLInputElement;
+  expect(
+    screen.getByRole("button", { name: /Reset to manifest defaults/ }),
+  ).toBeDisabled();
+
+  fireEvent.change(titleInput, { target: { value: "Temporary" } });
+  fireEvent.blur(titleInput);
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation?.title).toBe("Temporary");
+  });
+
+  fireEvent.click(
+    screen.getByRole("button", { name: /Reset to manifest defaults/ }),
+  );
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation).toBeUndefined();
+  });
+  expect(screen.queryByText("Temporary")).not.toBeInTheDocument();
+});
+
+test("presentation survives project open and draft recovery", async () => {
+  const presented: Workflow = {
+    schema_version: "1.0",
+    id: "presented",
+    metadata: {
+      name: "Presented",
+      description: "",
+      created_with: "BrainLearn",
+      modality: "EEG",
+      status: "example",
+    },
+    nodes: [
+      {
+        ...bidsNode("node-a"),
+        position: { x: 44, y: 55 },
+        presentation: {
+          title: "Reopened step",
+          accent: "amber",
+          compact: false,
+          notes: "kept",
+        },
+      },
+    ],
+    edges: [],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/projects/open")) {
+        return {
+          ok: true,
+          json: async () => ({
+            path: "/tmp/presented",
+            manifest: { name: "Presented" },
+            workflow: presented,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+  render(<App />);
+  await screen.findByRole("button", { name: /BIDS EEG/ });
+  fireEvent.change(screen.getByLabelText("Session token"), {
+    target: { value: "test-token" },
+  });
+  fireEvent.change(screen.getByLabelText("Project folder"), {
+    target: { value: "/tmp/presented" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^Open$/ }));
+
+  expect(await screen.findByText("Reopened step")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes[0].presentation).toMatchObject({
+      title: "Reopened step",
+      accent: "amber",
+      notes: "kept",
+    });
+  });
+  expect(document.querySelector(".workflow-card.accent-amber")).not.toBeNull();
+});
+
+function workflowCardForTitle(title: string): Element {
+  const heading = screen.getByText(title);
+  const card = heading.closest(".workflow-card");
+  if (!card) throw new Error(`No workflow card renders title ${title}`);
+  return card;
+}
+
+function stubReducedMotion(matches: boolean) {
+  const listeners = new Set<() => void>();
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches,
+      media: "(prefers-reduced-motion: reduce)",
+      addEventListener: (_type: string, listener: () => void) => {
+        listeners.add(listener);
+      },
+      removeEventListener: (type: string, listener: () => void) => {
+        void type;
+        listeners.delete(listener);
+      },
+    })),
+  );
+  return listeners;
+}
+
+test("custom accent survives selected and invalid states", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Custom title");
+
+  fireEvent.change(screen.getByLabelText("Custom title"), {
+    target: { value: "Accent probe" },
+  });
+  fireEvent.blur(screen.getByLabelText("Custom title"));
+  fireEvent.change(screen.getByLabelText("Accent color"), {
+    target: { value: "violet" },
+  });
+
+  // Selected and valid.
+  await waitFor(() =>
+    expect(workflowCardForTitle("Accent probe")).toHaveClass("accent-violet"),
+  );
+  expect(workflowCardForTitle("Accent probe")).toHaveClass("selected");
+  expect(workflowCardForTitle("Accent probe")).not.toHaveClass("invalid");
+
+  // Selected and invalid.
+  fireEvent.change(screen.getByLabelText("Dataset root"), {
+    target: { value: "" },
+  });
+  await waitFor(() =>
+    expect(workflowCardForTitle("Accent probe")).toHaveClass("invalid"),
+  );
+  expect(workflowCardForTitle("Accent probe")).toHaveClass("accent-violet");
+  expect(workflowCardForTitle("Accent probe")).toHaveClass("selected");
+
+  // Ordinary and invalid: adding a second node moves selection away.
+  fireEvent.click(screen.getByRole("button", { name: /BIDS EEG/ }));
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(2);
+  });
+  expect(workflowCardForTitle("Accent probe")).toHaveClass("accent-violet");
+  expect(workflowCardForTitle("Accent probe")).toHaveClass("invalid");
+  expect(workflowCardForTitle("Accent probe")).not.toHaveClass("selected");
+
+  // Ordinary and valid: reselect, repair, then move selection away again.
+  fireEvent.click(workflowCardForTitle("Accent probe"));
+  await waitFor(() =>
+    expect(workflowCardForTitle("Accent probe")).toHaveClass("selected"),
+  );
+  fireEvent.change(screen.getByLabelText("Dataset root"), {
+    target: { value: "datasets/fixed" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /BIDS EEG/ }));
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(3);
+  });
+  await waitFor(() =>
+    expect(workflowCardForTitle("Accent probe")).not.toHaveClass("invalid"),
+  );
+  const card = workflowCardForTitle("Accent probe");
+  expect(card).toHaveClass("accent-violet");
+  expect(card).not.toHaveClass("selected");
+  expect(card).not.toHaveClass("invalid");
+  expect(readDraftWorkflow().nodes[0].presentation).toMatchObject({
+    title: "Accent probe",
+    accent: "violet",
+  });
+});
+
+test("inspector content remounts on selection change but not on validation", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Custom title");
+  const firstPanel = document.querySelector(".inspector-content");
+  expect(firstPanel).not.toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: /BIDS EEG/ }));
+  await waitFor(() => {
+    expect(readDraftWorkflow().nodes).toHaveLength(2);
+  });
+  const secondPanel = document.querySelector(".inspector-content");
+  expect(secondPanel).not.toBeNull();
+  expect(secondPanel).not.toBe(firstPanel);
+
+  fireEvent.change(screen.getByLabelText("Dataset root"), {
+    target: { value: "datasets/edited" },
+  });
+  await waitFor(() =>
+    expect(readDraftWorkflow().nodes[1].parameters[0].value).toBe(
+      "datasets/edited",
+    ),
+  );
+  expect(document.querySelector(".inspector-content")).toBe(secondPanel);
+});
+
+test("node removal shows a leaving state before disappearing", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Custom title");
+
+  vi.useFakeTimers();
+  fireEvent.click(screen.getByRole("button", { name: "Remove node" }));
+  expect(document.querySelector(".react-flow__node.leaving")).not.toBeNull();
+  expect(readDraftWorkflow().nodes).toHaveLength(0);
+
+  act(() => {
+    vi.advanceTimersByTime(300);
+  });
+  expect(document.querySelector(".react-flow__node.leaving")).toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(readDraftWorkflow().nodes).toHaveLength(1);
+  expect(document.querySelector(".react-flow__node.leaving")).toBeNull();
+});
+
+test("node removal is immediate under reduced motion", async () => {
+  stubReducedMotion(true);
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  await screen.findByLabelText("Custom title");
+
+  fireEvent.click(screen.getByRole("button", { name: "Remove node" }));
+  expect(document.querySelector(".react-flow__node.leaving")).toBeNull();
+  expect(readDraftWorkflow().nodes).toHaveLength(0);
+});
+
+test("blurring an unchanged title creates no undo entry", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+  const titleInput = await screen.findByLabelText("Custom title");
+
+  fireEvent.blur(titleInput);
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
   await waitFor(() =>
     expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument(),
   );

@@ -48,6 +48,9 @@ from brainlearn_core.projects import (
 )
 from brainlearn_core.scheduler import downstream_ids, ready_node_ids, topological_order
 from brainlearn_core.schema import (
+    PRESENTATION_ACCENTS,
+    PRESENTATION_NOTES_MAX_LENGTH,
+    PRESENTATION_TITLE_MAX_LENGTH,
     CanvasPosition,
     CapabilityRequirement,
     CitationMetadata,
@@ -57,6 +60,7 @@ from brainlearn_core.schema import (
     LicenseMetadata,
     NodeInstance,
     NodeManifest,
+    NodePresentation,
     ParameterDefinition,
     ParameterSchema,
     PortDefinition,
@@ -85,9 +89,13 @@ __all__ = [
     "NODE_TERMINAL_STATES",
     "NodeManifest",
     "NodeInstance",
+    "NodePresentation",
     "NodeRunRecord",
     "NodeRunState",
     "PREVIOUS_WORKFLOW_FILENAME",
+    "PRESENTATION_ACCENTS",
+    "PRESENTATION_NOTES_MAX_LENGTH",
+    "PRESENTATION_TITLE_MAX_LENGTH",
     "PROJECT_MANIFEST_FILENAME",
     "PROJECT_SCHEMA_VERSION",
     "SUPPORTED_EXECUTION_VERSIONS",

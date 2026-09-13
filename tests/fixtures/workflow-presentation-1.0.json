@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "id": "presentation-fixture",
+  "metadata": {
+    "name": "Presentation fixture",
+    "description": "One node with display-only customization, one without.",
+    "created_with": "BrainLearn tests",
+    "modality": "EEG",
+    "status": "example"
+  },
+  "nodes": [
+    {
+      "id": "customized",
+      "type": "demo.copy",
+      "label": "Copy",
+      "category": "Demo",
+      "description": "Demonstration node.",
+      "position": { "x": 90, "y": 90 },
+      "ports": [
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [
+        { "id": "text", "label": "Text", "value": "fixture-bytes", "required": false }
+      ],
+      "pauses_for_review": false,
+      "presentation": {
+        "title": "My copy step",
+        "accent": "violet",
+        "compact": true,
+        "notes": "Renamed for the walkthrough; computation unchanged."
+      }
+    },
+    {
+      "id": "plain",
+      "type": "demo.copy",
+      "label": "Copy",
+      "category": "Demo",
+      "description": "Demonstration node.",
+      "position": { "x": 300, "y": 90 },
+      "ports": [
+        {
+          "id": "output",
+          "label": "Output",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [
+        { "id": "text", "label": "Text", "value": "fixture-bytes", "required": false }
+      ],
+      "pauses_for_review": false
+    }
+  ],
+  "edges": []
+}
