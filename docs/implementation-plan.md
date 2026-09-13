@@ -322,44 +322,52 @@ Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`,
 approved in commits/history through the final monitored gate. Preserve every
 completion-log row.
 
-### Step 4E — canvas interaction and complete demonstration gate
+### Step 4E.1 — direct canvas manipulation
 
-Implement only this UI and demonstration slice. Do not begin scientific EEG
-processing or dataset downloading.
+Implement only the first interaction unit. Do not add presentation fields, run
+controls, demonstration manifests, scientific EEG processing, or dataset
+downloading in this unit.
 
-1. Repair controlled React Flow state so dragging an existing node updates
-   continuously, ends at the pointer-selected position, persists as one undoable
-   edit, and survives project save/open and draft recovery.
-2. Add node-library drag-and-drop onto exact flow coordinates after viewport
-   pan/zoom. Keep the existing click insertion and add an operable keyboard
-   path; all three methods must create the same valid node model.
-3. Add restrained transitions for discrete node, inspector, viewport, validation,
-   and run-state changes. Respect `prefers-reduced-motion` and avoid animating
-   direct pointer tracking in a way that introduces lag.
-4. Add safe per-instance presentation customization such as title, color/accent,
-   compactness, and notes. Persist it separately from scientific parameters and
-   prove it does not change workflow/node computation identities or cache hits.
-5. Complete a non-scientific branched fixture using copy, delay, controlled
-   failure, and review-pause behavior. The same fixture must support success,
-   failure propagation, explicit review approval/rejection, cancellation,
-   restart recovery, cache reuse, and exact descendant invalidation.
-6. Connect the UI to run creation/control and SSE replay. The run drawer must
-   display current run/node state, ordered events/logs, artifacts, cache status,
-   review decisions, cancellation, and actionable failures without exposing
-   internal tracebacks as ordinary user guidance.
-7. Add focused Vitest coverage for graph-change reduction, drag/drop coordinate
-   conversion, keyboard/click equivalence, undo grouping, reduced motion,
-   presentation/identity separation, run-state rendering, SSE reconnect, and
-   review/cancel actions. Add the smallest practical browser-level test for the
-   full assembled workflow if the existing toolchain supports it.
-8. Run the complete Step 4 gate manually and automatically: assemble the branch
-   by each supported input method; move/customize/save/reopen it; run it; reuse
-   the cache; change one parameter and verify exact descendant invalidation;
-   exercise review, restart, failure, and cancellation; confirm no successful
-   partial artifacts.
-9. Update user/contributor documentation and append exact verification evidence.
-   Check individual 4E items only after their gates pass. Leave the Step 4 heading
-   unchecked for the monitoring agent and request review before commit.
+1. Add controlled React Flow node-change handling. Apply position changes to a
+   transient canvas representation during pointer movement so the node follows
+   continuously without validating, persisting a draft revision, or adding an
+   undo entry for every movement event.
+2. On drag completion, copy the final position into `Workflow` exactly once and
+   create exactly one undo entry. A click without movement must create no graph
+   edit. Undo and redo must restore the precise start and final positions.
+3. Keep transient canvas state synchronized when a workflow is replaced by
+   undo, redo, project open/create/save response, or recovered draft. The final
+   position must survive draft persistence and project save/open.
+4. Make each node-library item draggable and add canvas `dragover`/`drop`
+   handling. Convert the pointer's client coordinates through the active React
+   Flow viewport before calling the same node-construction helper used by click
+   insertion. Dropping outside the canvas or an invalid/missing payload changes
+   nothing.
+5. Preserve the native button click and keyboard activation path. Click,
+   Enter/Space, and drop must produce the same node fields except for the
+   intentionally different insertion position. Select every newly inserted
+   node.
+6. Add a small drag preview/drop affordance and prevent accidental palette text
+   selection. Do not animate direct pointer tracking. Motion and reduced-motion
+   work belongs to 4E.2.
+7. Prefer focused pure helpers in `apps/web/src/graph.ts` for position updates
+   and insertion so coordinate, equality, and undo behavior can be tested
+   without relying entirely on jsdom's incomplete layout implementation.
+8. Add Vitest coverage for continuous node changes, one-entry drag commit,
+   click-without-movement, undo/redo, viewport-aware drop coordinates,
+   click/keyboard/drop equivalence, invalid and outside drops, and workflow
+   replacement synchronization. Retain all existing tests.
+9. Run the full Python and frontend baseline plus `git diff --check`. Append an
+   exact completion-log row, leave all Step 4E and top-level Step 4 checkboxes
+   unchecked, and request monitoring review before committing.
 
-After monitored Step 4E approval, Step 5A begins the curated OpenNeuro-first
+Acceptance probe: start with an empty canvas; add one node by click, one by
+keyboard, and one by palette drop after pan and zoom; drag an existing node
+through several pointer positions; verify continuous movement, exact final
+coordinates, one-step undo/redo, draft recovery, and save/open persistence.
+
+After monitored approval, continue in separate units: 4E.2 reduced-motion-aware
+transitions and presentation customization; 4E.3 demonstration manifests and
+branched fixture; 4E.4 run API/SSE/review/cancel/artifact UI; 4E.5 complete Step
+4 automated and manual gate. Step 5A then begins the curated OpenNeuro-first
 dataset library and secure local download lifecycle.

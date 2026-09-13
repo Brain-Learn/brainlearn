@@ -1,16 +1,18 @@
 # BrainLearn monitored implementation review
 
-Review date: 2026-09-12
+Review date: 2026-09-13
 
 ## Current review
 
-Scope: final monitoring review of Step 4D content-addressed caching, including
-the two second-review repairs completed in the shared worktree.
+Scope: pre-implementation audit and assignment split for Step 4E.
 
-Status: **approved**. Cache identity, lookup, materialization, publication,
-invalidation, recovery, cancellation, and corruption handling satisfy the Step
-4D gate. The complete repository gate passes. Step 4D may be committed; Step 4
-remains open for the Step 4E interaction and demonstration gate.
+Status: **ready for Step 4E.1**. The worktree is clean at commit `2768456` and
+contains no Step 4E implementation. The existing UI supplies controlled React
+Flow nodes without `onNodesChange`, exposes palette insertion only through
+buttons, has no persisted presentation model, and has no run API client or run
+drawer. The backend run, cancel, review, and SSE endpoints are already present.
+The next agent must implement only direct canvas manipulation and palette drop
+as defined by the `Next assignment` in `docs/implementation-plan.md`.
 
 Steps 4A–4C are approved in commits `25bf419`, `91b9d2e`, and `55ae9e1`.
 
@@ -66,9 +68,16 @@ Steps 4A–4C are approved in commits `25bf419`, `91b9d2e`, and `55ae9e1`.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
 - `git diff --check`: passed before this approval update.
 
+The unchanged baseline was reproduced again on 2026-09-13: 273 Python tests and
+24 frontend tests passed; Ruff, Ruff formatting, strict mypy, ESLint, Prettier,
+the frontend production build (1,837 modules), production audit (0
+vulnerabilities), and `git diff --check` all passed. The two Python warnings are
+upstream Starlette/AnyIO deprecations.
+
 ## Next assignment
 
-Proceed only with Step 4E canvas interaction and the complete demonstration
-workflow gate in `docs/implementation-plan.md`. Keep scientific processing and
-dataset downloading out of that work unit. The Step 4 heading remains unchecked
-until the entire 4E completion gate passes monitored review.
+Proceed only with Step 4E.1 direct canvas manipulation in
+`docs/implementation-plan.md`. Stop for monitoring review before beginning
+motion, presentation customization, demonstration manifests, or run controls.
+Keep scientific processing and dataset downloading out of this work unit. All
+Step 4E boxes and the Step 4 heading remain unchecked.
