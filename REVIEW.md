@@ -4,59 +4,64 @@ Review date: 2026-09-14
 
 ## Current review
 
-Scope: final monitoring review of the complete Step 4 run-record, artifact,
-executor, cache, canvas, presentation, and run-drawer acceptance gate.
+Scope: fifth and final monitoring review of Step 5A.1 after generalized
+canonicalization repairs.
 
-Status: **approved**. Step 4 is complete. No blocking findings remain, and the
-bounded Step 5A.1 dataset-contract unit may begin.
+Status: **complete**. No blocking findings remain. The versioned provider-neutral
+dataset contract is approved and may be committed. OpenNeuro integration may
+begin only as the next bounded unit in `docs/implementation-plan.md`.
 
-## Findings
+## Approved behavior
 
-No actionable findings.
-
-## Acceptance evidence
-
-- The independent `/tmp/step4_acceptance.py` run passed all 22 loopback probes:
-  presentation identity, review-to-success, gapless events, trunk-only
-  artifacts, exact second-run reuse, transitive parameter invalidation,
-  controlled failure/skip, cancellation without artifacts, isolated history,
-  SSE resume, exact artifact bytes, hostile metadata rejection, and true
-  SIGKILL/restart recovery.
-- Live browser verification loaded and validated the branched example, moved an
-  existing node continuously, and undid the complete gesture with one action.
-- Presentation title, rose accent, compact state, and notes survived save/open.
-  The customized source still reused its prior cached computation, confirming
-  presentation is excluded from scientific identity.
-- The live drawer showed `Live`, cache reuse, attempts, artifacts, review
-  controls, ordered events, and terminal success after explicit approval.
-- Palette drag inserted exactly one selected manifest-backed node and Undo
-  removed it in one action. Component suites retain click, Enter/Space, exact
-  transformed drop, invalid-drop, and reduced-motion coverage.
-- Prior security probes remain green: deep symlinks, directory/FIFO artifacts,
-  unsafe paths/media types, tampered bytes, authorization, and bounded reads.
+- Schema `1.0` defines deeply immutable, provider-neutral `CatalogEntry`,
+  `DatasetLock`, `CatalogFile`, `VerifiedFile`, and `DatasetCitation` records.
+- Catalogs require nonempty expected files and a positive covering total while
+  permitting absent provider checksums; locks require exact sizes and hashes.
+- Locks preserve the stable dataset, license, citation, compatibility,
+  limitation, and landing-page context required for offline reopening.
+- Identities bind the declared snapshot and retrieval contract while excluding
+  explicitly documented review, retrieval-time, and local-location metadata.
+- All persisted collections serialize in canonical order for JSON-shaped and
+  programmatic list/tuple/model inputs. Reversed catalog, lock, and projection
+  inputs retain equal identities and byte-identical JSON.
+- Provider, dataset, snapshot, local, and expected-file paths use a conservative
+  portable grammar with per-segment Windows restrictions and traversal/control
+  rejection.
+- Persisted URLs require plain HTTPS with validated host/port and no credentials,
+  queries, or fragments. Citation DOIs reject whitespace, C0 controls, DEL, and
+  malformed full strings.
+- Access states distinguish public, restricted, and credentialed sources without
+  allowing secrets in persisted records. Synthetic fixtures remain pending and
+  make no approval or scientific claims.
+- Migration entry points, genuine fixtures, round trips, stale identities,
+  cross-field rules, deep immutability, and catalog-to-lock projection are tested.
 
 ## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 43 files clean.
-- `uv run mypy packages/core/src packages/server/src`: 18 source files clean.
-- `uv run pytest -q`: 365 passed with two upstream Starlette/AnyIO warnings.
+- `uv run ruff format --check .`: 46 files clean.
+- `uv run mypy packages/core/src packages/server/src`: 19 source files clean.
+- `uv run pytest -q`: 493 passed with two upstream Starlette/AnyIO warnings.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
 - `npm --prefix apps/web test -- --run`: 121 passed in 13 files.
 - `npm --prefix apps/web run build`: passed, 1,841 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
-- `git diff --check`: passed before the final review documentation update.
+- `git diff --check`: passed before this final review update.
+- Independent direct probes confirmed canonical JSON for reversed validated-model
+  tuples in both catalog and lock constructors and for reversed projection input.
+  Earlier path, URL, DOI, identity, projection, and mutation probes remain green.
 
 ## Checklist decision
 
-Step 4 and every Step 4 subitem are approved and checked. The demonstration
-executor remains explicitly non-scientific.
+The first Step 5 subitem, the versioned curated-dataset manifest and lock
+contract, is approved and checked. Step 5 remains open for provider access,
+download lifecycle, BIDS/MNE inspection, UI, and scientific reference work.
 
 ## Next assignment
 
-Implement only Step 5A.1, the versioned curated-dataset contract and a small
-review-pending static catalog fixture, as specified in
-`docs/implementation-plan.md`. Do not begin provider networking, downloads,
-archive extraction, dataset UI, or MNE/BIDS inspection. Request monitoring
-review before checking the first Step 5 item.
+Implement only Step 5A.2 from `docs/implementation-plan.md`: the provider-neutral
+read-only dataset-source interface, deterministic mock provider, and OpenNeuro
+public metadata/catalog adapter. Do not download or extract datasets, add UI, add
+MNE/BIDS dependencies, or mark any real dataset verified. Request monitoring
+review before checking the OpenNeuro provider subitem.

@@ -1,0 +1,90 @@
+[
+  {
+    "access": "public",
+    "approximate_total_bytes": 524288,
+    "catalog_identity": "brainlearn-v1:dataset:a0560b774efd1d5e711fc3eea2a109f92caca6cfd646d97dd8338fd554f9a6fe",
+    "citations": [
+      {
+        "doi": null,
+        "title": "Synthetic placeholder citation, not a real dataset.",
+        "url": null
+      }
+    ],
+    "compatible_templates": [],
+    "curator": "",
+    "dataset_id": "zz00synthetic-eeg",
+    "expected_files": [
+      {
+        "byte_size": 131072,
+        "path": "sub-01/eeg/sub-01_task-rest_eeg.edf",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "byte_size": 512,
+        "path": "dataset_description.json"
+      }
+    ],
+    "expected_total_bytes": 131584,
+    "formats": [
+      "BIDS"
+    ],
+    "landing_page": "https://example.invalid/datasets/zz00synthetic-eeg",
+    "license_name": "Creative Commons Public Domain Dedication",
+    "license_spdx": "CC0-1.0",
+    "limitations": "Synthetic placeholder. Not a real dataset: license, citation, snapshot permanence, and checksums are unverified.",
+    "modality": "EEG",
+    "participants": 4,
+    "provider": "synthetic-archive",
+    "reuse_statement": "Synthetic placeholder record. Dedicated to the public domain for contract testing.",
+    "review_status": "pending",
+    "reviewed_at": null,
+    "schema_version": "1.0",
+    "snapshot": "2026-09-01",
+    "task": "rest",
+    "title": "Synthetic EEG placeholder"
+  },
+  {
+    "access": "restricted",
+    "approximate_total_bytes": 524288,
+    "catalog_identity": "brainlearn-v1:dataset:5a0633a03f762f40da42c166dd99c5777eda36204584eebbf4068349d90c6940",
+    "citations": [
+      {
+        "doi": null,
+        "title": "Synthetic placeholder citation, not a real dataset.",
+        "url": null
+      }
+    ],
+    "compatible_templates": [],
+    "curator": "",
+    "dataset_id": "zz01restricted-eeg",
+    "expected_files": [
+      {
+        "byte_size": 131072,
+        "path": "sub-01/eeg/sub-01_task-rest_eeg.edf",
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "byte_size": 512,
+        "path": "dataset_description.json"
+      }
+    ],
+    "expected_total_bytes": 131584,
+    "formats": [
+      "BIDS"
+    ],
+    "landing_page": "https://example.invalid/datasets/zz01restricted-eeg",
+    "license_name": "Custom restricted research license",
+    "license_spdx": null,
+    "limitations": "Synthetic placeholder. Restricted access class example; not a real dataset.",
+    "modality": "EEG",
+    "participants": 4,
+    "provider": "synthetic-archive",
+    "reuse_statement": "Synthetic placeholder record. Restricted: requires a data-use agreement before any retrieval; BrainLearn must never download it automatically.",
+    "review_status": "pending",
+    "reviewed_at": null,
+    "schema_version": "1.0",
+    "snapshot": "2026-09-01",
+    "task": "rest",
+    "title": "Restricted synthetic placeholder"
+  }
+]

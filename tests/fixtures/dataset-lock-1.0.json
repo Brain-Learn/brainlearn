@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "dataset_identity": "brainlearn-v1:dataset:1b84ea04ea847b66641c0d9f295b17854be9b7a9d6afb065627e0bebd0f81791",
+  "catalog_identity": "brainlearn-v1:dataset:a0560b774efd1d5e711fc3eea2a109f92caca6cfd646d97dd8338fd554f9a6fe",
+  "provider": "synthetic-archive",
+  "dataset_id": "zz00synthetic-eeg",
+  "snapshot": "2026-09-01",
+  "access": "public",
+  "title": "Synthetic EEG placeholder",
+  "modality": "EEG",
+  "task": "rest",
+  "participants": 4,
+  "formats": [
+    "BIDS"
+  ],
+  "citations": [
+    {
+      "title": "Synthetic placeholder citation, not a real dataset.",
+      "doi": null,
+      "url": null
+    }
+  ],
+  "compatible_templates": [],
+  "landing_page": "https://example.invalid/datasets/zz00synthetic-eeg",
+  "limitations": "Synthetic placeholder. Not a real dataset: license, citation, snapshot permanence, and checksums are unverified.",
+  "retrieved_at": "2026-09-14T00:00:00+00:00",
+  "local_path": "datasets/synthetic-archive/zz00synthetic-eeg/2026-09-01",
+  "expected_total_bytes": 131584,
+  "expected_files": [
+    {
+      "path": "sub-01/eeg/sub-01_task-rest_eeg.edf",
+      "byte_size": 131072,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "path": "dataset_description.json",
+      "byte_size": 512,
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "license_name": "Creative Commons Public Domain Dedication",
+  "license_spdx": "CC0-1.0",
+  "reuse_statement": "Synthetic placeholder record. Dedicated to the public domain for contract testing."
+}
