@@ -4,64 +4,65 @@ Review date: 2026-09-14
 
 ## Current review
 
-Scope: fifth and final monitoring review of Step 5A.1 after generalized
-canonicalization repairs.
+Scope: final monitoring review of Step 5A.2 after the three focused
+provider-boundary repairs.
 
-Status: **complete**. No blocking findings remain. The versioned provider-neutral
-dataset contract is approved and may be committed. OpenNeuro integration may
-begin only as the next bounded unit in `docs/implementation-plan.md`.
+Status: **complete**. No blocking findings remain. The provider-neutral
+read-only source boundary and OpenNeuro public metadata adapter are approved.
 
 ## Approved behavior
 
-- Schema `1.0` defines deeply immutable, provider-neutral `CatalogEntry`,
-  `DatasetLock`, `CatalogFile`, `VerifiedFile`, and `DatasetCitation` records.
-- Catalogs require nonempty expected files and a positive covering total while
-  permitting absent provider checksums; locks require exact sizes and hashes.
-- Locks preserve the stable dataset, license, citation, compatibility,
-  limitation, and landing-page context required for offline reopening.
-- Identities bind the declared snapshot and retrieval contract while excluding
-  explicitly documented review, retrieval-time, and local-location metadata.
-- All persisted collections serialize in canonical order for JSON-shaped and
-  programmatic list/tuple/model inputs. Reversed catalog, lock, and projection
-  inputs retain equal identities and byte-identical JSON.
-- Provider, dataset, snapshot, local, and expected-file paths use a conservative
-  portable grammar with per-segment Windows restrictions and traversal/control
-  rejection.
-- Persisted URLs require plain HTTPS with validated host/port and no credentials,
-  queries, or fragments. Citation DOIs reject whitespace, C0 controls, DEL, and
-  malformed full strings.
-- Access states distinguish public, restricted, and credentialed sources without
-  allowing secrets in persisted records. Synthetic fixtures remain pending and
-  make no approval or scientific claims.
-- Migration entry points, genuine fixtures, round trips, stale identities,
-  cross-field rules, deep immutability, and catalog-to-lock projection are tested.
+- `DatasetProvider` defines an asynchronous, provider-neutral public listing and
+  immutable-snapshot resolution boundary; `MockDatasetProvider` supplies fully
+  offline deterministic pagination, filtering, failure, timeout, malformed-data,
+  and cancellation behavior.
+- OpenNeuro transport, connection parsing, and snapshot mapping are separated.
+  The standard-library transport bounds request/response size and timeout, never
+  attaches authentication, and keeps ordinary tests offline.
+- OpenNeuro listing is public-only and fail closed. Non-public nodes never reach
+  results, while provider-owned pagination cursors remain untouched. The mock
+  applies its public filter before pagination and refuses non-public resolution.
+- Snapshot resolution requires an explicit immutable tag and binds the returned
+  dataset id and tag to the requested pair. Substituted responses raise
+  `ProviderMalformed` and cannot be returned or persisted.
+- Direct and urllib-wrapped socket timeouts surface as `ProviderTimeout`; other
+  URL failures remain `ProviderError`; asyncio cancellation propagates unchanged.
+- Every resolved snapshot passes through schema-`1.0` `CatalogEntry` validation
+  and remains review-pending. No transfer URLs, secrets, raw provider responses,
+  inferred SPDX value, checksum approval, or workflow-compatibility claim is
+  persisted.
+- The unit contains no downloads, extraction, dataset UI, MNE/BIDS dependency,
+  credential flow, or scientific processing.
 
 ## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 46 files clean.
-- `uv run mypy packages/core/src packages/server/src`: 19 source files clean.
-- `uv run pytest -q`: 493 passed with two upstream Starlette/AnyIO warnings.
+- `uv run ruff format --check .`: 50 files clean.
+- `uv run mypy packages/core/src packages/server/src`: 21 source files clean.
+- `uv run pytest -q`: 530 passed, 1 opt-in live smoke skipped, with two upstream
+  Starlette/AnyIO warnings.
+- Focused provider suite: 37 passed, 1 opt-in live smoke skipped.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
 - `npm --prefix apps/web test -- --run`: 121 passed in 13 files.
 - `npm --prefix apps/web run build`: passed, 1,841 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
 - `git diff --check`: passed before this final review update.
-- Independent direct probes confirmed canonical JSON for reversed validated-model
-  tuples in both catalog and lock constructors and for reversed projection input.
-  Earlier path, URL, DOI, identity, projection, and mutation probes remain green.
+- Independent direct probes refused separate dataset-id and tag substitutions,
+  omitted a private listing node while preserving the server cursor, classified
+  a wrapped timeout as `ProviderTimeout`, and retained `ProviderError` for a
+  non-timeout URL failure.
 
 ## Checklist decision
 
-The first Step 5 subitem, the versioned curated-dataset manifest and lock
-contract, is approved and checked. Step 5 remains open for provider access,
-download lifecycle, BIDS/MNE inspection, UI, and scientific reference work.
+The OpenNeuro-first provider item is approved and checked. Step 5 remains open
+for the read-only dataset library UI, download lifecycle and hardening, offline
+local import, pinned EEG fixture, and scientific BIDS/MNE inspection work.
 
 ## Next assignment
 
-Implement only Step 5A.2 from `docs/implementation-plan.md`: the provider-neutral
-read-only dataset-source interface, deterministic mock provider, and OpenNeuro
-public metadata/catalog adapter. Do not download or extract datasets, add UI, add
-MNE/BIDS dependencies, or mark any real dataset verified. Request monitoring
-review before checking the OpenNeuro provider subitem.
+Implement only Step 5A.3 from `docs/implementation-plan.md`: expose the approved
+provider catalogue through authenticated, project-aware read-only local API
+endpoints and add the searchable dataset library/details UI. Show all required
+pre-download metadata and pending-review limitations. Do not download or extract
+files, write dataset locks, add MNE/BIDS dependencies, or add credentials.

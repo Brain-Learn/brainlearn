@@ -1,0 +1,33 @@
+{
+  "snapshot": {
+    "id": "ds000001:1.0.0",
+    "tag": "1.0.0",
+    "created": "2024-01-15T00:00:00.000Z",
+    "hexsha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "size": 4096,
+    "dataset": {"id": "ds000001", "public": true, "name": "Balloon Analog Risk-taking Task"},
+    "description": {
+      "Name": "Balloon Analog Risk-taking Task",
+      "DatasetDOI": "10.18112/openneuro.ds000001.v1.0.0",
+      "License": "CC0",
+      "Authors": ["Helena Brent", "Jordan Lee"],
+      "ReferencesAndLinks": ["https://example.invalid/paper"],
+      "BIDSVersion": "1.1.1"
+    },
+    "summary": {
+      "modalities": ["mri"],
+      "primaryModality": "mri",
+      "tasks": ["balloon analog risk task"],
+      "size": 4096,
+      "totalFiles": 133,
+      "subjects": ["01", "02"]
+    },
+    "files": [
+      {"filename": "CHANGES", "size": 286, "directory": false},
+      {"filename": "README", "size": 1175, "directory": false},
+      {"filename": "dataset_description.json", "size": 615, "directory": false},
+      {"filename": "participants.tsv", "size": 216, "directory": false},
+      {"filename": "sub-01", "size": 0, "directory": true}
+    ]
+  }
+}

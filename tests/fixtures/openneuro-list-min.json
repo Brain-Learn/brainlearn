@@ -1,0 +1,25 @@
+{
+  "datasets": {
+    "edges": [
+      {
+        "cursor": "eyJvZmZzZXQiOjB9",
+        "node": {
+          "id": "ds000001",
+          "public": true,
+          "name": "Balloon Analog Risk-taking Task",
+          "latestSnapshot": {"tag": "1.0.0"}
+        }
+      },
+      {
+        "cursor": "eyJvZmZzZXQiOjF9",
+        "node": {
+          "id": "ds001787",
+          "public": true,
+          "name": "EEG meditation study",
+          "latestSnapshot": {"tag": "1.1.1"}
+        }
+      }
+    ],
+    "pageInfo": {"hasNextPage": true, "endCursor": "eyJvZmZzZXQiOjJ9"}
+  }
+}
