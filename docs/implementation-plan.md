@@ -96,7 +96,7 @@ Goal: make edits durable without allowing arbitrary filesystem access.
 
 Completion gate: a saved project survives service restart; invalid filesystem paths and unauthenticated requests are rejected; a simulated interrupted write preserves the previous valid graph.
 
-## [ ] Step 4 — Run records, artifact storage, and executor
+## [x] Step 4 — Run records, artifact storage, and executor
 
 Goal: execute deterministic demonstration nodes without claiming scientific processing.
 
@@ -341,33 +341,39 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-14 | Step 4E.4 fourth monitoring review | Changes requested | The full gate was reproduced: Ruff and format passed (43 files), strict mypy passed (18 files), pytest 344 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 121 passed in 13 files twice, production build passed (1,841 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Live UI verified token-only restored history (obsolete token error then four runs after changing only the token), a branched cached run with `Live`, ordered cache/review/timer events, a quiet parked review, and terminal cancellation/history update. The four prior findings are repaired. Remaining blockers: persisted `media_type` accepts CRLF and is copied into `Content-Type` (direct probe returned 200 with raw injected bytes), and a recorded artifact replaced by a directory raises uncaught `IsADirectoryError`; non-regular descriptors are not rejected before reading. Focused repairs are in `REVIEW.md`; run-drawer, motion, and Step 4 remain unchecked. | Uncommitted; monitoring review failed |
 | 2026-09-14 | Step 4E.4 fourth repairs (media types and regular files) | Verified; monitoring pending | Persisted `ArtifactRecord`/`CacheOutput` media types must be parameter-free `type/subtype` tokens at the model boundary plus a shared `validate_media_type` helper rechecked by the artifact route before responding. The no-follow-opened descriptor must identify a regular file via `fstat` (opened nonblocking where supported) before hashing; invalid-object and read failures map to structured 409 with deterministic descriptor cleanup at every failure point. Tests: hostile/malformed/accepted media-type model cases, CRLF filename endpoint rejection without raw header bytes, directory and FIFO 409s, fd open/close tracking, and a 2.5 MiB bounded-read regression; existing cache-reuse coverage confirms normal types still work. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 43 files clean; `mypy` 18 files clean; `uv run pytest -q` 365 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 121 passed in 13 files; production build passed (1,841 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Loopback probes: reviewer-style hostile media_type now 409s with no raw `Content-Type` bytes (was 200) and directory replacement 409s instead of raising. No browser automation exists here, so interactive download browser probes are deferred to the monitor. Run-drawer, motion, and Step 4 remain unchecked. | Uncommitted; awaiting monitored review |
 | 2026-09-14 | Step 4E.4 fifth monitoring review | Complete | Reviewer inspected the media-type and descriptor repairs and reproduced the full gate: Ruff and format passed (43 files), strict mypy passed (18 files), pytest 365 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 121 passed in 13 files, production build passed (1,841 modules), audit found 0 vulnerabilities, and `git diff --check` passed. The focused Python artifact/contract/cache suite passed 194 tests; the focused run client/drawer/lifecycle suite passed 30 tests. Direct probes now return structured 409 for hostile persisted `media_type` (JSON Content-Type, no injected header) and directory replacement; FIFO, bounded-read, and descriptor-cleanup regressions pass. Live UI restored history, opened a succeeded run, displayed verified artifact metadata, and its Open action reached the artifact endpoint with HTTP 200 and no blocked-download error. All prior cursor, project/history ownership, quiet-stream, cache/review/cancel, filename, symlink, and reduced-motion behavior remains green. Run-drawer and motion items are approved; Step 4 remains open only for the 4E.5 completion gate. | Monitored review complete |
+| 2026-09-14 | Step 4E.5 complete Step 4 gate | Verified; monitoring pending | No code changes: 22/22 live loopback acceptance probes passed against the committed tree with zero regressions, so no repairs were necessary. Live evidence (loopback service, script `/tmp/step4_acceptance.py` rerunnable): presentation customization saved/reopened with title persisted and validation clean; fixture run parked with 11 events, approved, and succeeded with 14 gapless ordered events and artifacts on trunk nodes only; identical second run reused source/bridge/sink at attempt 0 while timer/gate re-executed at attempt 1; trunk text change re-executed exactly source/bridge/sink with timer/gate identities stable; controlled failure propagated with downstream skip and zero artifacts; mid-execution cancellation left no artifacts; history listed 5 runs and a new project was isolated; SSE resume after last sequence replayed only newer events; artifact download returned exact bytes; hostile media_type 409d with no raw header bytes; SIGKILL mid-delay followed by restart, reauthorization, and recover (1 record) completed with zero artifacts and none partial. Hostile rechecks: 70-level identical-bytes symlink 409d live; directory/FIFO/media-type cases green in the automated suite. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 43 files clean; `mypy` 18 files clean; `uv run pytest -q` 365 passed with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 121 passed in 13 files; production build passed (1,841 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. UI-only paths (click/keyboard/drag assembly, continuous one-undo drag, drawer review/cancel/history/stream/artifact flows, reduced motion) are covered by focused component suites; no browser automation exists here, so live browser assembly and execution observation are deferred to the monitor. Step 4 left unchecked for the final gate decision. | Uncommitted; awaiting monitored review |
+| 2026-09-14 | Step 4 final monitored gate | Complete | Reviewer reran `/tmp/step4_acceptance.py`: all 22 loopback probes passed, including presentation identity, review-to-success, gapless events, exact cache reuse/invalidation, controlled failure/skip, cancellation without artifacts, project-isolated history, SSE resume, exact artifact bytes, hostile metadata rejection, and true SIGKILL/restart recovery. Full gate reproduced: Ruff and format passed (43 files), strict mypy passed (18 files), pytest 365 passed with 2 upstream warnings, ESLint/Prettier passed, Vitest 121 passed in 13 files, production build passed (1,841 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Live browser verified example load/validation, continuous node movement with one-step undo, presentation save/open, unchanged computation identity through cache reuse, Live run drawer, review approval to success, ordered state changes/artifacts, palette drag insertion, and one-step undo; component suites retain keyboard insertion and reduced-motion coverage. No blocking findings remain. Step 4 is approved and checked; Step 5A may begin with the versioned curated-dataset contract only. | Monitored review complete |
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `docs/execution-contracts.md`,
 `docs/demonstration-fixture.md`, and this plan before acting. Preserve every
 completion-log row.
 
-### Step 4E.5 — complete Step 4 gate
+### Step 5A.1 — versioned curated-dataset contract
 
-Execute the complete Step 4 acceptance gate without adding Step 5 dataset or
-scientific functionality.
+Implement only the provider-neutral persisted contract and a small static
+catalog fixture. Do not implement networking, downloads, extraction, BIDS/MNE
+inspection, or dataset UI yet.
 
-1. Start from the versioned branched demonstration fixture and prove assembly
-   by click, keyboard, and drag-and-drop, including continuous movement and one
-   undoable persisted drag.
-2. Save/open presentation customization and prove it does not alter workflow or
-   node computation identity.
-3. Run the fixture to success through review approval, inspect ordered events
-   and artifacts, then run it again and prove only eligible nodes reuse cache.
-4. Change one trunk parameter and prove that node plus transitive descendants
-   execute while the independent branch remains reusable under its existing
-   zero-output policy.
-5. Exercise failure, cancellation during execution, cancellation/recovery
-   across service restart, and confirm no partial output appears in successful
-   artifact records.
-6. Recheck run history, project switching, SSE reconnect/replay, artifact
-   download, hostile artifact boundaries, and reduced-motion behavior. Run the
-   complete automated gate and record exact live evidence.
-7. Repair only regressions necessary to pass this gate. Leave Step 4 unchecked
-   for monitoring review and request the final Step 4 gate before beginning
-   Step 5A.
+1. Define schema `1.0` models for a curated catalog entry and immutable local
+   dataset lock record. Include provider and stable dataset ID, exact immutable
+   snapshot, modality/task/participants/formats, approximate and expected byte
+   sizes, access class, exact license/reuse statement, citation/DOI/landing
+   page, expected files/checksums, compatible workflow/template versions,
+   curator/review date, limitations, retrieval time, project-relative local
+   path, and content identities.
+2. Define explicit access states that distinguish public/no-credential entries
+   from restricted or credentialed records. The contract must never store
+   credentials, tokens, cookies, or signed URLs.
+3. Add strict path, URL/scheme, checksum, identifier, timestamp, size, and
+   cross-field validation; canonical serialization; deterministic content
+   identity; schema migration entry points; genuine versioned fixtures; and
+   unsupported-version rejection.
+4. Add a minimal static catalog fixture suitable for UI and provider tests.
+   Every entry must clearly label its metadata as review-pending until its
+   upstream license, citation, snapshot permanence, and checksums are verified;
+   do not claim a real dataset is approved based on recalled facts.
+5. Document the trust boundary, identity inputs, local-record layout, licensing
+   rules, and how later provider adapters consume the contract. Run the complete
+   gate, append exact evidence, leave the first Step 5 checkbox unchecked for
+   monitoring, and request review before starting OpenNeuro integration.
