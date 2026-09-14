@@ -1,59 +1,61 @@
 # BrainLearn monitored implementation review
 
-Review date: 2026-09-13
+Review date: 2026-09-14
 
 ## Current review
 
-Scope: fourth monitoring review of Step 4E.3 demonstration manifests,
-branched fixture, example loading, and message ownership.
+Scope: fifth monitoring review of Step 4E.4 artifact metadata, regular-file
+enforcement, and the complete run-drawer change set.
 
-Status: **approved**. The final asynchronous-message race is repaired, the
-complete gate passes, and the frontend suite remained green across six
-additional consecutive runs. Step 4E.3 may be committed. Continue separately
-with Step 4E.4; Step 4 remains open.
+Status: **approved**. The two fourth-review blockers are repaired and no new
+blocking findings remain. Step 4E.4 may be committed. Step 4 stays open for the
+Step 4E.5 completion gate.
 
 ## Findings
 
-No blocking findings.
+No actionable findings.
 
-## Repair verified
+## Repairs verified
 
-- A superseded success returns before changing the workflow or message, so the
-  latest loaded example and its success message remain authoritative.
-- A superseded failure follows the same silent path and cannot replace a newer
-  success with an obsolete error.
-- A current operation invalidated by a graph edit preserves the edited graph
-  and reports the canvas-unchanged notice.
-- A current, revision-valid failure remains visible to the researcher.
-- Deterministic deferred-response tests cover older success, older rejection,
-  and current-request invalidation by a graph edit.
-- The earlier sidebar, example API/UI, manifest-authority, insertion-matrix,
-  canonical-fixture, and cache-documentation repairs remain present.
+- `ArtifactRecord` and `CacheOutput` accept only bounded, parameter-free
+  `type/subtype` tokens. A shared validator is also applied before artifact
+  opening, so persisted metadata cannot inject `Content-Type`.
+- The original hostile `text/plain\r\nX-Probe: injected` probe now returns a
+  structured 409 with `application/json`; no injected response header exists.
+- Artifact descriptors are opened with no-follow and nonblocking flags where
+  available, inspected with `fstat`, and required to be regular files before
+  hashing. Directory and FIFO replacements return structured 409 responses.
+- Size and SHA verification still use bounded 1 MiB reads from the same
+  descriptor later streamed to the response. Tests track descriptor closure.
+- The prior token restoration, SSE cancellation/ownership, project/history
+  scoping, cache behavior, review/cancel lifecycle, deep-symlink refusal,
+  disposition encoding, and reduced-motion behavior remain green.
 
 ## Verification reproduced
 
+- Focused artifact/contract/cache suite: 194 passed with two upstream warnings.
+- Focused run client/drawer/lifecycle suite: 30 passed.
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 42 files clean.
+- `uv run ruff format --check .`: 43 files clean.
 - `uv run mypy packages/core/src packages/server/src`: 18 source files clean.
-- `uv run pytest -q`: 315 passed with two upstream Starlette/AnyIO warnings.
+- `uv run pytest -q`: 365 passed with two upstream Starlette/AnyIO warnings.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
-- `npm --prefix apps/web test -- --run`: 86 passed in 9 files.
-- The complete frontend suite passed six further consecutive runs, each with
-  86 tests in 9 files; the previously reported transient failure did not recur.
-- `npm --prefix apps/web run build`: passed, 1,839 modules transformed.
+- `npm --prefix apps/web test -- --run`: 121 passed in 13 files.
+- `npm --prefix apps/web run build`: passed, 1,841 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
-- `git diff --check`: passed before this review update.
+- `git diff --check`: passed.
+- Live UI: restored run history, opened a succeeded run, rendered its artifact
+  path/size/SHA/media type, and the artifact Open action reached
+  `POST /api/artifacts/open` with HTTP 200 and no blocked-download message.
+
+## Checklist decision
+
+The run-drawer and reduced-motion transition items are approved. Step 4 remains
+unchecked until Step 4E.5 independently executes the full completion gate.
 
 ## Next assignment
 
-Implement only Step 4E.4: connect the editor to the existing run API, SSE event
-stream, review decisions, cancellation, and artifact records through a run
-drawer. Show queued/running/waiting-review/succeeded/failed/cancelled state,
-node attempts and cache reuse, ordered events and actionable failures, and safe
-artifact metadata/open actions. Preserve the loaded workflow while a run is in
-progress, handle reconnect/replay without duplicate events, and make run-state
-motion honor reduced-motion preferences. Add focused API/client/component tests
-and live browser probes for success, failure, review/resume, cancellation,
-cache reuse, artifact inspection, and SSE reconnect. Do not begin Step 4E.5 or
-Step 5. Leave the run-drawer and motion checkboxes unchecked for monitoring.
+Execute only Step 4E.5 as defined in `docs/implementation-plan.md`. Do not begin
+Step 5 dataset work. Request the final Step 4 monitoring review with the
+complete acceptance evidence.

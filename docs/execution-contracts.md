@@ -181,6 +181,17 @@ request, recovery, and worker paths share the serialized writer.
   without following symlinks.
 - `GET /api/runs/events` streams `text/event-stream` progress with `after`
   replay for reconnects.
+- `POST /api/artifacts/open` downloads one artifact recorded on a persisted
+  run, rechecking project authorization, containment, per-component symlink
+  refusal without any depth cap, size, and SHA-256 on every access; unknown
+  artifacts 404, escapes 403, and swapped, linked, non-regular, or unreadable
+  files 409. Persisted artifact/cache paths reject control characters and
+  persisted media types must be parameter-free `type/subtype` tokens at the
+  model boundary (rechecked before responding); the download filename uses an
+  ASCII fallback plus RFC 5987 `filename*` encoding so no raw path or type
+  ever reaches a header, the opened descriptor must identify a regular file
+  via `fstat` before hashing, and verification plus serving stream through
+  that same descriptor in bounded chunks with deterministic cleanup.
 - Unexpected adapter crashes fail the node as `adapter_crash` and are filed
   to the date-folder/hour-file fault log; unhandled request faults are filed
   there too.

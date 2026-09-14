@@ -27,6 +27,7 @@ from brainlearn_core.execution import (
     migrate_node_run_dict,
     migrate_review_pause_dict,
     migrate_run_dict,
+    validate_media_type,
 )
 from brainlearn_core.identity import (
     IDENTITY_PREFIX,
@@ -129,6 +130,7 @@ __all__ = [
     "migrate_node_run_dict",
     "migrate_project_dict",
     "migrate_review_pause_dict",
+    "validate_media_type",
     "migrate_run_dict",
     "migrate_workflow_dict",
     "new_project_manifest",

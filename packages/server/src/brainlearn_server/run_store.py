@@ -11,15 +11,22 @@ runs are resumable, and repairs interrupted runs after a service restart.
 Workers, streaming, cancellation, and caching belong to later slices.
 """
 
+import errno
+import hashlib
 import json
+import os
 import re
+import stat
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+from io import BufferedReader
 from pathlib import Path
+from typing import BinaryIO
 
 from brainlearn_core import (
     RUN_TERMINAL_STATES,
+    ArtifactRecord,
     NodeRunRecord,
     NodeRunState,
     RunEvent,
@@ -27,6 +34,7 @@ from brainlearn_core import (
     RunRecord,
     RunState,
     migrate_run_dict,
+    validate_media_type,
 )
 from brainlearn_core.projects import (
     PROJECT_MANIFEST_FILENAME,
@@ -40,6 +48,9 @@ from brainlearn_server.project_store import ProjectStore, atomic_write_json
 RUNS_DIRNAME = "runs"
 RUN_FILENAME = "run.json"
 _RUN_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+# Largest single read when verifying or serving an artifact, so artifacts of
+# any recorded size stream through bounded memory.
+_ARTIFACT_CHUNK_SIZE = 1024 * 1024
 
 # Process-wide writer serialization, keyed by canonical (project, run ID).
 # Every mutation (create, save, recovery repair) holds its run's lock across
@@ -60,6 +71,32 @@ def _run_lock(project: Path, run_id: str) -> threading.Lock:
             existing = threading.Lock()
             _RUN_LOCKS[key] = existing
         return existing
+
+
+def _verified_project_path(projects: ProjectStore, project: Path, relative: str) -> Path:
+    """Resolve a recorded project-relative path with per-component checks.
+
+    Rejects empty, absolute, and dot/parent segments lexically, proves the
+    lexical path stays inside the project, refuses a symlink in every path
+    component without any depth cap, then proves the fully resolved path is
+    still contained in the project. Returns the resolved path so the final
+    open/read stays tied to the verified location.
+    """
+
+    parts = relative.replace("\\", "/").split("/")
+    if not relative or relative.startswith("/") or any(part in ("", ".", "..") for part in parts):
+        raise ValueError(f"Artifact path {relative!r} escapes its project.")
+    candidate = project
+    for part in parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise ValueError(f"Artifact path {relative!r} must not contain symlinks.")
+    resolved = projects.require_allowed(candidate.resolve(strict=False))
+    try:
+        resolved.relative_to(project.resolve(strict=False))
+    except ValueError:
+        raise ValueError(f"Artifact path {relative!r} escapes its project.") from None
+    return resolved
 
 
 @dataclass
@@ -194,6 +231,89 @@ class RunStore:
                 )
             records.append(record)
         return records
+
+    # -- artifact access ---------------------------------------------
+    def open_artifact_stream(
+        self, raw_path: str, run_id: str, artifact_id: str
+    ) -> tuple[BinaryIO, ArtifactRecord]:
+        """Open one recorded artifact for bounded streaming reads.
+
+        Only an artifact ID present in the requested persisted run resolves;
+        nothing else on disk is addressable. Project authorization,
+        containment, symlink refusal, size, and SHA-256 are rechecked on
+        every access so a file swapped, linked, or moved after the run no
+        longer matches its record. Verification reads bounded chunks through
+        the no-follow-opened descriptor, rewinds that same descriptor, and
+        hands it to the caller, which must close it; at most one chunk ever
+        resides in memory regardless of artifact size.
+        """
+
+        project = self._project_dir(raw_path)
+        record = self.get_run(str(project), run_id)
+        artifact: ArtifactRecord | None = None
+        for node in record.node_runs:
+            for item in node.artifacts:
+                if item.artifact_id == artifact_id:
+                    artifact = item
+        if artifact is None:
+            raise FileNotFoundError(f"Artifact {artifact_id!r} is not recorded on run {run_id!r}.")
+        try:
+            validate_media_type(artifact.media_type)
+        except ValueError as exc:
+            raise ValueError(
+                f"Artifact {artifact.path!r} records an unsafe media type: {exc}"
+            ) from None
+        resolved = _verified_project_path(self.projects, project, artifact.path)
+        try:
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+            fd = os.open(resolved, flags)
+        except FileNotFoundError:
+            raise FileNotFoundError(
+                f"Artifact {artifact.path!r} is no longer present in project '{project}'."
+            ) from None
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise ValueError(f"Artifact {artifact.path!r} must not contain symlinks.") from None
+            raise FileNotFoundError(
+                f"Artifact {artifact.path!r} is no longer present in project '{project}'."
+            ) from None
+        try:
+            file_stat = os.fstat(fd)
+        except OSError as exc:
+            os.close(fd)
+            raise ValueError(f"Artifact {artifact.path!r} could not be inspected: {exc}.") from None
+        if not stat.S_ISREG(file_stat.st_mode):
+            os.close(fd)
+            raise ValueError(f"Artifact {artifact.path!r} is not a regular file.")
+        try:
+            handle: BufferedReader = os.fdopen(fd, "rb")
+        except BaseException:
+            os.close(fd)
+            raise
+        try:
+            digest = hashlib.sha256()
+            total = 0
+            while True:
+                try:
+                    chunk = os.read(fd, _ARTIFACT_CHUNK_SIZE)
+                except OSError as exc:
+                    raise ValueError(
+                        f"Artifact {artifact.path!r} could not be read: {exc}."
+                    ) from None
+                if not chunk:
+                    break
+                total += len(chunk)
+                digest.update(chunk)
+            if total != artifact.byte_size or digest.hexdigest() != artifact.sha256:
+                raise ValueError(
+                    f"Artifact {artifact.path!r} no longer matches its recorded "
+                    "size and SHA-256; the file may have been modified after the run."
+                )
+            os.lseek(fd, 0, os.SEEK_SET)
+        except BaseException:
+            handle.close()
+            raise
+        return handle, artifact
 
     # -- restart recovery ----------------------------------------------
     def find_nonterminal_runs(self, raw_path: str) -> list[RunRecord]:

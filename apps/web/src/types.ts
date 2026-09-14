@@ -125,3 +125,123 @@ export interface WorkflowValidationResponse {
   workflow: Workflow;
   validation: ValidationResult;
 }
+
+export type RunState =
+  | "queued"
+  | "running"
+  | "waiting_for_review"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export type NodeRunState = RunState | "dependency_skipped" | "cache_reused";
+
+export type RunEventKind =
+  | "run_queued"
+  | "run_started"
+  | "node_queued"
+  | "node_started"
+  | "node_succeeded"
+  | "node_failed"
+  | "node_skipped"
+  | "node_cancelled"
+  | "cache_reused"
+  | "review_requested"
+  | "review_decided"
+  | "run_succeeded"
+  | "run_failed"
+  | "run_cancelled";
+
+export interface RunEvent {
+  schema_version: "1.0";
+  seq: number;
+  at: string;
+  kind: RunEventKind;
+  node_run_id: string | null;
+  attempt: number | null;
+  message: string;
+}
+
+export interface ArtifactRecord {
+  schema_version: "1.0";
+  artifact_id: string;
+  path: string;
+  media_type: string;
+  byte_size: number;
+  sha256: string;
+  produced_by_node: string;
+  port_id: string;
+}
+
+export interface FailureRecord {
+  schema_version: "1.0";
+  code: string;
+  message: string;
+  node_run_id: string | null;
+  at: string;
+}
+
+export interface ReviewPauseRecord {
+  schema_version: "1.0";
+  id: string;
+  node_run_id: string;
+  input_identity: string;
+  requested_at: string;
+  decided_at: string | null;
+  decision: "approved" | "rejected" | null;
+  note: string;
+}
+
+export interface EnvironmentRecord {
+  schema_version: "1.0";
+  operating_system: string;
+  architecture: string;
+  python_version: string;
+  packages: Record<string, string>;
+  accelerator: string;
+}
+
+export interface NodeRunRecord {
+  schema_version: "1.0";
+  id: string;
+  node_id: string;
+  node_type: string;
+  node_version: string;
+  dependencies: string[];
+  attempt: number;
+  state: NodeRunState;
+  started_at: string | null;
+  finished_at: string | null;
+  inputs: Record<string, string>;
+  parameters: Record<string, unknown>;
+  environment_identity: string;
+  seed: number | null;
+  settings: Record<string, unknown>;
+  content_identity: string;
+  artifacts: ArtifactRecord[];
+  failure: FailureRecord | null;
+  review_pause: ReviewPauseRecord | null;
+}
+
+export interface RunRecord {
+  schema_version: "1.0";
+  id: string;
+  workflow_id: string;
+  workflow_schema_version: "1.0";
+  workflow_identity: string;
+  state: RunState;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  environment: EnvironmentRecord;
+  seed: number | null;
+  node_runs: NodeRunRecord[];
+  events: RunEvent[];
+  failure: FailureRecord | null;
+}
+
+export interface RunResponse {
+  path: string;
+  run_id: string;
+  run: RunRecord;
+}

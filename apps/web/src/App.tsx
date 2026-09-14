@@ -88,9 +88,27 @@ import {
   PRESENTATION_NOTES_MAX_LENGTH,
   PRESENTATION_TITLE_MAX_LENGTH,
 } from "./types";
+import { RunDrawer } from "./RunDrawer";
+import {
+  cancelRun,
+  listRuns,
+  openArtifact,
+  openRun,
+  recoverRuns,
+  reviewRun,
+  startRun,
+  subscribeRunEvents,
+} from "./runs";
+import type { ArtifactRecord, RunRecord, RunResponse } from "./types";
 import { WorkflowCard, type WorkflowCardNode } from "./WorkflowCard";
 
 const nodeTypes = { workflow: WorkflowCard };
+
+const RUN_TERMINAL = new Set(["succeeded", "failed", "cancelled"]);
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 const NO_LEAVING_NODES: WorkflowNode[] = [];
 
@@ -625,6 +643,18 @@ function App() {
   const [projectMessage, setProjectMessage] = useState("");
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [leavingNodes, setLeavingNodes] = useState<WorkflowNode[]>([]);
+  const [activeRun, setActiveRun] = useState<RunRecord | null>(null);
+  const [runPath, setRunPath] = useState("");
+  const [launching, setLaunching] = useState(false);
+  const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [streamStatus, setStreamStatus] = useState<
+    "idle" | "connecting" | "live" | "reconnecting"
+  >("idle");
+  const [streamNotice, setStreamNotice] = useState<string | null>(null);
+  const [runHistory, setRunHistory] = useState<RunResponse[]>([]);
+  const [historyPending, setHistoryPending] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [runActionPending, setRunActionPending] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const leavingTimer = useRef<number | null>(null);
   const nextId = useRef(1);
@@ -632,6 +662,20 @@ function App() {
   const validationSeq = useRef(0);
   const projectOpSeq = useRef(0);
   const exampleOpSeq = useRef(0);
+  const cursorRef = useRef<{ runId: string; seq: number }>({
+    runId: "",
+    seq: -1,
+  });
+  const streamAbort = useRef<AbortController | null>(null);
+  const runRefreshSeq = useRef(0);
+  const runActionSeq = useRef(0);
+  const activeRunRef = useRef<RunRecord | null>(null);
+  const runPathRef = useRef("");
+  const activeProjectPathRef = useRef("");
+  const sessionTokenRef = useRef(sessionToken);
+  const historySeq = useRef(0);
+  const artifactUrl = useRef<string | null>(null);
+  const launchingRef = useRef(false);
 
   const syncIdCounter = useCallback((candidate: Workflow) => {
     nextId.current = Math.max(nextId.current, maxIdSuffix(candidate) + 1);
@@ -703,12 +747,190 @@ function App() {
     });
   }, [workflow, activeProjectPath, activeProjectName]);
 
+  const loadRunHistory = useCallback(async (path: string, token: string) => {
+    if (!token) {
+      setRunHistory([]);
+      setHistoryError(null);
+      return;
+    }
+    const sequence = ++historySeq.current;
+    setHistoryPending(true);
+    try {
+      const records = await listRuns(path, token);
+      if (sequence !== historySeq.current) return;
+      if (path !== activeProjectPathRef.current) return;
+      setRunHistory(records);
+      setHistoryError(null);
+    } catch (reason) {
+      if (sequence !== historySeq.current) return;
+      if (path !== activeProjectPathRef.current) return;
+      setRunHistory([]);
+      setHistoryError(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to load run history.",
+      );
+    } finally {
+      if (sequence === historySeq.current) setHistoryPending(false);
+    }
+  }, []);
+
+  const mergeHistoryEntry = useCallback((response: RunResponse) => {
+    setRunHistory((prev) => {
+      const index = prev.findIndex(
+        (entry) =>
+          entry.run_id === response.run_id && entry.path === response.path,
+      );
+      if (index === -1) return [...prev, response];
+      if (prev[index].run === response.run) return prev;
+      const next = [...prev];
+      next[index] = response;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!activeProjectPath || !sessionToken) {
+      setRunHistory([]);
+      setHistoryError(null);
+      return;
+    }
+    void loadRunHistory(activeProjectPath, sessionToken);
+  }, [activeProjectPath, sessionToken, loadRunHistory]);
+
   useEffect(() => {
     saveSessionToken(sessionToken);
   }, [sessionToken]);
 
+  useEffect(() => {
+    sessionTokenRef.current = sessionToken;
+  }, [sessionToken]);
+
+  useEffect(() => {
+    activeRunRef.current = activeRun;
+  }, [activeRun]);
+
+  useEffect(() => {
+    runPathRef.current = runPath;
+  }, [runPath]);
+
+  useEffect(() => {
+    activeProjectPathRef.current = activeProjectPath;
+  }, [activeProjectPath]);
+
+  const runIsTerminal = activeRun ? RUN_TERMINAL.has(activeRun.state) : false;
+
+  const cursorFor = (runId: string): number =>
+    cursorRef.current.runId === runId ? cursorRef.current.seq : -1;
+
+  const installCursor = (runId: string, seq: number) => {
+    cursorRef.current = { runId, seq };
+  };
+
+  const advanceCursor = (runId: string, seq: number) => {
+    const cursor = cursorRef.current;
+    if (cursor.runId !== runId || seq > cursor.seq) {
+      cursorRef.current = { runId, seq };
+    }
+  };
+
+  useEffect(() => {
+    const runId = activeRun?.id;
+    const path = runPath;
+    if (!runId || !path || !sessionToken || runIsTerminal) return;
+
+    streamAbort.current?.abort();
+    const controller = new AbortController();
+    streamAbort.current = controller;
+    let cancelled = false;
+
+    const refresh = async (): Promise<RunRecord | null> => {
+      if (cancelled || controller.signal.aborted) return null;
+      const sequence = ++runRefreshSeq.current;
+      try {
+        const response = await openRun(
+          path,
+          runId,
+          sessionToken,
+          controller.signal,
+        );
+        if (cancelled || controller.signal.aborted) return null;
+        if (sequence !== runRefreshSeq.current) return null;
+        setActiveRun(response.run);
+        const lastSeq = response.run.events.at(-1)?.seq ?? -1;
+        advanceCursor(runId, lastSeq);
+        if (RUN_TERMINAL.has(response.run.state)) {
+          mergeHistoryEntry({ path, run_id: runId, run: response.run });
+        }
+        return response.run;
+      } catch {
+        return null;
+      }
+    };
+
+    const markLive = () => {
+      if (!cancelled && !controller.signal.aborted) {
+        setStreamStatus("live");
+        setStreamNotice(null);
+      }
+    };
+
+    const loop = async () => {
+      while (!cancelled && !controller.signal.aborted) {
+        setStreamStatus("connecting");
+        try {
+          const lastSeq = await subscribeRunEvents(
+            path,
+            runId,
+            cursorFor(runId),
+            sessionToken,
+            () => {
+              markLive();
+              void refresh();
+            },
+            controller.signal,
+            () => {
+              markLive();
+            },
+          );
+          if (cancelled || controller.signal.aborted) return;
+          advanceCursor(runId, lastSeq);
+          const snapshot = await refresh();
+          if (!snapshot) {
+            await sleep(500);
+            continue;
+          }
+          if (RUN_TERMINAL.has(snapshot.state)) {
+            setStreamStatus("idle");
+            return;
+          }
+          setStreamStatus("reconnecting");
+          await sleep(500);
+        } catch (reason) {
+          if (cancelled || controller.signal.aborted) return;
+          setStreamStatus("reconnecting");
+          setStreamNotice(
+            `Event updates paused (${reason instanceof Error ? reason.message : "connection failed"}). Retrying…`,
+          );
+          await sleep(500);
+        }
+      }
+    };
+
+    void loop();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [activeRun?.id, runPath, sessionToken, runIsTerminal, mergeHistoryEntry]);
+
   useEffect(
     () => () => {
+      streamAbort.current?.abort();
+      if (artifactUrl.current) {
+        URL.revokeObjectURL(artifactUrl.current);
+        artifactUrl.current = null;
+      }
       if (leavingTimer.current !== null) {
         window.clearTimeout(leavingTimer.current);
       }
@@ -914,6 +1136,24 @@ function App() {
     );
   };
 
+  const resetRunScope = useCallback(() => {
+    ++runActionSeq.current;
+    ++runRefreshSeq.current;
+    ++historySeq.current;
+    streamAbort.current?.abort();
+    setActiveRun(null);
+    setRunPath("");
+    setRunHistory([]);
+    setHistoryError(null);
+    setRunMessage(null);
+    setStreamNotice(null);
+    setStreamStatus("idle");
+    cursorRef.current = { runId: "", seq: -1 };
+    launchingRef.current = false;
+    setLaunching(false);
+    setRunActionPending(false);
+  }, []);
+
   const applyProjectPayload = (
     payload: {
       path: string;
@@ -923,6 +1163,7 @@ function App() {
     },
     message: string,
   ) => {
+    if (payload.path !== activeProjectPathRef.current) resetRunScope();
     setWorkflow(payload.workflow);
     workflowRev.current += 1;
     syncIdCounter(payload.workflow);
@@ -980,12 +1221,16 @@ function App() {
         snapshot,
         sessionToken,
       );
-      applyProjectPayloadIfCurrent(
-        payload,
-        revisionAtStart,
-        operationAtStart,
-        `Created project at ${payload.path}`,
-      );
+      if (
+        applyProjectPayloadIfCurrent(
+          payload,
+          revisionAtStart,
+          operationAtStart,
+          `Created project at ${payload.path}`,
+        )
+      ) {
+        void loadRunHistory(payload.path, sessionToken);
+      }
     } catch (reason) {
       projectError(reason);
     }
@@ -997,12 +1242,16 @@ function App() {
     const requested = folderInput;
     try {
       const payload = await openProject(requested, sessionToken);
-      applyProjectPayloadIfCurrent(
-        payload,
-        revisionAtStart,
-        operationAtStart,
-        `Opened project at ${payload.path}`,
-      );
+      if (
+        applyProjectPayloadIfCurrent(
+          payload,
+          revisionAtStart,
+          operationAtStart,
+          `Opened project at ${payload.path}`,
+        )
+      ) {
+        void loadRunHistory(payload.path, sessionToken);
+      }
     } catch (reason) {
       projectError(reason);
     }
@@ -1047,12 +1296,16 @@ function App() {
         sessionToken,
         nameInput,
       );
-      applyProjectPayloadIfCurrent(
-        payload,
-        revisionAtStart,
-        operationAtStart,
-        `Saved copy at ${payload.path}`,
-      );
+      if (
+        applyProjectPayloadIfCurrent(
+          payload,
+          revisionAtStart,
+          operationAtStart,
+          `Saved copy at ${payload.path}`,
+        )
+      ) {
+        void loadRunHistory(payload.path, sessionToken);
+      }
     } catch (reason) {
       projectError(reason);
     }
@@ -1114,6 +1367,205 @@ function App() {
     setDraftNotice(null);
   };
 
+  const applyRunResponse = (response: RunResponse) => {
+    ++runRefreshSeq.current;
+    setActiveRun(response.run);
+    installCursor(response.run.id, response.run.events.at(-1)?.seq ?? -1);
+    mergeHistoryEntry(response);
+    if (RUN_TERMINAL.has(response.run.state)) {
+      setStreamStatus("idle");
+      setStreamNotice(null);
+    }
+  };
+
+  const handleRunWorkflow = async () => {
+    if (launchingRef.current) return;
+    if (!activeProjectPath) {
+      setRunMessage("Open or create a project before running.");
+      return;
+    }
+    if (!sessionToken) {
+      setRunMessage(
+        "A session token is required. Copy it from the BrainLearn service terminal.",
+      );
+      return;
+    }
+    const response = await refreshValidation(workflow);
+    if (!response) return;
+    if (!response.validation.valid) {
+      setRunMessage("Fix the validation issues before running.");
+      return;
+    }
+    launchingRef.current = true;
+    setLaunching(true);
+    const sequence = ++runActionSeq.current;
+    try {
+      const started = await startRun(activeProjectPath, workflow, sessionToken);
+      if (sequence !== runActionSeq.current) return;
+      applyRunResponse(started);
+      setRunPath(activeProjectPath);
+      setRunMessage(`Run ${started.run_id} started.`);
+    } catch (reason) {
+      if (sequence !== runActionSeq.current) return;
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Run failed to start.",
+      );
+    } finally {
+      if (sequence === runActionSeq.current) {
+        launchingRef.current = false;
+        setLaunching(false);
+      }
+    }
+  };
+
+  const handleCancelRun = async () => {
+    const id = activeRunRef.current?.id;
+    const path = runPathRef.current;
+    if (!id || !path) return;
+    setRunActionPending(true);
+    const sequence = ++runActionSeq.current;
+    try {
+      const response = await cancelRun(path, id, sessionTokenRef.current);
+      if (sequence !== runActionSeq.current) return;
+      applyRunResponse(response);
+      setRunMessage("Run cancelled.");
+    } catch (reason) {
+      if (sequence !== runActionSeq.current) return;
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Cancellation failed.",
+      );
+    } finally {
+      if (sequence === runActionSeq.current) setRunActionPending(false);
+    }
+  };
+
+  const handleReview = async (
+    nodeRunId: string,
+    decision: "approved" | "rejected",
+    note: string,
+  ) => {
+    const id = activeRunRef.current?.id;
+    const path = runPathRef.current;
+    if (!id || !path) return;
+    setRunActionPending(true);
+    const sequence = ++runActionSeq.current;
+    try {
+      const response = await reviewRun(
+        path,
+        id,
+        nodeRunId,
+        decision,
+        note,
+        sessionTokenRef.current,
+      );
+      if (sequence !== runActionSeq.current) return;
+      applyRunResponse(response);
+      setRunMessage(`Review ${decision} for ${nodeRunId}.`);
+    } catch (reason) {
+      if (sequence !== runActionSeq.current) return;
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Review decision failed.",
+      );
+    } finally {
+      if (sequence === runActionSeq.current) setRunActionPending(false);
+    }
+  };
+
+  const handleRecoverRuns = async () => {
+    const path = activeProjectPath;
+    if (!path) return;
+    setRunActionPending(true);
+    const sequence = ++runActionSeq.current;
+    try {
+      const records = await recoverRuns(path, sessionTokenRef.current);
+      if (sequence !== runActionSeq.current) return;
+      if (records.length === 0) {
+        setRunMessage("No interrupted runs to recover.");
+        return;
+      }
+      const recovered = records[0];
+      applyRunResponse(recovered);
+      setRunPath(path);
+      setRunMessage(`Recovered ${records.length} run(s).`);
+      for (const record of records) {
+        mergeHistoryEntry(record);
+      }
+      void loadRunHistory(path, sessionTokenRef.current);
+    } catch (reason) {
+      if (sequence !== runActionSeq.current) return;
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Recovery failed.",
+      );
+    } finally {
+      if (sequence === runActionSeq.current) setRunActionPending(false);
+    }
+  };
+
+  const handleOpenHistoryRun = async (runId: string, path: string) => {
+    if (!path) return;
+    setRunActionPending(true);
+    const sequence = ++runActionSeq.current;
+    try {
+      const response = await openRun(path, runId, sessionTokenRef.current);
+      if (sequence !== runActionSeq.current) return;
+      applyRunResponse(response);
+      setRunPath(path);
+      setRunMessage(`Opened run ${response.run_id}.`);
+    } catch (reason) {
+      if (sequence !== runActionSeq.current) return;
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Open run failed.",
+      );
+    } finally {
+      if (sequence === runActionSeq.current) setRunActionPending(false);
+    }
+  };
+
+  const handleOpenArtifact = async (artifact: ArtifactRecord) => {
+    const run = activeRunRef.current;
+    const path = runPathRef.current;
+    if (!run || !path) return;
+    setRunActionPending(true);
+    try {
+      const opened = await openArtifact(
+        path,
+        run.id,
+        artifact.artifact_id,
+        sessionTokenRef.current,
+      );
+      if (artifactUrl.current) URL.revokeObjectURL(artifactUrl.current);
+      const url = URL.createObjectURL(opened.blob);
+      artifactUrl.current = url;
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = opened.filename;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      try {
+        anchor.click();
+      } catch {
+        URL.revokeObjectURL(url);
+        artifactUrl.current = null;
+        setRunMessage("The browser blocked the artifact download.");
+        return;
+      } finally {
+        anchor.remove();
+      }
+      window.setTimeout(() => {
+        if (artifactUrl.current === url) {
+          URL.revokeObjectURL(url);
+          artifactUrl.current = null;
+        }
+      }, 60_000);
+    } catch (reason) {
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Open artifact failed.",
+      );
+    } finally {
+      setRunActionPending(false);
+    }
+  };
+
   const selected = workflow.nodes.find((node) => node.id === selectedId);
   const selectedManifest = registry.find(
     (manifest) => manifest.id === selected?.type,
@@ -1139,8 +1591,17 @@ function App() {
           <button aria-label="Redo" disabled={!future.length} onClick={redo}>
             <Redo2 size={15} />
           </button>
-          <button className="run-button" disabled>
-            <Play size={15} /> Run workflow
+          <button
+            className="run-button"
+            disabled={launching || (activeRun !== null && !runIsTerminal)}
+            onClick={() => void handleRunWorkflow()}
+          >
+            <Play size={15} />{" "}
+            {launching
+              ? "Launching…"
+              : activeRun && !runIsTerminal
+                ? "Run in progress"
+                : "Run workflow"}
           </button>
         </div>
       </header>
@@ -1355,7 +1816,28 @@ function App() {
         />
       </aside>
 
-      <section className="run-drawer">
+      <RunDrawer
+        actionPending={runActionPending}
+        history={runHistory}
+        historyError={historyError}
+        historyPending={historyPending}
+        launching={launching}
+        message={runMessage}
+        onCancel={() => void handleCancelRun()}
+        onOpenArtifact={(artifact) => void handleOpenArtifact(artifact)}
+        onOpenRun={(runId, path) => void handleOpenHistoryRun(runId, path)}
+        onRecover={() => void handleRecoverRuns()}
+        onReview={(nodeRunId, decision, note) =>
+          void handleReview(nodeRunId, decision, note)
+        }
+        projectOpen={activeProjectPath !== ""}
+        reducedMotion={reducedMotion}
+        run={activeRun}
+        runPath={runPath}
+        streamNotice={streamNotice}
+        streamStatus={streamStatus}
+      />
+      <section className="validation-bar">
         <div>
           <span className={`status-dot ${validation.valid ? "" : "invalid"}`} />{" "}
           {status}

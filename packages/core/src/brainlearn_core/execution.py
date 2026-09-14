@@ -29,6 +29,26 @@ _WORKFLOW_IDENTITY_PATTERN = r"^brainlearn-v1:workflow:[0-9a-f]{64}$"
 _ARTIFACT_IDENTITY_PATTERN = r"^brainlearn-v1:artifact:[0-9a-f]{64}$"
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _DRIVE_QUALIFIED_PATTERN = r"^[A-Za-z]:"
+# Parameter-free MIME type/subtype token. Anything else (whitespace,
+# parameters, control characters, malformed types) must never reach an HTTP
+# Content-Type header built from a persisted record.
+_MEDIA_TYPE_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9!#$&^_.+\-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+\-]*$"
+_MEDIA_TYPE_MAX_LENGTH = 127
+
+
+def validate_media_type(value: str) -> str:
+    """Check a persisted media type is a safe parameter-free token."""
+
+    if (
+        not isinstance(value, str)
+        or len(value) > _MEDIA_TYPE_MAX_LENGTH
+        or re.fullmatch(_MEDIA_TYPE_PATTERN, value) is None
+    ):
+        raise ValueError(
+            "Media type must be a parameter-free type/subtype token "
+            f"(e.g. 'text/plain'), got {value!r}."
+        )
+    return value
 
 
 class RunState(StrEnum):
@@ -140,11 +160,18 @@ class ArtifactRecord(BaseModel):
     schema_version: Literal["1.0"] = EXECUTION_SCHEMA_VERSION
     artifact_id: str = Field(min_length=1, pattern=_ARTIFACT_IDENTITY_PATTERN)
     path: str = Field(min_length=1)
-    media_type: str = Field(min_length=1, default="application/octet-stream")
+    media_type: str = Field(
+        min_length=1, max_length=_MEDIA_TYPE_MAX_LENGTH, default="application/octet-stream"
+    )
     byte_size: int = Field(ge=0)
     sha256: str = Field(pattern=_SHA256_PATTERN)
     produced_by_node: str = Field(min_length=1)
     port_id: str = Field(min_length=1)
+
+    @field_validator("media_type")
+    @classmethod
+    def _media_type_must_be_plain_token(cls, value: str) -> str:
+        return validate_media_type(value)
 
     @field_validator("path")
     @classmethod
@@ -166,6 +193,8 @@ class ArtifactRecord(BaseModel):
             raise ValueError(
                 f"Artifact path must not contain empty, '.', or '..' segments, got {value!r}."
             )
+        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in canonical):
+            raise ValueError(f"Artifact path must not contain control characters, got {value!r}.")
         return canonical
 
 
@@ -176,9 +205,16 @@ class CacheOutput(BaseModel):
 
     port_id: str = Field(min_length=1)
     relative_path: str = Field(min_length=1)
-    media_type: str = Field(min_length=1, default="application/octet-stream")
+    media_type: str = Field(
+        min_length=1, max_length=_MEDIA_TYPE_MAX_LENGTH, default="application/octet-stream"
+    )
     byte_size: int = Field(ge=0)
     sha256: str = Field(pattern=_SHA256_PATTERN)
+
+    @field_validator("media_type")
+    @classmethod
+    def _media_type_must_be_plain_token(cls, value: str) -> str:
+        return validate_media_type(value)
 
     @field_validator("relative_path")
     @classmethod
@@ -197,6 +233,10 @@ class CacheOutput(BaseModel):
         if ".." in segments or "." in segments or "" in segments:
             raise ValueError(
                 f"Cache output path must not contain empty, '.', or '..' segments, got {value!r}."
+            )
+        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in canonical):
+            raise ValueError(
+                f"Cache output path must not contain control characters, got {value!r}."
             )
         if segments[0] in ("complete", "staging", "quarantine"):
             raise ValueError(

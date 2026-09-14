@@ -9,6 +9,7 @@ from brainlearn_core import (
     RUN_TERMINAL_STATES,
     ArtifactRecord,
     CacheEntry,
+    CacheOutput,
     EnvironmentRecord,
     FailureRecord,
     NodeRunRecord,
@@ -736,3 +737,88 @@ def test_executed_states_require_positive_attempt() -> None:
     record = _node_record("succeeded", attempt=0)
     with pytest.raises(ValidationError, match="positive attempt"):
         NodeRunRecord.model_validate(record)
+
+
+@pytest.mark.parametrize("path", ["a/b\revil.txt", "a/b\nvil.txt", "a/b\x7fvil.txt"])
+def test_artifact_paths_reject_control_characters(path: str) -> None:
+    raw = _load("artifact-1.0.json")
+    with pytest.raises(ValidationError, match="control characters"):
+        ArtifactRecord.model_validate(dict(raw, path=path))
+
+
+@pytest.mark.parametrize(
+    "path",
+    ['a/qu"oted.txt', "a/ünïcodé.txt", "a/" + "x" * 200 + ".txt"],
+)
+def test_artifact_paths_accept_special_but_legal_names(path: str) -> None:
+    raw = _load("artifact-1.0.json")
+    record = ArtifactRecord.model_validate(dict(raw, path=path))
+    assert record.path == path
+
+
+def _cache_output(path: str, media_type: str = "text/plain") -> dict:
+    return {
+        "port_id": "output",
+        "relative_path": path,
+        "media_type": media_type,
+        "byte_size": 3,
+        "sha256": "a" * 64,
+    }
+
+
+@pytest.mark.parametrize("path", ["out\revil.txt", "out\nvil.txt"])
+def test_cache_output_paths_reject_control_characters(path: str) -> None:
+    with pytest.raises(ValidationError, match="control characters"):
+        CacheOutput.model_validate(_cache_output(path))
+
+
+@pytest.mark.parametrize("path", ['qu"oted.txt', "ünïcodé.txt"])
+def test_cache_output_paths_accept_special_but_legal_names(path: str) -> None:
+    assert CacheOutput.model_validate(_cache_output(path)).relative_path == path
+
+
+@pytest.mark.parametrize(
+    "media_type",
+    [
+        "text/plain\r\nX-Probe: injected",
+        "text/plain\nX-Probe: injected",
+        "text/plain; charset=utf-8",
+        "text plain",
+        "textplain",
+        "text/",
+        "/plain",
+        "",
+        "text/plain ",
+        " application/octet-stream",
+    ],
+)
+def test_artifact_media_types_reject_hostile_and_malformed_values(media_type: str) -> None:
+    from brainlearn_core import validate_media_type
+
+    raw = _load("artifact-1.0.json")
+    with pytest.raises(ValidationError, match="Media type|at least 1|too long"):
+        ArtifactRecord.model_validate(dict(raw, media_type=media_type))
+    with pytest.raises(ValueError, match="parameter-free"):
+        validate_media_type(media_type)
+
+
+@pytest.mark.parametrize(
+    "media_type", ["text/plain", "application/octet-stream", "image/png", "audio/x-wav"]
+)
+def test_artifact_media_types_accept_plain_tokens(media_type: str) -> None:
+    from brainlearn_core import validate_media_type
+
+    raw = _load("artifact-1.0.json")
+    assert ArtifactRecord.model_validate(dict(raw, media_type=media_type)).media_type == (
+        media_type
+    )
+    assert validate_media_type(media_type) == media_type
+    assert CacheOutput.model_validate(_cache_output("out.txt", media_type)).media_type == (
+        media_type
+    )
+
+
+@pytest.mark.parametrize("media_type", ["text/plain\r\nX", "text/html; charset=utf-8", "nope"])
+def test_cache_output_media_types_reject_hostile_values(media_type: str) -> None:
+    with pytest.raises(ValidationError, match="Media type|at least 1|too long"):
+        CacheOutput.model_validate(_cache_output("out.txt", media_type))

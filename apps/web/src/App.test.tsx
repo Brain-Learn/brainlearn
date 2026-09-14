@@ -1762,3 +1762,82 @@ test("a graph edit during example load keeps the edited graph", async () => {
   expect(draft.nodes).toHaveLength(1);
   expect(draft.nodes[0].type).toBe("input.bids_eeg");
 });
+
+test("token-only authorization loads restored-project history", async () => {
+  const restored = testWorkflow("restored", ["node-a"]);
+  localStorage.setItem(
+    "brainlearn.unsaved-workflow.v1",
+    JSON.stringify({
+      savedAt: "2026-09-13T00:00:00.000Z",
+      workflow: restored,
+      projectPath: "/tmp/restored",
+      projectName: "Restored",
+    }),
+  );
+  const historyPayload = [
+    {
+      path: "/tmp/restored",
+      run_id: "run-old-1",
+      run: { ...testWorkflow("x", []), id: "run-old-1", state: "succeeded" },
+    },
+  ];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/registry/nodes")) {
+        return { ok: true, json: async () => [bidsManifest] };
+      }
+      if (url.endsWith("/api/workflows/examples")) {
+        return { ok: true, json: async () => ({ examples: [] }) };
+      }
+      if (url.endsWith("/api/workflows/validate") && init?.body) {
+        const workflow = JSON.parse(String(init.body)) as Workflow;
+        return {
+          ok: true,
+          json: async () => ({
+            workflow,
+            validation: { valid: true, issues: [] },
+          }),
+        };
+      }
+      if (url.includes("/api/runs/list")) {
+        const headers = init?.headers as Record<string, string> | undefined;
+        if (headers?.Authorization !== "Bearer good-token") {
+          return {
+            ok: false,
+            status: 401,
+            json: async () => ({
+              detail: "A valid session token is required.",
+            }),
+          };
+        }
+        return { ok: true, json: async () => historyPayload };
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    }),
+  );
+  render(<App />);
+  await screen.findByText("Active project: /tmp/restored");
+  expect(screen.queryByText("run-old-1")).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("Session token"), {
+    target: { value: "bad-token" },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByText("A valid session token is required."),
+    ).toBeInTheDocument(),
+  );
+  expect(screen.queryByText("run-old-1")).not.toBeInTheDocument();
+
+  fireEvent.change(screen.getByLabelText("Session token"), {
+    target: { value: "good-token" },
+  });
+  await waitFor(() =>
+    expect(screen.getByText("run-old-1")).toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByText("A valid session token is required."),
+  ).not.toBeInTheDocument();
+});

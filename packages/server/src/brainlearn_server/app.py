@@ -1,7 +1,10 @@
 """FastAPI application serving the local BrainLearn user interface."""
 
 import json
+import re
 import time
+import unicodedata
+import urllib.parse
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Literal
@@ -145,6 +148,14 @@ class RunSaveRequest(BaseModel):
 
     path: str = Field(min_length=1)
     run: RunRecord
+
+
+class ArtifactOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    artifact_id: str = Field(min_length=1)
 
 
 class RunRecoverRequest(BaseModel):
@@ -382,6 +393,58 @@ def list_runs(path: str, _auth: None = Depends(require_session_token)) -> list[R
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return [RunResponse(path=path, run_id=record.id, run=record) for record in records]
+
+
+def content_disposition(filename: str) -> str:
+    """Build a header-safe attachment disposition for a download filename.
+
+    The raw name is never interpolated: the ``filename`` fallback carries
+    pure ASCII (transliterated, with quotes, backslashes, and controls
+    replaced) so the header value itself stays valid HTTP, while
+    ``filename*`` carries the exact name percent-encoded per RFC 5987/6266.
+    """
+
+    ascii_name = unicodedata.normalize("NFKD", filename).encode("ascii", "ignore").decode("ascii")
+    fallback = re.sub(r'["\\\x00-\x1f\x7f]', "_", ascii_name).strip() or "artifact"
+    encoded = urllib.parse.quote(filename, safe="")
+    if fallback == filename and filename.isascii():
+        return f'attachment; filename="{fallback}"'
+    return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{encoded}"
+
+
+@app.post("/api/artifacts/open")
+def open_artifact(
+    payload: ArtifactOpenRequest, _auth: None = Depends(require_session_token)
+) -> StreamingResponse:
+    from brainlearn_server.run_store import _ARTIFACT_CHUNK_SIZE
+
+    try:
+        stream, artifact = runs.open_artifact_stream(
+            payload.path, payload.run_id, payload.artifact_id
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    filename = artifact.path.rsplit("/", 1)[-1] or artifact.artifact_id
+
+    def _chunks() -> Iterator[bytes]:
+        try:
+            while True:
+                data = stream.read(_ARTIFACT_CHUNK_SIZE)
+                if not data:
+                    break
+                yield data
+        finally:
+            stream.close()
+
+    return StreamingResponse(
+        _chunks(),
+        media_type=artifact.media_type,
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
 
 
 @app.post("/api/runs/recover", response_model=list[RunResponse])
