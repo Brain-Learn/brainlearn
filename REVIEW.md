@@ -4,65 +4,49 @@ Review date: 2026-09-14
 
 ## Current review
 
-Scope: final monitoring review of Step 5A.2 after the three focused
-provider-boundary repairs.
+Scope: final monitoring review of Step 5A.3, the authenticated read-only dataset
+API and searchable library/details interface.
 
-Status: **complete**. No blocking findings remain. The provider-neutral
-read-only source boundary and OpenNeuro public metadata adapter are approved.
+Status: **approved**. All three findings from the first review are repaired, the
+focused regressions pass, and the complete repository gate is green.
 
-## Approved behavior
+## Findings
 
-- `DatasetProvider` defines an asynchronous, provider-neutral public listing and
-  immutable-snapshot resolution boundary; `MockDatasetProvider` supplies fully
-  offline deterministic pagination, filtering, failure, timeout, malformed-data,
-  and cancellation behavior.
-- OpenNeuro transport, connection parsing, and snapshot mapping are separated.
-  The standard-library transport bounds request/response size and timeout, never
-  attaches authentication, and keeps ordinary tests offline.
-- OpenNeuro listing is public-only and fail closed. Non-public nodes never reach
-  results, while provider-owned pagination cursors remain untouched. The mock
-  applies its public filter before pagination and refuses non-public resolution.
-- Snapshot resolution requires an explicit immutable tag and binds the returned
-  dataset id and tag to the requested pair. Substituted responses raise
-  `ProviderMalformed` and cannot be returned or persisted.
-- Direct and urllib-wrapped socket timeouts surface as `ProviderTimeout`; other
-  URL failures remain `ProviderError`; asyncio cancellation propagates unchanged.
-- Every resolved snapshot passes through schema-`1.0` `CatalogEntry` validation
-  and remains review-pending. No transfer URLs, secrets, raw provider responses,
-  inferred SPDX value, checksum approval, or workflow-compatibility claim is
-  persisted.
-- The unit contains no downloads, extraction, dataset UI, MNE/BIDS dependency,
-  credential flow, or scientific processing.
+No blocking findings remain.
+
+1. Dataset-provider failures now map to stable class-specific HTTP details. A
+   strict provider-name validator prevents unsafe names from reaching lookup or
+   response text, and only validated provider/dataset/snapshot identifiers are
+   echoed. Hostile exception regressions cover all mapped classes on both routes
+   and expose no injected token, signed URL, or upstream message.
+2. Pagination now uses the immutable criteria that produced its cursor. Editing
+   query or modality controls without submitting cannot alter a continuation;
+   submitting a fresh search replaces the result set.
+3. Results/details transitions now manage real focus. Successful resolution
+   focuses the details heading, failure focuses the announced Back recovery
+   control, Back and Escape restore the originating result, and project changes
+   preserve or relocate focus according to whether controls remain available.
 
 ## Verification reproduced
 
 - `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 50 files clean.
-- `uv run mypy packages/core/src packages/server/src`: 21 source files clean.
-- `uv run pytest -q`: 530 passed, 1 opt-in live smoke skipped, with two upstream
+- `uv run ruff format --check .`: 52 files clean.
+- `uv run mypy packages/core/src packages/server/src`: 22 source files clean.
+- `uv run pytest -q`: 541 passed, 1 opt-in live smoke skipped, with two upstream
   Starlette/AnyIO warnings.
-- Focused provider suite: 37 passed, 1 opt-in live smoke skipped.
-- `npm --prefix apps/web run lint`: passed.
+- Focused dataset API suite: 11 passed with the same two upstream warnings.
+- `npm --prefix apps/web run lint`: passed with zero warnings.
 - `npm --prefix apps/web run format:check`: passed.
-- `npm --prefix apps/web test -- --run`: 121 passed in 13 files.
-- `npm --prefix apps/web run build`: passed, 1,841 modules transformed.
+- Focused dataset UI/client suites: 20 passed in 2 files.
+- `npm --prefix apps/web test -- --run`: 141 passed in 15 files.
+- `npm --prefix apps/web run build`: passed, 1,843 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
-- `git diff --check`: passed before this final review update.
-- Independent direct probes refused separate dataset-id and tag substitutions,
-  omitted a private listing node while preserving the server cursor, classified
-  a wrapped timeout as `ProviderTimeout`, and retained `ProviderError` for a
-  non-timeout URL failure.
+- `git diff --check`: passed before this review update.
 
-## Checklist decision
+## Scope decision
 
-The OpenNeuro-first provider item is approved and checked. Step 5 remains open
-for the read-only dataset library UI, download lifecycle and hardening, offline
-local import, pinned EEG fixture, and scientific BIDS/MNE inspection work.
-
-## Next assignment
-
-Implement only Step 5A.3 from `docs/implementation-plan.md`: expose the approved
-provider catalogue through authenticated, project-aware read-only local API
-endpoints and add the searchable dataset library/details UI. Show all required
-pre-download metadata and pending-review limitations. Do not download or extract
-files, write dataset locks, add MNE/BIDS dependencies, or add credentials.
+Authentication and authorized-project isolation remain intact; OpenNeuro is
+constructed lazily; normal tests remain offline; pending metadata is presented
+without scientific inference; and this unit adds no download, extraction, lock,
+credential, transfer URL, or MNE/BIDS behavior. The searchable dataset-library
+and details-panel checklist item is approved. Step 5 remains open.

@@ -31,6 +31,7 @@ import {
   validateWorkflow,
 } from "./api";
 import type { ExampleInfo } from "./api";
+import { DatasetLibrary } from "./DatasetLibrary";
 import {
   NODE_REMOVAL_TRANSITION_MS,
   resolveFitViewDuration,
@@ -1663,6 +1664,7 @@ function App() {
             {exampleMessage}
           </div>
         )}
+        <DatasetLibrary projectPath={activeProjectPath} token={sessionToken} />
         <div className="panel-heading">
           <span>Local project</span>
         </div>

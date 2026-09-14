@@ -152,6 +152,51 @@ input {
   gap: 8px;
   padding: 0 14px;
 }
+ul.library-list {
+  margin: 0;
+  list-style: none;
+}
+.library-list li {
+  display: grid;
+}
+.dataset-details {
+  display: grid;
+  gap: 4px;
+  margin: 12px 14px;
+  padding: 12px;
+  color: #cbd8e8;
+  background: #0a1320;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+article[aria-label="Dataset details"] h4 {
+  margin: 12px 14px 0;
+  color: #cbd8e8;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+article[aria-label="Dataset details"] h4:focus {
+  outline: 2px solid #50c9b2;
+  outline-offset: 2px;
+}
+.dataset-details dt {
+  color: #718198;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dataset-details dd {
+  margin: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+.dataset-details ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 2px;
+}
 .library-list button {
   display: flex;
   align-items: center;

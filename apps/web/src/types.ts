@@ -245,3 +245,57 @@ export interface RunResponse {
   run_id: string;
   run: RunRecord;
 }
+
+export interface DatasetListItem {
+  provider: string;
+  dataset_id: string;
+  title: string;
+  public: boolean;
+  latest_snapshot: string | null;
+}
+
+export interface DatasetListResponse {
+  provider: string;
+  items: DatasetListItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface DatasetCitation {
+  title: string;
+  doi: string | null;
+  url: string | null;
+}
+
+export interface DatasetExpectedFile {
+  path: string;
+  byte_size: number;
+  sha256: string | null;
+}
+
+export interface CatalogEntry {
+  schema_version: "1.0";
+  catalog_identity: string;
+  provider: string;
+  dataset_id: string;
+  snapshot: string;
+  title: string;
+  modality: string;
+  task: string;
+  participants: number;
+  formats: string[];
+  approximate_total_bytes: number;
+  expected_total_bytes: number;
+  expected_files: DatasetExpectedFile[];
+  access: "public" | "restricted" | "credentialed";
+  license_name: string;
+  license_spdx: string | null;
+  reuse_statement: string;
+  citations: DatasetCitation[];
+  landing_page: string;
+  compatible_templates: string[];
+  curator: string;
+  review_status: "pending" | "verified";
+  reviewed_at: string | null;
+  limitations: string;
+}

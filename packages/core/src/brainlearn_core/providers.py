@@ -83,7 +83,10 @@ class DatasetProvider(Protocol):
     unknown) snapshot as :class:`ProviderNotFound`.
     """
 
-    provider_name: str
+    @property
+    def provider_name(self) -> str:
+        """The canonical provider key (for example ``"openneuro"``)."""
+        ...
 
     async def list_datasets(self, search: DatasetSearch) -> DatasetPage:
         """List public datasets, one bounded page at a time."""

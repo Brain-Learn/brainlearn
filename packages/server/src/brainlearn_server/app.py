@@ -11,7 +11,10 @@ from typing import Literal
 
 import uvicorn
 from brainlearn_core import (
+    OPENNEURO_PROVIDER,
     RUN_TERMINAL_STATES,
+    CatalogEntry,
+    DatasetSearch,
     NodeManifest,
     ProjectManifest,
     RunRecord,
@@ -20,15 +23,21 @@ from brainlearn_core import (
     migrate_workflow_dict,
     validate_workflow,
 )
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from brainlearn_server.auth import get_session_token, require_session_token
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
+from brainlearn_server.datasets import (
+    DatasetListResponse,
+    list_dataset_page,
+    resolve_dataset_snapshot,
+    validate_provider_name,
+)
 from brainlearn_server.error_log import ErrorLoggingMiddleware, error_log_dir
-from brainlearn_server.project_store import ProjectStore
+from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
 from brainlearn_server.run_store import RunStore
 from brainlearn_server.security import HostOriginValidationMiddleware
@@ -40,6 +49,10 @@ EXAMPLE_WORKFLOWS: dict[str, Path] = {
     "eeg-first-look": EXAMPLE_PATH,
     "demo-branched": REPOSITORY_ROOT / "examples" / "demo-branched.workflow.json",
 }
+
+# Portable dataset-identifier grammar shared with the core contract: request
+# validation rejects malformed ids/tags with 422 before any provider runs.
+_DATASET_COMPONENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 class HealthResponse(BaseModel):
@@ -251,6 +264,90 @@ def submitted_workflow_validation(workflow: Workflow) -> WorkflowValidationRespo
         workflow=workflow,
         validation=validate_workflow(workflow, NODE_REGISTRY_BY_ID),
     )
+
+
+def _optional_search_text(value: str | None, *, field: str, max_length: int) -> str | None:
+    """Normalize an optional search parameter to stripped text or ``None``."""
+
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) > max_length:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Search {field} must be at most {max_length} characters.",
+        )
+    return text
+
+
+def _require_project_path(path: str) -> None:
+    """Authorize a dataset-library request against the explicitly opened projects."""
+
+    try:
+        store.require_allowed(canonicalize_project_path(path))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/datasets", response_model=DatasetListResponse)
+async def list_datasets(
+    path: str,
+    provider: str = OPENNEURO_PROVIDER,
+    query: str | None = None,
+    modality: str | None = None,
+    first: int = Query(default=10, ge=1, le=50),
+    after: str | None = None,
+    _auth: None = Depends(require_session_token),
+) -> DatasetListResponse:
+    """List one bounded page of public datasets for the authorized project.
+
+    Read-only metadata only: this endpoint never downloads, extracts, or
+    writes dataset bytes, locks, transfer URLs, or credentials.
+    """
+
+    _require_project_path(path)
+    name = validate_provider_name(provider)
+    return await list_dataset_page(
+        name,
+        DatasetSearch(
+            first=first,
+            after=_optional_search_text(after, field="cursor", max_length=1024),
+            query=_optional_search_text(query, field="query", max_length=200),
+            modality=_optional_search_text(modality, field="modality", max_length=64),
+        ),
+    )
+
+
+@app.get("/api/datasets/{provider}/{dataset_id}/{snapshot}", response_model=CatalogEntry)
+async def resolve_dataset(
+    provider: str,
+    dataset_id: str,
+    snapshot: str,
+    path: str,
+    _auth: None = Depends(require_session_token),
+) -> CatalogEntry:
+    """Resolve one explicit immutable snapshot to validated catalog metadata.
+
+    Read-only metadata only: no download, extraction, lock, transfer URL,
+    or credential is created here.
+    """
+
+    _require_project_path(path)
+    name = validate_provider_name(provider)
+    for field, value in (("dataset_id", dataset_id), ("snapshot", snapshot)):
+        if len(value) > 128 or _DATASET_COMPONENT_PATTERN.match(value) is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Dataset {field} must be a portable identifier "
+                    "(letters, digits, dot, underscore, hyphen)."
+                ),
+            )
+    return await resolve_dataset_snapshot(name, dataset_id, snapshot)
 
 
 def _project_response(
