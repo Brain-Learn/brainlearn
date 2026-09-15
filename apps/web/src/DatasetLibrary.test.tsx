@@ -122,24 +122,21 @@ test("shows guidance and never fetches without project context", () => {
   expect(calls).toEqual([]);
 });
 
-test("makes the no-download boundary explicit with no download affordance", () => {
+test("download controls appear only for a selected snapshot", () => {
   stubLibrary({});
   const { container } = render(
     <DatasetLibrary projectPath="/tmp/project" token="token" />,
   );
   expect(
-    screen.getByText(
-      /browsing never downloads, and no download action exists yet/,
-    ),
+    screen.getByText(/downloads only start when you choose Download/),
   ).toBeInTheDocument();
   const section = container.querySelector(
     'section[aria-label="Dataset library"]',
   );
   expect(section).not.toBeNull();
-  // The boundary notice names downloads only to rule them out; what matters
-  // is that no control offers one.
+  // The results list itself offers no download affordance.
   expect(
-    screen.queryByRole("button", { name: /download|import/i }),
+    screen.queryByRole("button", { name: /download snapshot/i }),
   ).not.toBeInTheDocument();
   expect(section?.querySelector("a[href]")).toBeNull();
 });
@@ -424,6 +421,10 @@ test("switching projects clears results without fetching", async () => {
   result.focus();
   fireEvent.click(result);
   await screen.findByTestId("dataset-details");
+  // Wait until resolve and the transfer lookup both settle, so the baseline
+  // covers every legitimate request: search, resolve, and transfer lookup.
+  await screen.findByText("https://example.invalid/datasets/zz10a");
+  await waitFor(() => expect(calls).toHaveLength(3));
   const callsBeforeSwitch = calls.length;
   rerender(<DatasetLibrary projectPath="/tmp/other" token="token" />);
   expect(screen.queryByTestId("dataset-select-zz10a")).not.toBeInTheDocument();

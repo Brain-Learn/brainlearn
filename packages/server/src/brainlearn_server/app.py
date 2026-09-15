@@ -15,8 +15,13 @@ from brainlearn_core import (
     RUN_TERMINAL_STATES,
     CatalogEntry,
     DatasetSearch,
+    DownloadRecord,
     NodeManifest,
     ProjectManifest,
+    ProviderError,
+    ProviderMalformed,
+    ProviderNotFound,
+    ProviderTimeout,
     RunRecord,
     ValidationResult,
     Workflow,
@@ -35,6 +40,13 @@ from brainlearn_server.datasets import (
     list_dataset_page,
     resolve_dataset_snapshot,
     validate_provider_name,
+)
+from brainlearn_server.downloads import (
+    DiskFullError,
+    DownloadConflictError,
+    DownloadNotFoundError,
+    DownloadService,
+    UnsafeStorageError,
 )
 from brainlearn_server.error_log import ErrorLoggingMiddleware, error_log_dir
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
@@ -188,6 +200,7 @@ class RunResponse(BaseModel):
 store = ProjectStore()
 runs = RunStore(store)
 workers = WorkerService(runs)
+downloads = DownloadService(store)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -348,6 +361,170 @@ async def resolve_dataset(
                 ),
             )
     return await resolve_dataset_snapshot(name, dataset_id, snapshot)
+
+
+class DownloadStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    provider: str = Field(min_length=1)
+    dataset_id: str = Field(min_length=1)
+    snapshot: str = Field(min_length=1)
+
+
+class DownloadPathRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+
+
+def _download_not_found(detail: str) -> HTTPException:
+    return HTTPException(status_code=404, detail=detail)
+
+
+def _download_blocked() -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail="The dataset storage layout is blocked by a symlink or non-directory.",
+    )
+
+
+@app.post("/api/datasets/downloads", response_model=DownloadRecord)
+def start_download(
+    payload: DownloadStartRequest, _auth: None = Depends(require_session_token)
+) -> DownloadRecord:
+    """Download an explicitly selected immutable public snapshot.
+
+    Verified bytes only: the transfer streams into a unique partial tree,
+    verifies checksums and sizes, then atomically finalizes with a lock.
+    """
+    name = validate_provider_name(payload.provider)
+    for field, value in (("dataset_id", payload.dataset_id), ("snapshot", payload.snapshot)):
+        if len(value) > 128 or _DATASET_COMPONENT_PATTERN.match(value) is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Dataset {field} must be a portable identifier "
+                    "(letters, digits, dot, underscore, hyphen)."
+                ),
+            )
+    try:
+        return downloads.start_download(payload.path, name, payload.dataset_id, payload.snapshot)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except DownloadConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DownloadNotFoundError as exc:
+        raise _download_not_found(str(exc)) from exc
+    except DiskFullError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ProviderNotFound:
+        raise _download_not_found(
+            f"Unknown dataset snapshot {payload.dataset_id}:{payload.snapshot}."
+        ) from None
+    except ProviderTimeout:
+        raise HTTPException(
+            status_code=504,
+            detail="The dataset source timed out. Retry the request.",
+        ) from None
+    except (ProviderMalformed, ProviderError):
+        raise HTTPException(
+            status_code=502,
+            detail="The dataset source returned unusable metadata.",
+        ) from None
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid dataset download request.") from None
+
+
+@app.get("/api/datasets/downloads", response_model=list[DownloadRecord])
+def list_downloads(path: str, _auth: None = Depends(require_session_token)) -> list[DownloadRecord]:
+    """List dataset download transfers for the authorized project."""
+    try:
+        return downloads.list_downloads(path)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/datasets/downloads/recover", response_model=list[DownloadRecord])
+def recover_downloads(
+    payload: DownloadPathRequest, _auth: None = Depends(require_session_token)
+) -> list[DownloadRecord]:
+    """Reconcile interrupted transfers after a restart; never invents success."""
+    try:
+        return downloads.recover_project(payload.path)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/datasets/downloads/{download_id}", response_model=DownloadRecord)
+def download_status(
+    download_id: str, path: str, _auth: None = Depends(require_session_token)
+) -> DownloadRecord:
+    """Return one dataset download transfer record."""
+    try:
+        return downloads.get_download(path, download_id)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except DownloadNotFoundError as exc:
+        raise _download_not_found(str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError:
+        raise _download_not_found("Unknown dataset download.") from None
+
+
+@app.post("/api/datasets/downloads/{download_id}/cancel", response_model=DownloadRecord)
+def cancel_download(
+    download_id: str,
+    payload: DownloadPathRequest,
+    _auth: None = Depends(require_session_token),
+) -> DownloadRecord:
+    """Halt a transfer, keeping downloaded bytes for an explicit resume."""
+    try:
+        return downloads.cancel_download(payload.path, download_id)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except DownloadConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DownloadNotFoundError as exc:
+        raise _download_not_found(str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError:
+        raise _download_not_found("Unknown dataset download.") from None
+
+
+@app.post("/api/datasets/downloads/{download_id}/resume", response_model=DownloadRecord)
+def resume_download(
+    download_id: str,
+    payload: DownloadPathRequest,
+    _auth: None = Depends(require_session_token),
+) -> DownloadRecord:
+    """Requeue a halted transfer after rechecking space, then drive it."""
+    try:
+        return downloads.resume_download(payload.path, download_id)
+    except UnsafeStorageError:
+        raise _download_blocked() from None
+    except DownloadConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except DownloadNotFoundError as exc:
+        raise _download_not_found(str(exc)) from exc
+    except DiskFullError as exc:
+        raise HTTPException(status_code=507, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError:
+        raise _download_not_found("Unknown dataset download.") from None
 
 
 def _project_response(

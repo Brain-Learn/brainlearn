@@ -246,6 +246,42 @@ export interface RunResponse {
   run: RunRecord;
 }
 
+export type DownloadState =
+  "queued" | "downloading" | "paused" | "cancelled" | "failed" | "succeeded";
+
+export interface DownloadFileState {
+  path: string;
+  byte_size: number;
+  sha256: string | null;
+  bytes_completed: number;
+  verified: boolean;
+}
+
+export interface DownloadFailure {
+  code: string;
+  message: string;
+}
+
+export interface DownloadRecord {
+  schema_version: "1.0";
+  download_id: string;
+  provider: string;
+  dataset_id: string;
+  snapshot: string;
+  catalog_identity: string;
+  catalog_entry: CatalogEntry;
+  expected_total_bytes: number;
+  files: DownloadFileState[];
+  bytes_completed: number;
+  state: DownloadState;
+  attempt: number;
+  max_attempts: number;
+  created_at: string;
+  updated_at: string;
+  failure: DownloadFailure | null;
+  lock_identity: string | null;
+}
+
 export interface DatasetListItem {
   provider: string;
   dataset_id: string;

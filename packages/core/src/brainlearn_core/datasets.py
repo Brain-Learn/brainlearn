@@ -163,6 +163,16 @@ def _check_relative_path(value: str, field_name: str) -> str:
     return canonical
 
 
+def validate_relative_path(value: str, field_name: str) -> str:
+    """Public form of the portable project-relative path grammar.
+
+    Other dataset records (transfers, locks) reuse this so one conservative
+    cross-platform rule set decides what may be written inside a project.
+    """
+
+    return _check_relative_path(value, field_name)
+
+
 def _check_hostname(hostname: str, field_name: str, value: str) -> str:
     """Validate a DNS hostname, or a documented literal IP address."""
 

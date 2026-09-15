@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  DOWNLOAD_POLL_MS,
+  cancelDownload,
   checksumCoverage,
   formatBytes,
+  getDownload,
   listDatasets,
+  listDownloads,
   resolveDataset,
+  resumeDownload,
+  startDownload,
 } from "./datasets";
-import type { CatalogEntry, DatasetListItem } from "./types";
+import type { CatalogEntry, DatasetListItem, DownloadRecord } from "./types";
 
 interface DatasetLibraryProps {
   projectPath: string;
@@ -22,10 +28,13 @@ interface Selection {
 const MODALITY_OPTIONS = ["", "EEG", "MRI", "MEG", "iEEG", "PET"];
 
 /**
- * Searchable read-only dataset library. Browsing fetches validated catalog
- * metadata only: there is no download, import, lock-writing, transfer-URL,
- * or credential surface anywhere in this component. Requests fire solely on
- * explicit search, pagination, and selection actions.
+ * Searchable dataset library with verified downloads. Browsing fetches
+ * validated catalog metadata only; bytes move solely through an explicit
+ * Download action on a selected snapshot, stream into the authorized
+ * project, and finalize only after checksum verification. There is no
+ * import, transfer-URL, or credential surface anywhere in this component.
+ * Requests fire solely on explicit search, pagination, selection, and
+ * download actions.
  */
 export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
   const available = projectPath.length > 0 && token.length > 0;
@@ -41,6 +50,9 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
   const [details, setDetails] = useState<CatalogEntry | null>(null);
   const [detailsPending, setDetailsPending] = useState(false);
   const [detailsMessage, setDetailsMessage] = useState<string | null>(null);
+  const [transfer, setTransfer] = useState<DownloadRecord | null>(null);
+  const [transferPending, setTransferPending] = useState(false);
+  const [transferMessage, setTransferMessage] = useState<string | null>(null);
   // Immutable record of the criteria that produced the visible page and its
   // cursor. Continuations reuse this record so edits to the form that have
   // not been submitted can never change the meaning of Load more.
@@ -50,6 +62,22 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
   } | null>(null);
   const listOpSeq = useRef(0);
   const detailsOpSeq = useRef(0);
+  const transferOpSeq = useRef(0);
+  // Discovery (existing-transfer adoption) owns transferOpSeq's sibling
+  // counter only: a late adoption must never supersede a user-started
+  // Start/Cancel/Resume or strand its pending state.
+  const discoveryOpSeq = useRef(0);
+  // Live mirrors so stale async continuations can compare against the
+  // currently rendered selection and transfer instead of closed-over values.
+  const selectionRef = useRef<Selection | null>(null);
+  selectionRef.current = selection;
+  const transferRef = useRef<DownloadRecord | null>(null);
+  transferRef.current = transfer;
+  // Latest project context for effects that must not refetch when it
+  // changes: selection and transfer are cleared on context change, so these
+  // effects depend on them alone and always use the context of their run.
+  const contextRef = useRef({ projectPath, token });
+  contextRef.current = { projectPath, token };
   // Focus bookkeeping: the results/details swap unmounts the focused
   // control, so focus is assigned explicitly on every view transition.
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -92,6 +120,8 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
     pendingRestoreRef.current = null;
     listOpSeq.current += 1;
     detailsOpSeq.current += 1;
+    transferOpSeq.current += 1;
+    discoveryOpSeq.current += 1;
     setItems([]);
     setNextCursor(null);
     setHasMore(false);
@@ -102,6 +132,9 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
     setDetails(null);
     setDetailsPending(false);
     setDetailsMessage(null);
+    setTransfer(null);
+    setTransferPending(false);
+    setTransferMessage(null);
     setApplied(null);
     if (!available) {
       // The form just disabled: section focus keeps keyboard and
@@ -158,6 +191,9 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
     setSelection(null);
     setDetails(null);
     setDetailsMessage(null);
+    setTransfer(null);
+    setTransferPending(false);
+    setTransferMessage(null);
     setApplied(criteria);
     try {
       const page = await listDatasets({
@@ -232,6 +268,9 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
     setDetails(null);
     setDetailsPending(true);
     setDetailsMessage(null);
+    setTransfer(null);
+    setTransferPending(false);
+    setTransferMessage(null);
     try {
       const entry = await resolveDataset(
         target.provider,
@@ -255,6 +294,8 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
 
   const handleBack = () => {
     detailsOpSeq.current += 1;
+    transferOpSeq.current += 1;
+    discoveryOpSeq.current += 1;
     pendingRestoreRef.current = selection
       ? resultKey(selection.provider, selection.datasetId)
       : null;
@@ -262,6 +303,150 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
     setDetails(null);
     setDetailsPending(false);
     setDetailsMessage(null);
+    setTransfer(null);
+    setTransferPending(false);
+    setTransferMessage(null);
+  };
+
+  // When details land, adopt any existing transfer for the same immutable
+  // triple so an in-flight or finished download is shown, never restarted.
+  // Depends on selection/details only: a context change clears both without
+  // refetching, so continuations can never cross projects. Discovery owns a
+  // separate sequence from user mutations: a late adoption installs only
+  // when no user-installed transfer is present and the selection it ran for
+  // is still current, so it can neither overwrite a started download nor
+  // strand a pending action.
+  useEffect(() => {
+    if (!details || !selection) return;
+    const { projectPath: path, token: tok } = contextRef.current;
+    const wanted: Selection = { ...selection };
+    const operation = ++discoveryOpSeq.current;
+    setTransferMessage(null);
+    listDownloads({ path, token: tok })
+      .then((records) => {
+        if (operation !== discoveryOpSeq.current) return;
+        const current = selectionRef.current;
+        if (
+          current === null ||
+          current.provider !== wanted.provider ||
+          current.datasetId !== wanted.datasetId ||
+          current.snapshot !== wanted.snapshot
+        ) {
+          return;
+        }
+        if (transferRef.current !== null) return;
+        const match =
+          records.find(
+            (record) =>
+              record.provider === wanted.provider &&
+              record.dataset_id === wanted.datasetId &&
+              record.snapshot === wanted.snapshot,
+          ) ?? null;
+        setTransfer(match);
+      })
+      .catch((error: unknown) => {
+        if (operation !== discoveryOpSeq.current) return;
+        const current = selectionRef.current;
+        if (
+          current === null ||
+          current.provider !== wanted.provider ||
+          current.datasetId !== wanted.datasetId ||
+          current.snapshot !== wanted.snapshot
+        ) {
+          return;
+        }
+        if (transferRef.current !== null) return;
+        setTransferMessage(
+          error instanceof Error ? error.message : "Unable to read downloads.",
+        );
+      });
+  }, [details, selection]);
+
+  // Poll an active transfer for progress; terminal transfers rest. Depends
+  // on the transfer alone with the context captured at effect time, so a
+  // context change cleans up without issuing a cross-project request.
+  useEffect(() => {
+    if (
+      !transfer ||
+      transfer.state === "paused" ||
+      transfer.state === "cancelled" ||
+      transfer.state === "failed" ||
+      transfer.state === "succeeded"
+    ) {
+      return undefined;
+    }
+    const { projectPath: path, token: tok } = contextRef.current;
+    const operation = transferOpSeq.current;
+    const timer = setInterval(() => {
+      getDownload(transfer.download_id, { path, token: tok })
+        .then((record) => {
+          if (operation !== transferOpSeq.current) return;
+          setTransfer(record);
+        })
+        .catch((error: unknown) => {
+          if (operation !== transferOpSeq.current) return;
+          setTransferMessage(
+            error instanceof Error
+              ? error.message
+              : "Unable to read downloads.",
+          );
+        });
+    }, DOWNLOAD_POLL_MS);
+    return () => clearInterval(timer);
+  }, [transfer]);
+
+  const handleStartDownload = async () => {
+    if (!selection || !details || transferPending) return;
+    const operation = ++transferOpSeq.current;
+    setTransferPending(true);
+    setTransferMessage(null);
+    try {
+      const record = await startDownload(
+        selection.provider,
+        selection.datasetId,
+        selection.snapshot,
+        { path: projectPath, token },
+      );
+      if (operation !== transferOpSeq.current) return;
+      setTransfer(record);
+    } catch (error) {
+      if (operation !== transferOpSeq.current) return;
+      setTransferMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to start the dataset download.",
+      );
+    } finally {
+      if (operation === transferOpSeq.current) setTransferPending(false);
+    }
+  };
+
+  const handleTransferAction = async (action: "cancel" | "resume") => {
+    if (!transfer || transferPending) return;
+    const operation = ++transferOpSeq.current;
+    setTransferPending(true);
+    setTransferMessage(null);
+    try {
+      const record =
+        action === "cancel"
+          ? await cancelDownload(transfer.download_id, {
+              path: projectPath,
+              token,
+            })
+          : await resumeDownload(transfer.download_id, {
+              path: projectPath,
+              token,
+            });
+      if (operation !== transferOpSeq.current) return;
+      setTransfer(record);
+    } catch (error) {
+      if (operation !== transferOpSeq.current) return;
+      setTransferMessage(
+        error instanceof Error ? error.message : "Download action failed.",
+      );
+    } finally {
+      if (operation === transferOpSeq.current) setTransferPending(false);
+    }
   };
 
   const coverage = details ? checksumCoverage(details) : null;
@@ -280,8 +465,8 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
         <span>{searched ? items.length : ""}</span>
       </div>
       <div className="project-message">
-        Read-only metadata in this release: browsing never downloads, and no
-        download action exists yet.
+        Browsing is free: downloads only start when you choose Download for a
+        selected snapshot, and every file is verified before it lands.
       </div>
       {!available && (
         <div className="project-message" role="status">
@@ -497,6 +682,128 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
                 <dt>Landing page</dt>
                 <dd>{details.landing_page}</dd>
               </dl>
+              <h5>Dataset download</h5>
+              {transferMessage && (
+                <div className="project-message" role="alert">
+                  {transferMessage}
+                </div>
+              )}
+              {!transfer && (
+                <>
+                  <div className="project-message">
+                    Downloads stream into this project and finalize only after
+                    every file is verified.
+                  </div>
+                  <div className="project-buttons">
+                    <button
+                      data-testid="dataset-download-start"
+                      disabled={transferPending}
+                      onClick={() => void handleStartDownload()}
+                    >
+                      {transferPending ? "Starting…" : "Download snapshot"}
+                    </button>
+                  </div>
+                </>
+              )}
+              {transfer &&
+                (transfer.state === "queued" ||
+                  transfer.state === "downloading") && (
+                  <>
+                    <div className="project-message" role="status">
+                      {transfer.state === "queued"
+                        ? "Queued for download."
+                        : `Downloading ${formatBytes(transfer.bytes_completed)} of ${formatBytes(transfer.expected_total_bytes)}.`}
+                    </div>
+                    <progress
+                      aria-label="Download progress"
+                      max={transfer.expected_total_bytes}
+                      value={transfer.bytes_completed}
+                    />
+                    <div className="project-buttons">
+                      <button
+                        data-testid="dataset-download-cancel"
+                        disabled={transferPending}
+                        onClick={() => void handleTransferAction("cancel")}
+                      >
+                        Cancel download
+                      </button>
+                    </div>
+                  </>
+                )}
+              {transfer && transfer.state === "paused" && (
+                <>
+                  <div className="project-message" role="status">
+                    Paused
+                    {transfer.failure
+                      ? `: ${transfer.failure.message}`
+                      : "."}{" "}
+                    {formatBytes(transfer.bytes_completed)} of{" "}
+                    {formatBytes(transfer.expected_total_bytes)} kept.
+                  </div>
+                  <div className="project-buttons">
+                    <button
+                      data-testid="dataset-download-resume"
+                      disabled={transferPending}
+                      onClick={() => void handleTransferAction("resume")}
+                    >
+                      Resume download
+                    </button>
+                    <button
+                      data-testid="dataset-download-cancel"
+                      disabled={transferPending}
+                      onClick={() => void handleTransferAction("cancel")}
+                    >
+                      Cancel download
+                    </button>
+                  </div>
+                </>
+              )}
+              {transfer && transfer.state === "cancelled" && (
+                <>
+                  <div className="project-message" role="status">
+                    Cancelled with {formatBytes(transfer.bytes_completed)} kept.
+                    Resume to continue.
+                  </div>
+                  <div className="project-buttons">
+                    <button
+                      data-testid="dataset-download-resume"
+                      disabled={transferPending}
+                      onClick={() => void handleTransferAction("resume")}
+                    >
+                      Resume download
+                    </button>
+                  </div>
+                </>
+              )}
+              {transfer && transfer.state === "failed" && (
+                <>
+                  <div className="project-message" role="alert">
+                    Download failed
+                    {transfer.failure
+                      ? `: ${transfer.failure.message}`
+                      : "."}{" "}
+                    No dataset was finalized.
+                  </div>
+                  <div className="project-buttons">
+                    <button
+                      data-testid="dataset-download-start"
+                      disabled={transferPending}
+                      onClick={() => void handleStartDownload()}
+                    >
+                      Try the download again
+                    </button>
+                  </div>
+                </>
+              )}
+              {transfer && transfer.state === "succeeded" && (
+                <div className="project-message" role="status">
+                  Downloaded and verified:{" "}
+                  {formatBytes(transfer.bytes_completed)} in{" "}
+                  {transfer.files.length}{" "}
+                  {transfer.files.length === 1 ? "file" : "files"}. The dataset
+                  is ready for offline use.
+                </div>
+              )}
             </>
           )}
         </article>

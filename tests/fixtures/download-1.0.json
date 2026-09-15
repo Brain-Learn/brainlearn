@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "download_id": "dl-0123456789ab",
+  "provider": "openneuro",
+  "dataset_id": "ds000001",
+  "snapshot": "1.0.0",
+  "catalog_identity": "brainlearn-v1:dataset:fccd9f7a2b8370b64e221fcd80b1e4f0439759b1b5afdc1586985a8b832c4b7a",
+  "catalog_entry": {
+    "schema_version": "1.0",
+    "catalog_identity": "brainlearn-v1:dataset:fccd9f7a2b8370b64e221fcd80b1e4f0439759b1b5afdc1586985a8b832c4b7a",
+    "provider": "openneuro",
+    "dataset_id": "ds000001",
+    "snapshot": "1.0.0",
+    "title": "Balloon Analog Risk-taking Task",
+    "modality": "MRI",
+    "task": "balloon analog risk task",
+    "participants": 2,
+    "formats": [
+      "BIDS"
+    ],
+    "approximate_total_bytes": 4096,
+    "expected_total_bytes": 4096,
+    "expected_files": [
+      {
+        "path": "CHANGES",
+        "byte_size": 286,
+        "sha256": null
+      },
+      {
+        "path": "README",
+        "byte_size": 1175,
+        "sha256": null
+      },
+      {
+        "path": "dataset_description.json",
+        "byte_size": 615,
+        "sha256": null
+      },
+      {
+        "path": "participants.tsv",
+        "byte_size": 216,
+        "sha256": null
+      }
+    ],
+    "access": "public",
+    "license_name": "CC0",
+    "license_spdx": null,
+    "reuse_statement": "OpenNeuro ds000001:1.0.0 public metadata (snapshot 2024-01-15T00:00:00.000Z); reuse terms pending curator verification against the landing page.",
+    "citations": [
+      {
+        "title": "Balloon Analog Risk-taking Task",
+        "doi": "10.18112/openneuro.ds000001.v1.0.0",
+        "url": null
+      }
+    ],
+    "landing_page": "https://openneuro.org/datasets/ds000001/versions/1.0.0",
+    "compatible_templates": [],
+    "curator": "",
+    "review_status": "pending",
+    "reviewed_at": null,
+    "limitations": "Unverified OpenNeuro public metadata (pending curator review): license, citation, checksums, and template compatibility are not approved. Root file listing only; recursive trees, per-file checksums, and download verification belong to the retrieval unit. Authors: Helena Brent et al.. Provider references/links need curator review before citation. Git commit aaaaaaaaaaaa. BIDS version 1.1.1 per provider metadata."
+  },
+  "expected_total_bytes": 4096,
+  "files": [
+    {
+      "path": "CHANGES",
+      "byte_size": 286,
+      "sha256": null,
+      "bytes_completed": 0,
+      "verified": false
+    },
+    {
+      "path": "README",
+      "byte_size": 1175,
+      "sha256": null,
+      "bytes_completed": 0,
+      "verified": false
+    },
+    {
+      "path": "dataset_description.json",
+      "byte_size": 615,
+      "sha256": null,
+      "bytes_completed": 0,
+      "verified": false
+    },
+    {
+      "path": "participants.tsv",
+      "byte_size": 216,
+      "sha256": null,
+      "bytes_completed": 0,
+      "verified": false
+    }
+  ],
+  "bytes_completed": 0,
+  "state": "queued",
+  "attempt": 0,
+  "max_attempts": 3,
+  "created_at": "2026-09-14T00:00:00+00:00",
+  "updated_at": "2026-09-14T00:00:00+00:00",
+  "failure": null,
+  "lock_identity": null
+}

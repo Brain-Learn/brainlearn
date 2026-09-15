@@ -17,7 +17,8 @@ propagates unchanged); dataset download lifecycle arrives in a later unit.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping, Sequence
+import threading
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -43,6 +44,14 @@ class ProviderNotFound(ProviderError):
 
 class ProviderMalformed(ProviderError):
     """The provider answered, but the payload was missing or invalid."""
+
+
+class RangeUnsupportedError(ValueError):
+    """A source ignored a resume offset and answered a full stream.
+
+    Engines must truncate the partial file and restart it from zero instead
+    of appending, which would corrupt the bytes.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -278,3 +287,112 @@ class MockDatasetProvider:
                     )
                 return validated
         raise ProviderNotFound(f"Unknown dataset snapshot {dataset_id}:{snapshot_tag}.")
+
+
+class FileDownloadSource(Protocol):
+    """Minimum download-source abstraction: deterministic streamed bytes.
+
+    Sources yield raw bytes; they never write files, verify checksums, or
+    persist anything. Transport failures surface as :class:`ProviderError`
+    subclasses (``ProviderTimeout`` for timeouts); unknown files surface as
+    :class:`ProviderNotFound`. When ``offset`` is nonzero and the server
+    answers a full stream instead of a range, sources raise
+    :class:`RangeUnsupportedError` so engines restart the file instead of
+    appending mismatched bytes. Iterators may be synchronous generators:
+    engines drive them from worker threads.
+    """
+
+    @property
+    def source_name(self) -> str:
+        """The canonical provider key this source serves bytes for."""
+        ...
+
+    @property
+    def supports_resume(self) -> bool:
+        """Whether nonzero offsets are honored (else engines restart files)."""
+        ...
+
+    def stream_file(
+        self, dataset_id: str, snapshot: str, path: str, offset: int
+    ) -> Iterator[bytes]:
+        """Yield one file's bytes starting exactly at ``offset``."""
+        ...
+
+
+class ScriptedDownloadSource:
+    """Deterministic in-memory byte source for offline download tests.
+
+    ``files`` maps relative paths to exact bytes. ``failures`` maps a path
+    to a queue of exceptions raised from successive stream attempts, which
+    models retryable faults and retry exhaustion. ``truncate_at`` maps a
+    path to a shorter length that is actually yielded, modelling short
+    reads. ``chunk_size`` bounds memory per yield. ``gate`` (a threading
+    event) is waited on before every chunk when set, modelling slow streams
+    for cancellation tests. ``honor_range`` mirrors servers that ignore
+    Range requests, such as the observed OpenNeuro file endpoint.
+    """
+
+    def __init__(
+        self,
+        files: Mapping[str, bytes],
+        *,
+        source_name: str = "mock-archive",
+        supports_resume: bool = True,
+        honor_range: bool = True,
+        chunk_size: int = 65536,
+        failures: Mapping[str, list[Exception]] | None = None,
+        truncate_at: Mapping[str, int] | None = None,
+        gate: threading.Event | None = None,
+    ) -> None:
+        self._files = dict(files)
+        self._source_name = source_name
+        self._supports_resume = supports_resume
+        self._honor_range = honor_range
+        self._chunk_size = chunk_size
+        self._failures: dict[str, list[Exception]] = (
+            {path: list(items) for path, items in failures.items()} if failures else {}
+        )
+        self._truncate_at = dict(truncate_at) if truncate_at else {}
+        self._gate = gate
+        self.requests: list[dict[str, Any]] = []
+
+    @property
+    def source_name(self) -> str:
+        return self._source_name
+
+    @property
+    def supports_resume(self) -> bool:
+        return self._supports_resume
+
+    def stream_file(
+        self, dataset_id: str, snapshot: str, path: str, offset: int
+    ) -> Iterator[bytes]:
+        """Yield scripted bytes for ``path`` starting at ``offset``."""
+        if offset < 0:
+            raise ValueError(f"Resume offset must not be negative, got {offset}.")
+        self.requests.append(
+            {"dataset_id": dataset_id, "snapshot": snapshot, "path": path, "offset": offset}
+        )
+        if path not in self._files:
+            raise ProviderNotFound(f"Unknown source file {path!r}.")
+        if offset > 0 and not self._honor_range:
+            raise RangeUnsupportedError(
+                f"Source {self._source_name!r} ignored the resume offset for {path!r}."
+            )
+        pending = self._failures.get(path)
+        if pending:
+            raise pending.pop(0)
+        data = self._files[path]
+        if offset > len(data):
+            raise ProviderMalformed(f"Resume offset {offset} exceeds source file {path!r}.")
+        limit = self._truncate_at.get(path, len(data))
+        blob = data[offset:limit]
+        for start in range(0, len(blob), self._chunk_size):
+            if self._gate is not None:
+                self._gate.wait(timeout=30.0)
+            yield blob[start : start + self._chunk_size]
+
+    def failures_remaining(self, path: str) -> int:
+        """How many scripted failures are still queued for ``path``."""
+
+        return len(self._failures.get(path, []))

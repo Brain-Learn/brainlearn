@@ -95,7 +95,7 @@ is public-only: `list_datasets` never reports non-public records, and
 
 ## No-download boundary
 
-The adapter never requests per-file `urls`, never derives transfer
+The metadata adapter never requests per-file `urls`, never derives transfer
 endpoints, and never writes bytes. A later retrieval unit will resolve
 transfer endpoints ephemerally from `(provider, dataset_id, snapshot)`,
 fetch into staging, verify sizes/checksums plus BIDS structure, and only

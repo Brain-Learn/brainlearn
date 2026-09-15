@@ -2,10 +2,18 @@ import type {
   CatalogEntry,
   DatasetListItem,
   DatasetListResponse,
+  DownloadRecord,
 } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function authHeaders(token: string): Record<string, string> {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 }
 
 function requireContext(path: string, token: string): void {
@@ -211,4 +219,194 @@ export function checksumCoverage(entry: CatalogEntry): {
     verified: entry.expected_files.filter((file) => file.sha256 !== null)
       .length,
   };
+}
+
+const DOWNLOAD_STATES = [
+  "queued",
+  "downloading",
+  "paused",
+  "cancelled",
+  "failed",
+  "succeeded",
+];
+
+function isDownloadFileState(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.byte_size === "number" &&
+    (value.sha256 === null || typeof value.sha256 === "string") &&
+    typeof value.bytes_completed === "number" &&
+    typeof value.verified === "boolean"
+  );
+}
+
+function assertDownloadRecord(value: unknown): asserts value is DownloadRecord {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== "1.0" ||
+    typeof value.download_id !== "string" ||
+    typeof value.provider !== "string" ||
+    typeof value.dataset_id !== "string" ||
+    typeof value.snapshot !== "string" ||
+    typeof value.catalog_identity !== "string" ||
+    typeof value.expected_total_bytes !== "number" ||
+    !Array.isArray(value.files) ||
+    !value.files.every(isDownloadFileState) ||
+    typeof value.bytes_completed !== "number" ||
+    !DOWNLOAD_STATES.includes(String(value.state)) ||
+    typeof value.attempt !== "number" ||
+    typeof value.max_attempts !== "number" ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string" ||
+    (value.failure !== null &&
+      (!isRecord(value.failure) ||
+        typeof value.failure.code !== "string" ||
+        typeof value.failure.message !== "string")) ||
+    (value.lock_identity !== null && typeof value.lock_identity !== "string")
+  ) {
+    throw new Error(
+      "The dataset download response does not match contract version 1.0.",
+    );
+  }
+  assertCatalogEntry(value.catalog_entry);
+}
+
+export interface DownloadRequestOptions {
+  path: string;
+  token: string;
+  signal?: AbortSignal;
+}
+
+/** Milliseconds between download progress refreshes while active. */
+export const DOWNLOAD_POLL_MS = 1000;
+
+async function downloadRequest(
+  url: string,
+  options: DownloadRequestOptions,
+  init: RequestInit | undefined,
+  fallback: string,
+): Promise<DownloadRecord> {
+  requireContext(options.path, options.token);
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: authHeaders(options.token),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the dataset download service.");
+  }
+  if (!response.ok) throw await readError(response, fallback);
+  const payload: unknown = await response.json();
+  assertDownloadRecord(payload);
+  return payload;
+}
+
+/** Start downloading an explicitly selected immutable snapshot. */
+export async function startDownload(
+  provider: string,
+  datasetId: string,
+  snapshot: string,
+  options: DownloadRequestOptions,
+): Promise<DownloadRecord> {
+  return downloadRequest(
+    "/api/datasets/downloads",
+    options,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        path: options.path,
+        provider,
+        dataset_id: datasetId,
+        snapshot,
+      }),
+    },
+    "Unable to start the dataset download",
+  );
+}
+
+/** List dataset download transfers for the authorized project. */
+export async function listDownloads(
+  options: DownloadRequestOptions,
+): Promise<DownloadRecord[]> {
+  requireContext(options.path, options.token);
+  const params = new URLSearchParams({ path: options.path });
+  let response: Response;
+  try {
+    response = await fetch(`/api/datasets/downloads?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${options.token}` },
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the dataset download service.");
+  }
+  if (!response.ok) throw await readError(response, "Unable to list downloads");
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error(
+      "The dataset download listing does not match contract version 1.0.",
+    );
+  }
+  payload.forEach(assertDownloadRecord);
+  return payload;
+}
+
+/** Read one dataset download transfer record. */
+export async function getDownload(
+  downloadId: string,
+  options: DownloadRequestOptions,
+): Promise<DownloadRecord> {
+  requireContext(options.path, options.token);
+  const params = new URLSearchParams({ path: options.path });
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/datasets/downloads/${encodeURIComponent(downloadId)}?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${options.token}` },
+        signal: options.signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the dataset download service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to read the download");
+  const payload: unknown = await response.json();
+  assertDownloadRecord(payload);
+  return payload;
+}
+
+/** Halt a transfer, keeping downloaded bytes for an explicit resume. */
+export async function cancelDownload(
+  downloadId: string,
+  options: DownloadRequestOptions,
+): Promise<DownloadRecord> {
+  return downloadRequest(
+    `/api/datasets/downloads/${encodeURIComponent(downloadId)}/cancel`,
+    options,
+    { method: "POST", body: JSON.stringify({ path: options.path }) },
+    "Unable to cancel the dataset download",
+  );
+}
+
+/** Requeue a halted transfer after the service rechecks disk space. */
+export async function resumeDownload(
+  downloadId: string,
+  options: DownloadRequestOptions,
+): Promise<DownloadRecord> {
+  return downloadRequest(
+    `/api/datasets/downloads/${encodeURIComponent(downloadId)}/resume`,
+    options,
+    { method: "POST", body: JSON.stringify({ path: options.path }) },
+    "Unable to resume the dataset download",
+  );
 }

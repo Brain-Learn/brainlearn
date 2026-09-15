@@ -22,6 +22,11 @@ Provenance and limits are documented in ``docs/openneuro-provider.md``:
   stay pending curator verification; nothing infers approval.
 - File ``urls`` are never requested and transfer endpoints, credentials,
   tokens, cookies, and raw responses are never persisted.
+- Snapshot file bytes stream from
+  ``https://openneuro.org/crn/datasets/<id>/snapshots/<tag>/files/<path>``
+  (same host only; cross-host redirects are refused). The endpoint ignores
+  ``Range`` requests (probed 2026-09-14: ``200`` with the full body), so
+  resume restarts the in-progress file from zero.
 """
 
 from __future__ import annotations
@@ -30,8 +35,9 @@ import asyncio
 import json
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from typing import Any, Protocol
 
 from brainlearn_core.datasets import CatalogEntry, catalog_entry_identity
@@ -43,6 +49,7 @@ from brainlearn_core.providers import (
     ProviderMalformed,
     ProviderNotFound,
     ProviderTimeout,
+    RangeUnsupportedError,
 )
 
 OPENNEURO_PROVIDER = "openneuro"
@@ -50,6 +57,12 @@ OPENNEURO_ENDPOINT = "https://openneuro.org/crn/graphql"
 OPENNEURO_DOCS_URL = "https://docs.openneuro.org/api.html"
 OPENNEURO_OBSERVED_VERSION = "5.6.0"
 OPENNEURO_USER_AGENT = "BrainLearn/5A.2 (read-only metadata; no downloads)"
+OPENNEURO_DOWNLOAD_USER_AGENT = "BrainLearn/5A.4 (verified dataset download)"
+OPENNEURO_FILES_URL_TEMPLATE = (
+    "https://openneuro.org/crn/datasets/{dataset_id}/snapshots/{snapshot}/files/{path}"
+)
+DOWNLOAD_TIMEOUT_S = 30.0
+DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 DEFAULT_TIMEOUT_S = 10.0
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_REQUEST_BYTES = 65_536
@@ -164,6 +177,126 @@ class UrllibGraphQLTransport:
                 raise ProviderError(f"OpenNeuro answered HTTP {status}.")
             raw: bytes = response.read(self._max_bytes + 1)
             return raw
+
+
+class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Refuse file-download redirects that leave the approved host.
+
+    Full redirect hardening (allowlist policy, redirect chains, archive
+    endpoints) belongs to the later hardening slice; this guard keeps the
+    downloader on ``https://openneuro.org`` in the meantime.
+    """
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        parts = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl))
+        approved = urllib.parse.urlsplit(OPENNEURO_ENDPOINT)
+        if (
+            parts.scheme != "https"
+            or (parts.hostname or "").lower() != (approved.hostname or "").lower()
+        ):
+            raise ProviderError("OpenNeuro redirected the file request outside the approved host.")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+class OpenNeuroDownloadSource:
+    """Streams public snapshot file bytes from the OpenNeuro file endpoint.
+
+    The endpoint honors no ``Range`` requests (probed 2026-09-14), so
+    ``supports_resume`` is ``False``: engines restart the in-progress file
+    from zero, keeping already completed files. Bytes stream in bounded
+    chunks; nothing is buffered, verified, or persisted here.
+    """
+
+    def __init__(
+        self,
+        *,
+        timeout_s: float = DOWNLOAD_TIMEOUT_S,
+        chunk_size: int = DOWNLOAD_CHUNK_BYTES,
+        user_agent: str = OPENNEURO_DOWNLOAD_USER_AGENT,
+    ) -> None:
+        if timeout_s <= 0:
+            raise ValueError(f"timeout_s must be positive, got {timeout_s}.")
+        if chunk_size <= 0:
+            raise ValueError(f"chunk_size must be positive, got {chunk_size}.")
+        self._timeout_s = timeout_s
+        self._chunk_size = chunk_size
+        self._user_agent = user_agent
+        self._opener = urllib.request.build_opener(_SameHostRedirectHandler)
+
+    @property
+    def source_name(self) -> str:
+        return OPENNEURO_PROVIDER
+
+    @property
+    def supports_resume(self) -> bool:
+        return False
+
+    def stream_file(
+        self, dataset_id: str, snapshot: str, path: str, offset: int
+    ) -> Iterator[bytes]:
+        """Yield one snapshot file's bytes starting exactly at ``offset``."""
+        if _DATASET_ID_PATTERN.match(dataset_id) is None:
+            raise ValueError(f"dataset_id must be a portable identifier, got {dataset_id!r}.")
+        if _TAG_PATTERN.match(snapshot) is None:
+            raise ValueError(f"snapshot must be a portable identifier, got {snapshot!r}.")
+        if (
+            not path
+            or path.startswith("/")
+            or "\\" in path
+            or ".." in path.split("/")
+            or offset < 0
+        ):
+            raise ValueError(f"Refusing unsafe file request for {path!r}.")
+        url = OPENNEURO_FILES_URL_TEMPLATE.format(
+            dataset_id=dataset_id,
+            snapshot=snapshot,
+            path=urllib.parse.quote(path, safe="/"),
+        )
+        headers = {"User-Agent": self._user_agent, "Accept": "application/octet-stream"}
+        if offset > 0:
+            headers["Range"] = f"bytes={offset}-"
+        request = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            response = self._opener.open(request, timeout=self._timeout_s)
+        except TimeoutError:
+            raise ProviderTimeout(
+                f"OpenNeuro file request did not answer within {self._timeout_s:g}s."
+            ) from None
+        except urllib.error.HTTPError as exc:
+            raise ProviderError(f"OpenNeuro file request failed with HTTP {exc.code}.") from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise ProviderTimeout(
+                    f"OpenNeuro file request did not answer within {self._timeout_s:g}s."
+                ) from exc
+            raise ProviderError("OpenNeuro file request failed.") from exc
+        with response:
+            status = getattr(response, "status", 200)
+            if offset > 0:
+                content_range = response.headers.get("Content-Range", "")
+                if status != 206 or not content_range.startswith(f"bytes {offset}-"):
+                    raise RangeUnsupportedError(
+                        f"OpenNeuro ignored the resume offset for {path!r}; "
+                        "restart the file from zero."
+                    )
+            elif status != 200:
+                raise ProviderError(f"OpenNeuro file request failed with HTTP {status}.")
+            while True:
+                try:
+                    chunk = response.read(self._chunk_size)
+                except TimeoutError as exc:
+                    raise ProviderTimeout("OpenNeuro file stream timed out.") from exc
+                if not chunk:
+                    break
+                yield chunk
 
 
 def _as_int(value: Any, field_name: str) -> int:

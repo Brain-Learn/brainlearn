@@ -1,12 +1,17 @@
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
+  cancelDownload,
   checksumCoverage,
   formatBytes,
+  getDownload,
   listDatasets,
+  listDownloads,
   resolveDataset,
+  resumeDownload,
+  startDownload,
 } from "./datasets";
-import type { CatalogEntry } from "./types";
+import type { CatalogEntry, DownloadRecord } from "./types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -181,4 +186,121 @@ test("checksumCoverage separates verified files from pending ones", () => {
       ],
     }),
   ).toEqual({ total: 2, verified: 1 });
+});
+
+function downloadFixture(): DownloadRecord {
+  return {
+    schema_version: "1.0",
+    download_id: "dl-0123456789ab",
+    provider: "mock-archive",
+    dataset_id: "zz10a",
+    snapshot: "2026-09-01",
+    catalog_identity: `brainlearn-v1:dataset:${"a".repeat(64)}`,
+    catalog_entry: entryFixture(),
+    expected_total_bytes: 512,
+    files: [
+      {
+        path: "dataset_description.json",
+        byte_size: 512,
+        sha256: null,
+        bytes_completed: 0,
+        verified: false,
+      },
+    ],
+    bytes_completed: 0,
+    state: "downloading",
+    attempt: 1,
+    max_attempts: 3,
+    created_at: "2026-09-14T00:00:00+00:00",
+    updated_at: "2026-09-14T00:00:00+00:00",
+    failure: null,
+    lock_identity: null,
+  };
+}
+
+test("download actions post shaped bodies and validate records", async () => {
+  const seen: Array<{ url: string; method?: string; body: unknown }> = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      seen.push({
+        url: String(input),
+        method: init?.method,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      if (String(input) === "/api/datasets/downloads?path=%2Ftmp%2Fproject") {
+        return { ok: true, json: async () => [downloadFixture()] };
+      }
+      return { ok: true, json: async () => downloadFixture() };
+    }),
+  );
+  const context = { path: "/tmp/project", token: "token" };
+  const started = await startDownload(
+    "mock-archive",
+    "zz10a",
+    "2026-09-01",
+    context,
+  );
+  expect(started.download_id).toBe("dl-0123456789ab");
+  expect(seen[0]).toMatchObject({
+    url: "/api/datasets/downloads",
+    method: "POST",
+    body: {
+      path: "/tmp/project",
+      provider: "mock-archive",
+      dataset_id: "zz10a",
+      snapshot: "2026-09-01",
+    },
+  });
+  const listed = await listDownloads(context);
+  expect(listed).toHaveLength(1);
+  const opened = await getDownload("dl-0123456789ab", context);
+  expect(opened.state).toBe("downloading");
+  await cancelDownload("dl-0123456789ab", context);
+  await resumeDownload("dl-0123456789ab", context);
+  expect(
+    seen
+      .slice(2)
+      .map((call) => `${call.method ?? "GET"} ${call.url}`)
+      .join(" | "),
+  ).toBe(
+    "GET /api/datasets/downloads/dl-0123456789ab?path=%2Ftmp%2Fproject | " +
+      "POST /api/datasets/downloads/dl-0123456789ab/cancel | " +
+      "POST /api/datasets/downloads/dl-0123456789ab/resume",
+  );
+  await expect(
+    startDownload("mock-archive", "zz10a", "2026-09-01", {
+      path: "",
+      token: "token",
+    }),
+  ).rejects.toThrow("Open or create a project");
+});
+
+test("download client maps conflict detail and rejects misshapen records", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        detail: "Dataset zz10a:2026-09-01 already downloaded.",
+      }),
+    })),
+  );
+  await expect(
+    startDownload("mock-archive", "zz10a", "2026-09-01", {
+      path: "/tmp/project",
+      token: "token",
+    }),
+  ).rejects.toThrow("already downloaded");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ state: "downloading" }),
+    })),
+  );
+  await expect(
+    getDownload("dl-0123456789ab", { path: "/tmp/project", token: "token" }),
+  ).rejects.toThrow("does not match contract");
 });
