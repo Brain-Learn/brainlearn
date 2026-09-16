@@ -231,6 +231,75 @@ def _zip_is_symlink(info: zipfile.ZipInfo) -> bool:
     return mode == 0o120000
 
 
+_ZIP_EOCD_MAGIC = b"PK\x05\x06"
+_ZIP64_LOCATOR_MAGIC = b"PK\x06\x07"
+_ZIP64_EOCD_MAGIC = b"PK\x06\x06"
+_ZIP_EOCD_TAIL_READ = 22 + 65535
+_ZIP64_END_RECORD_SIZE = 56
+
+
+def _zip_end_central_count(fd: int) -> int | None:
+    """Best-effort central-directory entry count from the ZIP end record.
+
+    Reads only the file tail, so the member count is bounded before the
+    central directory is parsed into memory. Returns ``None`` when no
+    consistent end record is found; callers fall through to full parsing,
+    which still enforces every limit.
+    """
+
+    try:
+        size = os.fstat(fd).st_size
+    except OSError:
+        return None
+    tail_len = min(size, _ZIP_EOCD_TAIL_READ)
+    if tail_len < 22:
+        return None
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        tail = b""
+        while len(tail) < tail_len:
+            chunk = os.read(fd, tail_len - len(tail))
+            if not chunk:
+                break
+            tail += chunk
+    except OSError:
+        return None
+    if len(tail) != tail_len:
+        return None
+    # The end record is the last one whose comment length lines up exactly
+    # with the end of file; earlier magic bytes may be file content.
+    offset = tail_len
+    while True:
+        at = tail.rfind(_ZIP_EOCD_MAGIC, 0, offset)
+        if at < 0:
+            return None
+        comment_len = int.from_bytes(tail[at + 20 : at + 22], "little")
+        if at + 22 + comment_len == tail_len:
+            break
+        offset = at
+    count = int.from_bytes(tail[at + 8 : at + 10], "little")
+    total = int.from_bytes(tail[at + 10 : at + 12], "little")
+    entries = max(count, total)
+    if entries != 0xFFFF:
+        return entries
+    if at < 20 or tail[at - 20 : at - 16] != _ZIP64_LOCATOR_MAGIC:
+        return None
+    zip64_off = int.from_bytes(tail[at - 12 : at - 4], "little")
+    try:
+        os.lseek(fd, zip64_off, os.SEEK_SET)
+        record = b""
+        while len(record) < _ZIP64_END_RECORD_SIZE:
+            chunk = os.read(fd, _ZIP64_END_RECORD_SIZE - len(record))
+            if not chunk:
+                break
+            record += chunk
+    except OSError:
+        return None
+    if len(record) != _ZIP64_END_RECORD_SIZE or record[:4] != _ZIP64_EOCD_MAGIC:
+        return None
+    return int.from_bytes(record[32:40], "little")
+
+
 def _extract_zip(
     archive_path: Path,
     dest: Path,
@@ -247,13 +316,21 @@ def _extract_zip(
             "corrupt-archive", "Unreadable zip container.", retryable=True
         ) from exc
     with archive:
-        # A central-directory record is at least 46 bytes, so the file size
-        # upper-bounds the member count before parsing it all into memory.
+        # Bound the member count from the end record before parsing the
+        # central directory into memory; an unparseable end record falls
+        # through to full parsing, which still enforces every limit.
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
         try:
-            directory_bytes = archive_path.stat().st_size
+            count_fd = os.open(archive_path, flags)
         except OSError as exc:
+            if getattr(exc, "errno", None) == errno.ELOOP:
+                raise ArchiveRejectedError("link", "Archive must not be a symlink.") from None
             raise ArchiveRejectedError("corrupt-archive", "Archive cannot be read.") from exc
-        if directory_bytes // 46 > limits.max_members:
+        try:
+            pre_count = _zip_end_central_count(count_fd)
+        finally:
+            os.close(count_fd)
+        if pre_count is not None and pre_count > limits.max_members:
             raise ArchiveRejectedError("too-many-members", "Archive holds too many members.")
         infos = archive.infolist()
         if len(infos) > limits.max_members:
@@ -401,6 +478,13 @@ def _extract_tar(
         raise ArchiveRejectedError(
             "corrupt-archive", "Unreadable tar container.", retryable=True
         ) from exc
+    # Streaming tar has no central directory, so the container file size is
+    # the compression baseline: expanded bytes beyond ratio × container can
+    # only come from a bomb. Plain tar matches its own size and never trips.
+    try:
+        container_bytes = os.lstat(archive_path).st_size
+    except OSError as exc:
+        raise ArchiveRejectedError("corrupt-archive", "Archive cannot be read.") from exc
     extracted: list[str] = []
     seen: set[str] = set()
     created_dirs: set[str] = set()
@@ -456,6 +540,10 @@ def _extract_tar(
                     "corrupt-archive", "Archive member ended early.", retryable=True
                 )
             expanded += written
+            if expanded > limits.max_ratio * container_bytes:
+                raise ArchiveRejectedError(
+                    "ratio-exceeded", "Archive compression ratio exceeds its limit."
+                )
             extracted.append(rel)
     if expected is not None:
         missing = set(expected) - set(extracted) - skipped

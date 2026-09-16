@@ -3,6 +3,7 @@
 import io
 import os
 import stat
+import struct
 import tarfile
 import threading
 import warnings
@@ -225,6 +226,37 @@ def test_limits_enforced_before_and_during_extraction(tmp_path: Path) -> None:
     assert not (dest3 / "grow.bin").exists()
 
 
+def test_tar_gz_ratio_rejection_and_plain_tar_acceptance(tmp_path: Path) -> None:
+    payload = b"0" * 1_000_000
+    archive = tmp_path / "bomb.tgz"
+    with tarfile.open(archive, "w:gz", compresslevel=9) as container:
+        info = tarfile.TarInfo("zeros.bin")
+        info.size = len(payload)
+        info.mode = 0o644
+        container.addfile(info, io.BytesIO(payload))
+    assert archive.stat().st_size < 5_000
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with pytest.raises(ArchiveRejectedError) as excinfo:
+        extract_archive(archive, dest, limits=ArchiveLimits(max_ratio=10.0))
+    assert excinfo.value.code == "ratio-exceeded"
+
+    plain = tmp_path / "plain.tar"
+    with tarfile.open(plain, "w") as container:
+        info = tarfile.TarInfo("notes.txt")
+        data = b"plain tar members match their own size"
+        info.size = len(data)
+        info.mode = 0o644
+        container.addfile(info, io.BytesIO(data))
+    dest_ok = tmp_path / "out-ok"
+    dest_ok.mkdir()
+    members = extract_archive(
+        plain, dest_ok, expected={"notes.txt": len(data)}, limits=ArchiveLimits(max_ratio=10.0)
+    )
+    assert members == ("notes.txt",)
+    assert _read_tree(dest_ok) == {"notes.txt": data}
+
+
 def test_streaming_overrun_aborts_live(tmp_path: Path) -> None:
     """A stream longer than its cap aborts mid-write, bounded in memory."""
 
@@ -251,9 +283,7 @@ def test_streaming_overrun_aborts_live(tmp_path: Path) -> None:
     assert (dest / "grow.bin").stat().st_size <= 10 + 65536
 
 
-def test_oversized_central_directory_refused_before_parsing(
-    tmp_path: Path,
-) -> None:
+def test_comment_bloat_never_limits_member_count(tmp_path: Path) -> None:
     archive = tmp_path / "commented.zip"
     # The stdlib truncates overlong comments with a warning of its own;
     # the remaining tens of kilobytes still dwarf what one member allows.
@@ -264,12 +294,84 @@ def test_oversized_central_directory_refused_before_parsing(
             container.comment = b"x" * 1_000_000
     dest = tmp_path / "out"
     dest.mkdir()
-    # One member, but directory-sized bytes far beyond the allowance: the
-    # size gate refuses without parsing it all.
+    # One member under a bloated comment: file size says nothing about
+    # member count, so extraction proceeds normally.
+    members = extract_archive(archive, dest, limits=ArchiveLimits(max_members=10))
+    assert members == ("a.txt",)
+    assert _read_tree(dest) == {"a.txt": b"a"}
+
+
+def test_large_single_member_zip_extracts(tmp_path: Path) -> None:
+    archive = tmp_path / "big.zip"
+    blob = b"q" * 5_000_118
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as container:
+        container.writestr("big.bin", blob)
+    assert archive.stat().st_size > 4_600_000
+    dest = tmp_path / "out"
+    dest.mkdir()
+    members = extract_archive(
+        archive, dest, expected={"big.bin": len(blob)}, limits=ArchiveLimits(max_members=10)
+    )
+    assert members == ("big.bin",)
+    assert _read_tree(dest) == {"big.bin": blob}
+
+
+def test_end_record_count_rejects_over_member_archives(tmp_path: Path) -> None:
+    archive = _make_zip(tmp_path / "many.zip", [(f"f{i}.txt", b"x") for i in range(12)])
+    dest = tmp_path / "out"
+    dest.mkdir()
     with pytest.raises(ArchiveRejectedError) as excinfo:
         extract_archive(archive, dest, limits=ArchiveLimits(max_members=10))
     assert excinfo.value.code == "too-many-members"
     assert _read_tree(dest) == {}
+
+
+def test_zip_end_record_parser_handles_plain_and_zip64(tmp_path: Path) -> None:
+    probe = tmp_path / "probe.bin"
+
+    def parse(content: bytes) -> int | None:
+        from brainlearn_core.archives import _zip_end_central_count
+
+        probe.write_bytes(content)
+        with open(probe, "rb") as handle:
+            return _zip_end_central_count(handle.fileno())
+
+    # Plain end record reporting 3 entries.
+    plain = b"PK\x05\x06" + struct.pack("<HHHHIIH", 0, 0, 3, 3, 100, 0, 0)
+    assert parse(plain) == 3
+    # Garbage with no end record falls through to full parsing.
+    assert parse(b"0" * 100) is None
+    # Truncated tail cannot prove anything either.
+    assert parse(b"PK\x05\x06" + b"\x00" * 10) is None
+    # ZIP64 layout: 56-byte end record, 20-byte locator, end record with
+    # saturated 0xFFFF counts pointing at offset 0.
+    zip64_record = b"PK\x06\x06" + struct.pack("<QHHIIQQQQ", 44, 45, 45, 0, 0, 7, 70000, 500, 600)
+    assert len(zip64_record) == 56
+    locator = b"PK\x06\x07" + struct.pack("<IQ", 0, 0) + struct.pack("<I", 1)
+    assert len(locator) == 20
+    end = b"PK\x05\x06" + struct.pack("<HHHHIIH", 0, 0, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0, 0)
+    assert parse(zip64_record + locator + end) == 70000
+
+
+def test_zip64_end_record_count_is_honored(tmp_path: Path) -> None:
+    # 65540 members force genuine zip64 end records on disk.
+    archive = tmp_path / "zip64.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as container:
+        for index in range(65540):
+            container.writestr(f"f{index}.txt", b"x")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with pytest.raises(ArchiveRejectedError) as excinfo:
+        extract_archive(archive, dest, limits=ArchiveLimits(max_members=65539))
+    assert excinfo.value.code == "too-many-members"
+    assert _read_tree(dest) == {}
+
+    dest_ok = tmp_path / "out-ok"
+    dest_ok.mkdir()
+    members = extract_archive(
+        archive, dest_ok, expected={f"f{index}.txt": 1 for index in range(65540)}
+    )
+    assert len(members) == 65540
 
 
 def test_ratio_limit_rejects_bombs(tmp_path: Path) -> None:
