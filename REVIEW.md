@@ -1,54 +1,59 @@
 # BrainLearn monitored implementation review
 
-Review date: 2026-09-15
+Review date: 2026-09-16
 
 ## Current review
 
-Scope: final monitoring review of Step 5A.4 after the two residual
-download-lifecycle repairs.
+Scope: final monitoring review of Step 5A.5 after the redirect/archive
+implementation and two rounds of archive-limit repairs on PR #9.
 
-Status: **approved**. Both residual findings are repaired, all prior integrity
-repairs remain present, and the complete repository gate passes. No blocking
-finding remains.
+Status: **approved**. Redirect validation, archive containment, declared and
+live extraction limits, cancellation/retry behavior, verified finalization,
+and the repaired ZIP/tar edge cases all pass. No blocking finding remains.
 
 ## Findings resolved
 
-1. Resume verification now hashes an existing prefix incrementally in chunks no
-   larger than `VERIFY_CHUNK_BYTES` while retaining only an integer byte count.
-   A vanished/shrunk prefix has one descriptor owner, restarts once from zero,
-   and cannot recurse or loop indefinitely. The recording-hasher regression
-   verifies both bounded updates and the final bytes.
-2. Existing-transfer discovery now has ownership separate from Start, Cancel,
-   and Resume. Selection and transfer guards prevent a late adoption response
-   from overwriting a user-installed transfer, while view and project changes
-   invalidate discovery. Deferred tests cover both response orders and project
-   crossover. A further same-batch diagnostic ordering also passed before the
-   temporary diagnostic was removed.
-3. The prior storage-containment, catalog-binding, recovery-verification, and
-   post-rename reconciliation repairs remain intact. Focused backend/core tests
-   pass 51 cases, including the adversarial symlink, corruption, non-regular
-   file, crash-window, retry, cancellation, and resume scenarios.
+1. Valid large ZIPs are no longer rejected from total byte size. A bounded
+   EOCD/ZIP64 tail probe seeks to the real file tail and checks member count
+   before `ZipFile` construction; `infolist()` retains the authoritative
+   post-parse check. Regressions prove a 5 MB one-member ZIP is accepted and
+   an over-member archive is rejected without constructing the ZIP parser.
+2. Tar and tar.gz enforce compression ratio from declared member sizes before
+   extraction or discard and from actual bytes while streaming. Skipped
+   members share the same accounting, so a highly compressed member cannot
+   bypass the ratio limit during resume. Both written and skipped ~924x bombs
+   reject before output bytes land.
+3. The original redirect and extraction guarantees remain intact: approved
+   HTTPS hosts and bounded hops only; no credential, signed-target, or scheme
+   downgrade redirects; portable allowlisted members only; links, traversal,
+   duplicates, conflicts, special files, oversized expansion, and writes
+   outside staging are refused; successful finalization still requires the
+   exact verified catalog tree.
 
 ## Verification reproduced
 
-- `uv run ruff check .`: passed.
-- `uv run ruff format --check .`: 57 files clean.
-- `uv run mypy packages/core/src packages/server/src`: 24 source files clean.
-- `uv run pytest -q`: 592 passed, 1 opt-in live smoke skipped, with two upstream
+- Direct probes: the 5,000,118-byte ZIP reports one member from the bounded
+  pre-parser, and a ~924x skipped tar.gz member is rejected as
+  `ratio-exceeded`.
+- Focused archive/redirect/download suites: 95 passed with two upstream
   Starlette/AnyIO warnings.
-- Focused download-record and dataset-download suites: 51 passed with the same
+- `uv run ruff check .`: passed.
+- `uv run ruff format --check .`: 62 files clean.
+- `uv run mypy packages/core/src packages/server/src`: 25 source files clean.
+- `uv run pytest -q`: 653 passed, 1 opt-in live smoke skipped, with the same
   two upstream warnings.
 - `npm --prefix apps/web run lint`: passed.
 - `npm --prefix apps/web run format:check`: passed.
-- Focused dataset library/client/download suites: 31 passed in 3 files.
 - Complete Vitest suite: 152 passed in 16 files.
 - `npm --prefix apps/web run build`: passed, 1,843 modules transformed.
 - `npm --prefix apps/web audit --omit=dev`: 0 vulnerabilities.
 - `git diff --check`: passed before this review update.
+- Required GitHub CI jobs passed on implementation head `bf82a4b`.
 
 ## Scope decision
 
-Step 5A.4 is approved. The download-lifecycle checklist item may be checked and
-the work committed. Step 5 remains open. The next work unit is only Step 5A.5:
-redirect and archive-extraction hardening; do not begin local/private import,
-the pinned EEG fixture, MNE/MNE-BIDS, or later scientific work in that unit.
+Step 5A.5 is approved. The redirect/archive-hardening checklist item is checked;
+Step 5 remains open. The next work unit is only Step 5A.6: preserve local/private
+dataset import as an equal offline path and record an immutable local identity.
+Do not begin the pinned integration fixture, MNE/MNE-BIDS, BIDS discovery, signal
+inspection, or later scientific work in that unit.

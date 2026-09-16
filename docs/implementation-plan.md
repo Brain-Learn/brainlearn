@@ -124,7 +124,7 @@ Goal: acquire a pinned public dataset safely from the UI and introduce the first
 - [x] Implement an OpenNeuro-first public BIDS dataset source behind a provider-neutral Python interface; defer DANDI to NWB work and restrict PhysioNet automation to open-access records.
 - [x] Add a searchable dataset library and details panel showing size, disk requirement, version, license, citation, limitations, and workflow compatibility before download.
 - [x] Download through the local Python service into the authorized project with persisted progress, bounded retry, cancellation/resume, disk-space checks, checksum verification, and atomic finalization.
-- [ ] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
+- [x] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
 - [ ] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
 - [ ] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
 - [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
@@ -414,34 +414,42 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-15 | Step 5A.4 repairs (REVIEW.md 2 residual findings) | Verified; monitoring pending | (1) Resume prefix hashing is incremental: `_stream_one_file` updates the digest per bounded chunk and tracks only an integer count, and a shrinking prefix raises `_PrefixVanished` (single fd owner, no double-close) to restart the file once, then fail. New regression resumes a 2.5 MiB prefix with a recording hasher proving every update stays within `VERIFY_CHUNK_BYTES` and the final checksum verifies; it fails against the old buffering code. (2) Transfer discovery and user mutations hold separate ownership: adoption uses `discoveryOpSeq` plus live `selectionRef`/`transferRef` guards, so a late adoption can neither overwrite a user-installed transfer nor strand pending state, while project/view invalidation paths are unchanged. Three deferred tests hold `listDownloads`, click Download immediately, and resolve both orders proving one start, installed transfer/progress, cleared pending, and no stale overwrite, plus a no-crossover project-switch case. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 57 files clean; `mypy` 24 files clean; `uv run pytest -q` 592 passed, 1 skipped, with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 152 passed in 16 files across three consecutive full runs; production build passed (1,843 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Download-lifecycle checkbox left unchecked for the monitor. | Uncommitted; awaiting monitored review |
 | 2026-09-15 | Step 5A.4 final monitored gate | Complete | Reviewer inspected both residual repairs and reproduced the complete gate: Ruff and format passed (57 files), strict mypy passed (24 files), pytest 592 passed with 1 opt-in live smoke skipped and 2 upstream warnings, ESLint/Prettier passed, Vitest 152 passed in 16 files, production build passed (1,843 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Focused backend/core suites passed 51 tests and focused dataset frontend suites passed 31. Incremental resume hashing remains bounded to `VERIFY_CHUNK_BYTES`; vanished prefixes have a single descriptor owner and one restart. Deferred response-order and project-switch regressions prove transfer discovery cannot supersede a user Start or cross project context; an additional same-batch diagnostic ordering also passed. All earlier path containment, transfer/catalog binding, full recovery verification, crash-window reconciliation, authorization, progress, cancellation/resume, and static-error guarantees remain green. No blocking findings remain. The download-lifecycle item is approved and checked; Step 5 remains open. | Monitored review complete |
 | 2026-09-16 | Early Step 10 CI foundation | Complete | Added `.github/workflows/ci.yml` with separate Python and frontend jobs on `push` to `main`, pull requests, and manual dispatch; read-only repository permissions; GitHub-hosted Ubuntu 24.04 runners; concurrency cancellation; 20-minute job limits; Python 3.12, Node 22, and exact uv 0.12.5; locked installs and dependency caching. Every action is pinned to a verified full commit SHA, and repository policy now rejects unpinned actions. The first hosted run exposed a frontend render-order race in `runFlow.test.tsx`; the assertion now waits for the history merge and passed three consecutive complete local suites. Hosted run 35077158204 then passed: Ruff clean, 57 files formatted, strict mypy clean across 24 files, pytest 592 passed/1 skipped with 2 upstream warnings, ESLint and Prettier clean, Vitest 152 passed in 16 files, production build passed, and production npm audit found 0 vulnerabilities. Both hosted job checks are required and strict on protected `main`; force pushes/deletion remain disabled. Three moderate development/test-tool alerts are isolated in GitHub issue #6 and Dependabot PRs #3/#5 rather than force-upgraded with feature work. Only the first Step 10 CI checkbox is complete; packaging, platform matrices, deployment, and release automation remain unchecked. | Commits `c8c550e`, `7981a25`; GitHub CI required |
+| 2026-09-16 | Step 5A.5 redirect/archive hardening | Verified; monitoring pending | (1) Explicit `RedirectPolicy` (approved-HTTPS-host allowlist, 5-hop bound, no downgrade/credentials/query/fragment, POST preserved only on 307/308) with a manual hop loop validating every target before any body is consumed, wired into the GraphQL transport and file source with injectable endpoint/policy; refusals are static and leak-free. (2) `brainlearn_core.archives`: magic-detected ZIP/tar extraction with portable-name validation, duplicate/conflict/link/special-file/encrypted rejection, prescan plus live limits (members, file/total bytes, ratio, depth/length, budget), bounded-memory streaming, cancellation, and no-follow writes. (3) Engine prefers `SnapshotArchiveSource` when present (mock `ScriptedSnapshotArchive`; OpenNeuro stays per-file): bounded blob fetch, allowlist extraction with verified-member skip, per-member catalog verification, blob deletion, shared atomic finalization, 2x disk check, reserved-name refusal. Full baseline: `uv run ruff check .` passed; `ruff format --check .` 62 files clean; `mypy` 25 files clean; `uv run pytest -q` 647 passed, 1 skipped, with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 152 passed in 16 files; production build passed (1,843 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Archive-hardening checkbox left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-16 | Step 5A.5 repairs (PR #9 review, 2 findings) | Verified; monitoring pending | (1) Replaced ZIP member-count inference (file-bytes // 46) with a bounded end-of-central-directory pre-check: exact entry count, comment-length consistency validation, and ZIP64 end-record/locator parsing with fallback to full parsing; a 5,000,118-byte one-member stored ZIP now extracts while over-member archives are refused before parsing. (2) Tar extraction now enforces `max_ratio` live against container file size (expanded bytes beyond ratio x container aborts); streaming tar has no central directory so per-member exact sizes, total budget, and member count continue to bound the rest. New regressions: EOCD parser unit cases (plain/zip64/garbage/truncated), genuine 64K-member zip64 accept/reject, 5,000,118-byte one-member accept, comment-bloat accept, tar.gz 928x bomb rejection, plain-tar acceptance. Full baseline rerun: `uv run ruff check .` passed; `ruff format --check .` 62 files clean; `mypy` 25 files clean; `uv run pytest -q` 652 passed, 1 skipped, with 2 upstream warnings; ESLint passed; Prettier passed; Vitest 152 passed in 16 files; production build passed (1,843 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Rebased onto current `main` (pytest 9.0.3, Vitest 5.x) and re-verified. Archive-hardening checkbox left unchecked for the monitor. | Uncommitted; awaiting monitored review |
+| 2026-09-16 | Step 5A.5 repairs (PR #9 second review, 2 residual findings) | Verified; monitoring pending | (1) `_zip_end_central_count` now seeks to `size - tail_len`, parses the bounded EOCD/ZIP64 tail before constructing `ZipFile`, and retains `infolist()` enforcement; regressions assert exact counts for a ZIP larger than the tail and reject over-member archives while monkeypatching `ZipFile` construction to fail. (2) Tar declared member sizes are checked against file/total/ratio limits before extraction or discard; skipped members contribute to the same declared and live ratio accounting, and `_write_member`/`_discard_member` callbacks reject lying streams during consumption. Regressions cover skipped and written 928x tar.gz bombs, both rejected before output bytes land. Full gate: Ruff passed; format 62 files clean; strict mypy 25 files clean; pytest 653 passed, 1 skipped, 2 upstream warnings; ESLint and Prettier passed; Vitest 152 passed in 16 files; production build passed with 1,843 modules; cached `npm audit --offline --omit=dev` found 0 vulnerabilities after the online audit endpoint timed out; `git diff --check` passed. Archive-hardening checkbox remains unchecked for monitoring. | Uncommitted; awaiting monitored review |
+| 2026-09-16 | Step 5A.5 final monitored gate | Complete | Reviewer inspected both rounds of repairs and reproduced the complete gate: Ruff and format passed (62 files), strict mypy passed (25 files), pytest 653 passed with 1 opt-in live smoke skipped and 2 upstream warnings, ESLint/Prettier passed, Vitest 152 passed in 16 files, production build passed (1,843 modules), audit found 0 vulnerabilities, and `git diff --check` passed. Focused archive/redirect/download suites passed 95 tests. Direct probes proved the 5,000,118-byte ZIP reports one member before parser construction and a ~924x skipped tar.gz bomb is rejected before consumption. ZIP EOCD/ZIP64 counting now reads the actual tail before `ZipFile`; tar declared and live ratio accounting includes written and skipped members. Redirect allowlisting, static secret-free refusals, path containment, bounded extraction, cancellation/retry, exact catalog verification, and atomic finalization remain green. No blocking findings remain. The archive-hardening item is approved and checked; Step 5 remains open. | Monitored review complete on PR #9 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `docs/dataset-contract.md`, and this plan before
 acting. Preserve every completion-log row.
 
-### Step 5A.5 — redirect and archive-extraction hardening
+### Step 5A.6 — local/private offline dataset import
 
-Implement only the next checklist item: harden remote redirects and archive
-extraction for curated dataset acquisition. Do not add local/private import, the
-pinned EEG fixture, MNE/MNE-BIDS, credentials, or later Step 5 work.
+Implement only the next checklist item: preserve local/private dataset import as
+an equal offline path and record an immutable local dataset identity. Do not add
+the pinned integration fixture, MNE/MNE-BIDS, BIDS discovery, signal inspection,
+credentials, or later Step 5 work.
 
-1. Define an explicit redirect policy that permits only approved HTTPS hosts,
-   bounds redirect count, rejects scheme downgrade and credential-bearing URLs,
-   and validates every hop before any response body is consumed. Keep secrets out
-   of persisted records, errors, and logs.
-2. Add bounded archive handling only where the provider contract requires it.
-   Reject absolute paths, parent traversal, duplicate/conflicting paths, links,
-   device/FIFO/socket entries, unsafe names, and writes outside the unique staging
-   root.
-3. Enforce declared limits before and during extraction: member count, individual
-   and total expanded bytes, compression ratio, path depth/length, and available
-   disk space. Stream with bounded memory and preserve cancellation/retry rules.
-4. Reuse the verified no-follow storage boundary and require the extracted tree to
-   match the catalog file contract before atomic finalization. No partial archive
-   or extracted tree may be represented as successful.
-5. Add deterministic offline adversarial tests for redirect chains and archive
-   formats, including traversal, links, special files, duplicate names, expansion
-   bombs, cancellation, cleanup/recovery, secret redaction, and destination
-   containment. Run the complete gate, append exact evidence, leave the archive
-   hardening checkbox unchecked for monitoring, and request review.
+1. Add a provider-independent local import boundary that accepts only an
+   explicitly selected directory inside the active authorized project. Never
+   upload, relocate, mutate, or silently copy source research data.
+2. Scan through the existing no-follow storage boundary. Reject escapes,
+   symlinks, links, devices/FIFOs/sockets, unreadable entries, unsafe relative
+   names, and tree changes observed during hashing; enforce bounded file count,
+   depth, and total bytes with cancellation.
+3. Hash every regular file in bounded chunks and create a schema-`1.0`
+   self-contained `DatasetLock` whose verified file list, total size, local
+   relative path, and identity are derived from the landed bytes. Local/private
+   metadata and limitations must remain explicit; do not infer a license,
+   citation, modality, BIDS validity, or scientific compatibility.
+4. Add authenticated, project-scoped API and accessible UI entry points beside
+   the public catalog. Show selection guidance, scanning/ready/failure states,
+   immutable identity and limitations, and static leak-free errors; never expose
+   arbitrary server paths or credentials.
+5. Add deterministic offline tests for success, stable identity, changed bytes,
+   cancellation, project isolation, path traversal, symlink and special-file
+   refusal, concurrent mutation, bounds, restart/offline reopening, and UI focus
+   behavior. Run the complete gate, append exact evidence, leave the local-import
+   checkbox unchecked for monitoring, commit/push the scoped branch, open a ready
+   PR, and request review.

@@ -565,17 +565,21 @@ class _FakeResponse:
 def _install_urlopen(
     monkeypatch: pytest.MonkeyPatch, body: bytes | BaseException, status: int = 200
 ) -> dict[str, Any]:
+    # Patch at the opener level so the redirect-policy loop stays in the
+    # exercised path; plain bodies answer 200 while error objects raise.
     seen: dict[str, Any] = {}
 
-    def _fake(request: Any, timeout: Any = None) -> _FakeResponse:
+    def _fake(self: Any, request: Any, data: Any = None, timeout: Any = None) -> Any:
         seen["url"] = request.full_url
         seen["headers"] = dict(request.header_items())
         seen["timeout"] = timeout
         if isinstance(body, BaseException):
             raise body
+        if status != 200:
+            raise urllib.error.HTTPError(request.full_url, status, "injected", {}, None)
         return _FakeResponse(body, status)
 
-    monkeypatch.setattr(urllib.request, "urlopen", _fake)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", _fake)
     return seen
 
 
@@ -645,11 +649,11 @@ def test_transport_maps_wrapped_timeouts_to_provider_timeout(
 
 
 def test_transport_cancellation_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _slow(request: Any, timeout: Any = None) -> _FakeResponse:
+    def _slow(self: Any, request: Any, data: Any = None, timeout: Any = None) -> Any:
         time.sleep(2.0)
         return _FakeResponse(json.dumps({"data": {}}).encode())
 
-    monkeypatch.setattr(urllib.request, "urlopen", _slow)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", _slow)
 
     async def _main() -> bool:
         task = asyncio.ensure_future(UrllibGraphQLTransport().execute("{ x }", {}))

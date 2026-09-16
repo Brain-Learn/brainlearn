@@ -66,10 +66,13 @@ from brainlearn_core import (
     ProviderNotFound,
     ProviderTimeout,
     RangeUnsupportedError,
+    SnapshotArchiveSource,
     VerifiedFile,
+    extract_archive,
     migrate_download_dict,
     project_lock_from_catalog,
 )
+from brainlearn_core.archives import ArchiveCancelled, ArchiveRejectedError
 from brainlearn_core.projects import utc_now_iso
 
 from brainlearn_server.datasets import get_dataset_provider
@@ -86,6 +89,7 @@ DOWNLOADS_DIRNAME = "downloads"
 DATASETS_DIRNAME = "datasets"
 PARTIAL_DIRNAME = ".partial"
 TRANSFER_FILENAME = "transfer.json"
+ARCHIVE_BLOB_NAME = ".snapshot-archive"
 VERIFY_CHUNK_BYTES = 1024 * 1024
 MAX_SCAN_FILES = 100_000
 MAX_SCAN_DEPTH = 64
@@ -148,6 +152,8 @@ def _failure_message(code: str, path: str, attempt: int, max_attempts: int) -> s
         ),
         "unexpected_symlink": "A symlink appeared inside the download tree.",
         "unsafe_storage": "A download storage path is blocked by a symlink or non-directory.",
+        "archive_rejected": "The snapshot archive failed validation.",
+        "archive_too_large": "The snapshot archive exceeds its declared budget.",
         "finalize_failed": "Verification or lock publication failed after the bytes landed.",
         "interrupted": "The service stopped before the download finished.",
         "internal_error": "The downloader hit an unexpected local error.",
@@ -182,7 +188,7 @@ class DownloadService:
 
     # -- wiring --------------------------------------------------------
 
-    def _source_for(self, name: str) -> FileDownloadSource:
+    def _source_for(self, name: str) -> FileDownloadSource | SnapshotArchiveSource:
         if self.sources_override is not None:
             source = self.sources_override.get(name)
             if source is None:
@@ -396,6 +402,10 @@ class DownloadService:
         with self._lock(key):
             self._refuse_duplicate_active(project, provider_name, dataset_id, snapshot)
             entry = self._resolve_entry(provider_name, dataset_id, snapshot)
+            if any(item.path == ARCHIVE_BLOB_NAME for item in entry.expected_files):
+                raise DownloadConflictError(
+                    "The catalog lists a reserved staging name; it cannot be retrieved."
+                )
             self._refuse_occupied_final(project, entry)
             self._require_disk_space(project, entry.expected_total_bytes)
             now = utc_now_iso()
@@ -709,6 +719,17 @@ class DownloadService:
 
     def _run_pass(self, project: Path, record: DownloadRecord) -> None:
         source = self._source_for(record.provider)
+        if isinstance(source, SnapshotArchiveSource):
+            self._run_pass_archive(project, record, source)
+            return
+        # Reachable only for non-archive sources: the isinstance above
+        # narrows the union, and FileDownloadSource carries properties so it
+        # cannot be runtime-checked itself.
+        self._run_pass_files(project, record, source)
+
+    def _run_pass_files(
+        self, project: Path, record: DownloadRecord, source: FileDownloadSource
+    ) -> None:
         try:
             self._makedirs_verified(
                 project, self._partial_parts(record.download_id), what="Download staging directory"
@@ -733,6 +754,209 @@ class DownloadService:
                 self._save_record(
                     project, fresh.with_progress(files=tuple(states), updated_at=utc_now_iso())
                 )
+
+    def _run_pass_archive(
+        self, project: Path, record: DownloadRecord, source: SnapshotArchiveSource
+    ) -> None:
+        """Fetch one snapshot archive, extract exactly the catalog members.
+
+        Members already verified on disk (re-hashed, never trusted blindly)
+        are adopted; everything else streams from a fresh archive fetch.
+        Progress persists per member so cancellation and crashes resume
+        without redoing verified work. The shared finalizer still re-hashes
+        the whole tree before any lock is published.
+        """
+
+        remaining_total = sum(item.byte_size for item in record.files if not item.verified)
+        try:
+            # The archive blob (bounded below) coexists with the extracted
+            # members, so budget both.
+            self._require_disk_space(project, remaining_total + record.expected_total_bytes)
+        except DiskFullError:
+            raise _DiskFullSignal() from None
+        try:
+            partial = self._makedirs_verified(
+                project, self._partial_parts(record.download_id), what="Download staging directory"
+            )
+        except UnsafeStorageError as exc:
+            raise _FileFailed("unsafe_storage", retryable=False) from exc
+        states: list[DownloadFileState] = list(record.files)
+        for index, file_state in enumerate(states):
+            if file_state.verified:
+                continue
+            self._raise_if_cancelled(project, record.download_id)
+            if self._member_verified_on_disk(project, record.download_id, file_state):
+                states[index] = file_state.model_copy(
+                    update={"bytes_completed": file_state.byte_size, "verified": True}
+                )
+                with self._lock(f"{project}::{record.download_id}"):
+                    fresh = self._load_record(project, record.download_id)
+                    self._save_record(
+                        project, fresh.with_progress(files=tuple(states), updated_at=utc_now_iso())
+                    )
+        if all(item.verified for item in states):
+            return
+        self._clear_unverified_outputs(project, record.download_id, states)
+        blob = self._verified(
+            project,
+            self._partial_parts(record.download_id) + (ARCHIVE_BLOB_NAME,),
+            what="Snapshot archive",
+        )
+        budget = record.expected_total_bytes + DOWNLOAD_DISK_MARGIN_BYTES
+        self._stream_archive_blob(project, record, source, blob, budget)
+        expected = {item.path: item.byte_size for item in record.files}
+        skipped = {item.path for item in states if item.verified}
+        try:
+            extract_archive(
+                blob,
+                partial,
+                expected=expected,
+                skip=skipped,
+                budget_bytes=budget,
+                cancel=self._cancel_event(project, record.download_id).is_set,
+            )
+        except ArchiveCancelled as exc:
+            raise CancelledByUser(f"Download {record.download_id} cancelled.") from exc
+        except ArchiveRejectedError as exc:
+            if exc.code == "disk-full":
+                raise _DiskFullSignal() from exc
+            raise _FileFailed("archive_rejected", retryable=exc.retryable) from exc
+        for index, file_state in enumerate(states):
+            if file_state.verified:
+                continue
+            self._raise_if_cancelled(project, record.download_id)
+            target = self._verified(
+                project,
+                self._partial_parts(record.download_id) + _path_parts(file_state.path),
+                what="Download staging file",
+            )
+            try:
+                digest = self._hash_regular(
+                    target, file_state.byte_size, what=f"Staged file {file_state.path!r}"
+                )
+            except (UnsafeStorageError, _VerificationMismatch, OSError) as exc:
+                raise _FileFailed("checksum_mismatch", file_state.path) from exc
+            if file_state.sha256 is not None and digest != file_state.sha256:
+                raise _FileFailed("checksum_mismatch", file_state.path)
+            states[index] = file_state.model_copy(
+                update={"bytes_completed": file_state.byte_size, "verified": True}
+            )
+            with self._lock(f"{project}::{record.download_id}"):
+                fresh = self._load_record(project, record.download_id)
+                self._save_record(
+                    project, fresh.with_progress(files=tuple(states), updated_at=utc_now_iso())
+                )
+        try:
+            blob.unlink()
+        except OSError as exc:
+            raise _FileFailed("connection_failed", retryable=False) from exc
+
+    def _clear_unverified_outputs(
+        self, project: Path, download_id: str, states: list[DownloadFileState]
+    ) -> None:
+        """Remove staged outputs that extraction is about to replace.
+
+        Only regular files at expected member paths are removed, so the
+        extractor's create-only invariant keeps holding. Adopted members
+        (already verified) are never touched.
+        """
+
+        for file_state in states:
+            if file_state.verified:
+                continue
+            try:
+                target = self._verified(
+                    project,
+                    self._partial_parts(download_id) + _path_parts(file_state.path),
+                    what="Download staging file",
+                )
+            except UnsafeStorageError as exc:
+                raise _FileFailed("unexpected_symlink", file_state.path, retryable=False) from exc
+            try:
+                info = os.lstat(target)
+            except FileNotFoundError:
+                continue
+            except OSError as exc:
+                raise _FileFailed("connection_failed", file_state.path) from exc
+            if not stat.S_ISREG(info.st_mode):
+                raise _FileFailed("unexpected_symlink", file_state.path, retryable=False)
+            try:
+                target.unlink()
+            except OSError as exc:
+                raise _FileFailed("connection_failed", file_state.path) from exc
+
+    def _member_verified_on_disk(
+        self, project: Path, download_id: str, file_state: DownloadFileState
+    ) -> bool:
+        """Re-hash one staged member; trust nothing without recomputing."""
+
+        try:
+            target = self._verified(
+                project,
+                self._partial_parts(download_id) + _path_parts(file_state.path),
+                what="Download staging file",
+            )
+            if target.is_symlink() or not target.is_file():
+                return False
+            digest = self._hash_regular(
+                target, file_state.byte_size, what=f"Staged file {file_state.path!r}"
+            )
+        except (UnsafeStorageError, _VerificationMismatch, OSError, ValueError):
+            return False
+        if file_state.sha256 is not None and digest != file_state.sha256:
+            return False
+        return True
+
+    def _stream_archive_blob(
+        self,
+        project: Path,
+        record: DownloadRecord,
+        source: SnapshotArchiveSource,
+        blob: Path,
+        budget: int,
+    ) -> None:
+        """Stream the snapshot archive to its staging blob, bounded."""
+
+        try:
+            fd = self._open_no_follow(
+                blob,
+                os.O_WRONLY | os.O_CREAT | os.O_TRUNC,
+                what="Snapshot archive",
+            )
+        except (_VerificationMismatch, UnsafeStorageError) as exc:
+            raise _FileFailed("unexpected_symlink", retryable=False) from exc
+        try:
+            received = 0
+            try:
+                stream = source.stream_snapshot_archive(record.dataset_id, record.snapshot)
+                iterator = iter(stream)
+            except (ProviderTimeout, ProviderError, ProviderNotFound, ProviderMalformed) as exc:
+                raise self._provider_file_error(exc, "") from exc
+            while True:
+                self._raise_if_cancelled(project, record.download_id)
+                try:
+                    chunk = next(iterator)
+                except StopIteration:
+                    break
+                except (ProviderTimeout, ProviderError, ProviderNotFound, ProviderMalformed) as exc:
+                    raise self._provider_file_error(exc, "") from exc
+                if not chunk:
+                    continue
+                received += len(chunk)
+                if received > budget:
+                    raise _FileFailed("archive_too_large", retryable=False)
+                view = memoryview(chunk)
+                while view:
+                    try:
+                        done = os.write(fd, view)
+                    except OSError as exc:
+                        if exc.errno == errno.ENOSPC:
+                            raise _DiskFullSignal() from exc
+                        raise _FileFailed("connection_failed", "") from exc
+                    view = view[done:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
     def _raise_if_cancelled(self, project: Path, download_id: str) -> None:
         if self._cancel_event(project, download_id).is_set():
