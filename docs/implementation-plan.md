@@ -220,6 +220,53 @@ Completion gate: a second clean environment runs the exported Python project wit
 
 Completion gate: a release candidate installs and completes the certified reference workflow on every advertised platform/backend combination. Unverified combinations remain clearly labeled unsupported or experimental.
 
+## [ ] Step 10A — Documentation website and GitHub Pages
+
+Goal: publish a polished static project and documentation website, inspired by
+the information architecture of the Nilearn documentation without copying its
+branding or content, and host it from the public GitHub repository.
+
+- [ ] Record a short documentation-stack decision comparing Sphinx with the
+  PyData theme and Sphinx-Gallery against credible alternatives; prefer the
+  scientific-Python ecosystem unless the tested requirements favor another
+  stack.
+- [ ] Build a responsive landing page that explains BrainLearn's research-only,
+  local-first purpose, current maturity, supported EEG scope, and explicit
+  non-clinical limitations without overstating scientific certification.
+- [ ] Provide primary navigation for Quickstart, Examples, User guide, API
+  reference, installation/platform support, contributing, governance, citation,
+  releases, and project status.
+- [ ] Create a searchable example gallery using only synthetic or clearly
+  licensed public data, with exact versions, citations, checksums, expected
+  outputs, limitations, and links to reproducible workflows.
+- [ ] Generate Python API reference from maintained public interfaces and link
+  frontend, workflow-schema, plugin, and local-service contracts without
+  exposing internal or unstable APIs as supported.
+- [ ] Add a ten-minute EEG walkthrough with screenshots, keyboard-accessible
+  instructions, downloadable example workflow, and explicit QC/reproducibility
+  explanations. Never publish personal paths, session tokens, research data, or
+  identifiable participant information.
+- [ ] Support versioned documentation with distinct development, prerelease,
+  stable, and archived-version indicators; prevent old scientific runs from
+  silently inheriting current documentation claims.
+- [ ] Add documentation lint, link checking, clean-build warnings-as-errors,
+  accessibility checks, responsive layout checks, and representative page
+  rendering to CI.
+- [ ] Publish only the generated static site through GitHub Pages using a
+  least-privilege, SHA-pinned GitHub Actions workflow and a protected Pages
+  environment. The documentation site must never host BrainLearn computation or
+  accept uploads of research data.
+- [ ] Configure the repository homepage to the Pages URL, document the deployment
+  and rollback procedure, and optionally add a custom domain only after ownership,
+  HTTPS, and renewal responsibilities are recorded.
+
+Completion gate: the public GitHub Pages site loads from a clean browser on
+desktop and mobile, its quickstart and EEG walkthrough are independently
+followable, search and version indicators work, all links/build/accessibility
+checks pass, scientific claims match the certified support matrix, and another
+maintainer can rebuild, deploy, and roll back the site from the documented
+procedure.
+
 ## [ ] Step 11 — Public beta and contributor readiness
 
 - [ ] Add CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, GOVERNANCE, CHANGELOG, and CITATION.cff.
