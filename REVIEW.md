@@ -79,5 +79,7 @@ strict mypy passed (25 source files), pytest passed 654 tests with 1 opt-in live
 smoke skipped and 2 upstream warnings, ESLint and Prettier passed, Vitest passed
 152 tests in 16 files, the production build passed (1,843 modules), the
 production npm audit found 0 vulnerabilities, and `git diff --check` passed.
-The repair remains pending its own pull-request CI and merge; no Step 5A.6 work
-has started.
+PR #10 passed both required hosted checks, received a monitored approval
+comment, and was squash-merged as `7a72f54`. The resulting `main` run
+35102093017 passed both Python and frontend jobs, including the test that had
+failed before the repair. No Step 5A.6 work has started.
