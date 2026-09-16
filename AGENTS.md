@@ -77,6 +77,22 @@ An unchecked item remains unchecked until its stated behavior and verification e
 
 The current assignment is the `Next assignment` named at the end of the implementation plan. Do not begin the following step in the same work unit unless the plan explicitly combines them.
 
+All implementation delivery and review happens through GitHub pull requests as
+defined in `docs/github-workflow.md`. Never commit or push implementation work
+directly to `main`. Before editing, update local `main` and create one scoped
+branch for the current assignment. The implementing agent must run the complete
+gate, update the implementation-plan evidence, commit, push, and open a
+ready-for-review PR only when the work unit is complete. Leave monitor-owned
+top-level approval checkboxes unchecked.
+
+The monitoring agent reviews and comments on that same PR. When changes are
+requested, the PR stays open and the implementing agent repairs the same branch,
+pushes again, and responds to every review thread. After the monitor reproduces
+the gate and records final approval in `REVIEW.md` and the implementation plan,
+the PR is squash-merged; merging closes it automatically and the branch is
+deleted. Close without merging only when the work is abandoned or superseded.
+Never open a replacement PR merely to clear review history.
+
 ## Workflow and scientific model
 
 - The graph is a directed acyclic graph at the top level.

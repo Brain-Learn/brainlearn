@@ -536,6 +536,7 @@ class WorkerService:
     runs: RunStore
     _threads: dict[tuple[str, str], threading.Thread] = field(default_factory=dict)
     _cancel: dict[tuple[str, str], threading.Event] = field(default_factory=dict)
+    _redrive: set[tuple[str, str]] = field(default_factory=set)
     _guard: threading.Lock = field(default_factory=threading.Lock)
 
     # -- public controls -------------------------------------------------
@@ -878,13 +879,19 @@ class WorkerService:
 
     # -- driver ----------------------------------------------------------
     def _ensure_driver(self, project: str, run_id: str) -> None:
+        key = (project, run_id)
         with self._guard:
-            thread = self._threads.get((project, run_id))
+            thread = self._threads.get(key)
             if thread is not None and thread.is_alive():
+                # A review can be approved after the driver has persisted its
+                # parked state but before that thread leaves ``_drive``. Mark
+                # the run for another pass so the approval cannot be stranded
+                # behind a thread that is alive only long enough to exit.
+                self._redrive.add(key)
                 return
             worker = threading.Thread(target=self._drive, args=(project, run_id), daemon=True)
-            self._threads[(project, run_id)] = worker
-            self._cancel.setdefault((project, run_id), threading.Event())
+            self._threads[key] = worker
+            self._cancel.setdefault(key, threading.Event())
             worker.start()
 
     def _cancel_flag(self, project: str, run_id: str) -> threading.Event:
@@ -927,9 +934,14 @@ class WorkerService:
                 exc=exc,
             )
         finally:
+            redrive = False
             with self._guard:
                 if self._threads.get(key) is threading.current_thread():
                     self._threads.pop(key, None)
+                    redrive = key in self._redrive
+                    self._redrive.discard(key)
+            if redrive:
+                self._ensure_driver(project, run_id)
 
     def _settle(self, project: str, record: RunRecord, has_waiting: bool) -> None:
         """Park a waiting run or finish/stalemate one with nothing ready."""

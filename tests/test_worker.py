@@ -397,6 +397,52 @@ def test_review_approve_resumes_to_success(client: TestClient, tmp_path: Path) -
     assert "review_decided" in _kinds(finished)
 
 
+def test_review_approve_redrives_while_parking_thread_exits(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Approval cannot be lost while the original driver is still unwinding."""
+
+    import threading
+
+    from brainlearn_server.worker import WorkerService
+
+    parked = threading.Event()
+    release = threading.Event()
+    original_settle = WorkerService._settle
+
+    def _blocked_settle(
+        self: WorkerService, project: str, record: RunRecord, has_waiting: bool
+    ) -> None:
+        original_settle(self, project, record, has_waiting)
+        if has_waiting:
+            parked.set()
+            assert release.wait(timeout=5.0), "test did not release the parked driver"
+
+    monkeypatch.setattr(WorkerService, "_settle", _blocked_settle)
+    project = _make_project(client, tmp_path)
+    started = _start(client, project, _review_workflow())
+    assert parked.wait(timeout=5.0), "driver never reached its parked exit window"
+
+    try:
+        decided = client.post(
+            "/api/runs/review",
+            json={
+                "path": str(project),
+                "run_id": started["run_id"],
+                "node_run_id": "gate",
+                "decision": "approved",
+                "note": "resume after parked-driver race",
+            },
+            headers=AUTH_HEADERS,
+        )
+        assert decided.status_code == 200, decided.text
+    finally:
+        release.set()
+
+    finished = _wait_for_state(client, project, started["run_id"], {"succeeded"}, timeout=5.0)
+    assert finished["node_runs"][0]["review_pause"]["decision"] == "approved"
+
+
 def test_review_reject_fails_run(client: TestClient, tmp_path: Path) -> None:
     project = _make_project(client, tmp_path)
     started = _start(client, project, _review_workflow())
