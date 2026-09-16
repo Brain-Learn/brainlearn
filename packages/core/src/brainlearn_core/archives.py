@@ -158,6 +158,7 @@ def _write_member(
     budget: list[int],
     limits: ArchiveLimits,
     cancel: Callable[[], bool] | None,
+    on_bytes: Callable[[int], None] | None = None,
 ) -> int:
     """Stream one member to disk; return bytes written."""
 
@@ -203,6 +204,8 @@ def _write_member(
                 raise ArchiveRejectedError(
                     "total-too-large", "Archive expansion exceeds its budget."
                 )
+            if on_bytes is not None:
+                on_bytes(len(chunk))
             view = memoryview(chunk)
             while view:
                 try:
@@ -255,7 +258,7 @@ def _zip_end_central_count(fd: int) -> int | None:
     if tail_len < 22:
         return None
     try:
-        os.lseek(fd, 0, os.SEEK_SET)
+        os.lseek(fd, size - tail_len, os.SEEK_SET)
         tail = b""
         while len(tail) < tail_len:
             chunk = os.read(fd, tail_len - len(tail))
@@ -300,6 +303,24 @@ def _zip_end_central_count(fd: int) -> int | None:
     return int.from_bytes(record[32:40], "little")
 
 
+def _zip_precheck_member_count(archive_path: Path, limits: ArchiveLimits) -> None:
+    """Reject over-member ZIPs before constructing ``ZipFile``."""
+
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(archive_path, flags)
+    except OSError as exc:
+        if getattr(exc, "errno", None) == errno.ELOOP:
+            raise ArchiveRejectedError("link", "Archive must not be a symlink.") from None
+        raise ArchiveRejectedError("corrupt-archive", "Archive cannot be read.") from exc
+    try:
+        pre_count = _zip_end_central_count(fd)
+    finally:
+        os.close(fd)
+    if pre_count is not None and pre_count > limits.max_members:
+        raise ArchiveRejectedError("too-many-members", "Archive holds too many members.")
+
+
 def _extract_zip(
     archive_path: Path,
     dest: Path,
@@ -309,6 +330,7 @@ def _extract_zip(
     budget_bytes: int,
     cancel: Callable[[], bool] | None,
 ) -> tuple[str, ...]:
+    _zip_precheck_member_count(archive_path, limits)
     try:
         archive = zipfile.ZipFile(archive_path, "r")
     except (zipfile.BadZipFile, OSError) as exc:
@@ -316,22 +338,6 @@ def _extract_zip(
             "corrupt-archive", "Unreadable zip container.", retryable=True
         ) from exc
     with archive:
-        # Bound the member count from the end record before parsing the
-        # central directory into memory; an unparseable end record falls
-        # through to full parsing, which still enforces every limit.
-        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        try:
-            count_fd = os.open(archive_path, flags)
-        except OSError as exc:
-            if getattr(exc, "errno", None) == errno.ELOOP:
-                raise ArchiveRejectedError("link", "Archive must not be a symlink.") from None
-            raise ArchiveRejectedError("corrupt-archive", "Archive cannot be read.") from exc
-        try:
-            pre_count = _zip_end_central_count(count_fd)
-        finally:
-            os.close(count_fd)
-        if pre_count is not None and pre_count > limits.max_members:
-            raise ArchiveRejectedError("too-many-members", "Archive holds too many members.")
         infos = archive.infolist()
         if len(infos) > limits.max_members:
             raise ArchiveRejectedError("too-many-members", "Archive holds too many members.")
@@ -490,6 +496,16 @@ def _extract_tar(
     created_dirs: set[str] = set()
     budget = [budget_bytes]
     expanded = 0
+    declared_total = 0
+
+    def account_bytes(count: int) -> None:
+        nonlocal expanded
+        expanded += count
+        if expanded > limits.max_ratio * container_bytes:
+            raise ArchiveRejectedError(
+                "ratio-exceeded", "Archive compression ratio exceeds its limit."
+            )
+
     with archive:
         for member in archive:
             _check_cancelled(cancel)
@@ -515,16 +531,37 @@ def _extract_tar(
             if expected is not None and rel not in expected:
                 raise ArchiveRejectedError("unexpected-member", "Archive holds an unlisted member.")
             seen.add(rel)
+            if member.size < 0:
+                raise ArchiveRejectedError("corrupt-archive", "Archive member size is invalid.")
+            if member.size > limits.max_file_bytes:
+                raise ArchiveRejectedError(
+                    "file-too-large", "Archive member exceeds the file size limit."
+                )
+            expected_size = expected[rel] if expected is not None else None
+            if expected_size is not None and member.size != expected_size:
+                code = "file-too-large" if member.size > expected_size else "corrupt-archive"
+                raise ArchiveRejectedError(
+                    code, "Archive member size does not match expected data."
+                )
+            if member.size > budget[0] or declared_total + member.size > limits.max_total_bytes:
+                raise ArchiveRejectedError(
+                    "total-too-large", "Archive expansion exceeds its budget."
+                )
+            if expanded + member.size > limits.max_ratio * container_bytes:
+                raise ArchiveRejectedError(
+                    "ratio-exceeded", "Archive compression ratio exceeds its limit."
+                )
+            declared_total += member.size
             if rel in skipped:
                 # Presence is proven; bytes stay untouched on disk. The
                 # sequential tar stream still has to be consumed boundedly.
-                _discard_member(archive, member, budget, limits, cancel)
+                _discard_member(archive, member, budget, limits, cancel, on_bytes=account_bytes)
                 continue
             _ensure_dest_dir(dest, rel)
             reader = archive.extractfile(member)
             if reader is None:
                 raise ArchiveRejectedError("corrupt-archive", "Archive member is unreadable.")
-            cap = expected[rel] if expected is not None else (member.size or None)
+            cap = expected_size if expected_size is not None else (member.size or None)
             with reader:
                 written = _write_member(
                     dest,
@@ -534,15 +571,11 @@ def _extract_tar(
                     budget=budget,
                     limits=limits,
                     cancel=cancel,
+                    on_bytes=account_bytes,
                 )
             if cap is not None and written != cap:
                 raise ArchiveRejectedError(
                     "corrupt-archive", "Archive member ended early.", retryable=True
-                )
-            expanded += written
-            if expanded > limits.max_ratio * container_bytes:
-                raise ArchiveRejectedError(
-                    "ratio-exceeded", "Archive compression ratio exceeds its limit."
                 )
             extracted.append(rel)
     if expected is not None:
@@ -560,6 +593,7 @@ def _discard_member(
     budget: list[int],
     limits: ArchiveLimits,
     cancel: Callable[[], bool] | None,
+    on_bytes: Callable[[int], None] | None = None,
 ) -> None:
     """Consume one streamed tar member without writing, still bounded."""
 
@@ -577,6 +611,8 @@ def _discard_member(
                 raise ArchiveRejectedError(
                     "total-too-large", "Archive expansion exceeds its budget."
                 )
+            if on_bytes is not None:
+                on_bytes(len(chunk))
 
 
 def _probe_head(archive_path: Path) -> bytes:

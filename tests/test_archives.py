@@ -257,6 +257,41 @@ def test_tar_gz_ratio_rejection_and_plain_tar_acceptance(tmp_path: Path) -> None
     assert _read_tree(dest_ok) == {"notes.txt": data}
 
 
+def test_tar_gz_ratio_rejects_skipped_bomb_before_consumption(tmp_path: Path) -> None:
+    payload = b"0" * 1_000_000
+    archive = tmp_path / "skipped-bomb.tgz"
+    with tarfile.open(archive, "w:gz", compresslevel=9) as container:
+        info = tarfile.TarInfo("zeros.bin")
+        info.size = len(payload)
+        info.mode = 0o644
+        container.addfile(info, io.BytesIO(payload))
+
+    dest = tmp_path / "out"
+    dest.mkdir()
+    with pytest.raises(ArchiveRejectedError) as excinfo:
+        extract_archive(
+            archive,
+            dest,
+            expected={"zeros.bin": len(payload)},
+            skip={"zeros.bin"},
+            limits=ArchiveLimits(max_ratio=10.0),
+        )
+    assert excinfo.value.code == "ratio-exceeded"
+    assert _read_tree(dest) == {}
+
+    dest_write = tmp_path / "out-write"
+    dest_write.mkdir()
+    with pytest.raises(ArchiveRejectedError) as excinfo:
+        extract_archive(
+            archive,
+            dest_write,
+            expected={"zeros.bin": len(payload)},
+            limits=ArchiveLimits(max_ratio=10.0),
+        )
+    assert excinfo.value.code == "ratio-exceeded"
+    assert _read_tree(dest_write) == {}
+
+
 def test_streaming_overrun_aborts_live(tmp_path: Path) -> None:
     """A stream longer than its cap aborts mid-write, bounded in memory."""
 
@@ -307,6 +342,10 @@ def test_large_single_member_zip_extracts(tmp_path: Path) -> None:
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as container:
         container.writestr("big.bin", blob)
     assert archive.stat().st_size > 4_600_000
+    from brainlearn_core.archives import _zip_end_central_count
+
+    with archive.open("rb") as handle:
+        assert _zip_end_central_count(handle.fileno()) == 1
     dest = tmp_path / "out"
     dest.mkdir()
     members = extract_archive(
@@ -316,10 +355,17 @@ def test_large_single_member_zip_extracts(tmp_path: Path) -> None:
     assert _read_tree(dest) == {"big.bin": blob}
 
 
-def test_end_record_count_rejects_over_member_archives(tmp_path: Path) -> None:
+def test_end_record_count_rejects_over_member_archives(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     archive = _make_zip(tmp_path / "many.zip", [(f"f{i}.txt", b"x") for i in range(12)])
     dest = tmp_path / "out"
     dest.mkdir()
+
+    def zipfile_must_not_be_constructed(*args: object, **kwargs: object) -> None:
+        raise AssertionError("ZIP parser was constructed before the member pre-check")
+
+    monkeypatch.setattr(zipfile, "ZipFile", zipfile_must_not_be_constructed)
     with pytest.raises(ArchiveRejectedError) as excinfo:
         extract_archive(archive, dest, limits=ArchiveLimits(max_members=10))
     assert excinfo.value.code == "too-many-members"
