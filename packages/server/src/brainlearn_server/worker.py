@@ -815,84 +815,93 @@ class WorkerService:
     ) -> RunRecord:
         """Apply an approval or rejection to a waiting node and resume driving."""
 
-        record = self.runs.get_run(project, run_id)
-        node = next((item for item in record.node_runs if item.id == node_run_id), None)
-        if (
-            node is None
-            or node.state != NodeRunState.WAITING_FOR_REVIEW
-            or node.review_pause is None
-            or node.review_pause.decided_at is not None
-        ):
-            raise ReviewConflictError(
-                f"Node run {node_run_id!r} is not awaiting review in run {run_id!r}."
-            )
-        timestamp = utc_now_iso()
-        if decision == "approved":
-            decided = node.review_pause.model_copy(
-                update={"decided_at": timestamp, "decision": "approved", "note": note}
-            )
-            nodes = [
-                item.model_copy(
-                    update={
-                        "state": NodeRunState.SUCCEEDED,
-                        "finished_at": timestamp,
-                        "review_pause": decided,
-                    }
+        with self._guard:
+            # Serialize the decision with every transition that can park a
+            # run. Otherwise a driver holding a stale pre-decision record can
+            # overwrite the durable decision with ``waiting_for_review``.
+            record = self.runs.get_run(project, run_id)
+            node = next((item for item in record.node_runs if item.id == node_run_id), None)
+            if (
+                node is None
+                or node.state != NodeRunState.WAITING_FOR_REVIEW
+                or node.review_pause is None
+                or node.review_pause.decided_at is not None
+            ):
+                raise ReviewConflictError(
+                    f"Node run {node_run_id!r} is not awaiting review in run {run_id!r}."
                 )
-                if item.id == node_run_id
-                else item
-                for item in record.node_runs
-            ]
-            events = [
-                *record.events,
-                RunEvent(
-                    schema_version="1.0",
-                    seq=len(record.events),
-                    at=timestamp,
-                    kind=RunEventKind.REVIEW_DECIDED,
-                    node_run_id=node_run_id,
-                    attempt=node.attempt,
-                    message=note or "Review approved.",
-                ),
-            ]
-            repaired = record.model_copy(
-                update={"state": RunState.RUNNING, "node_runs": nodes, "events": events}
+            timestamp = utc_now_iso()
+            if decision == "approved":
+                decided = node.review_pause.model_copy(
+                    update={"decided_at": timestamp, "decision": "approved", "note": note}
+                )
+                nodes = [
+                    item.model_copy(
+                        update={
+                            "state": NodeRunState.SUCCEEDED,
+                            "finished_at": timestamp,
+                            "review_pause": decided,
+                        }
+                    )
+                    if item.id == node_run_id
+                    else item
+                    for item in record.node_runs
+                ]
+                events = [
+                    *record.events,
+                    RunEvent(
+                        schema_version="1.0",
+                        seq=len(record.events),
+                        at=timestamp,
+                        kind=RunEventKind.REVIEW_DECIDED,
+                        node_run_id=node_run_id,
+                        attempt=node.attempt,
+                        message=note or "Review approved.",
+                    ),
+                ]
+                repaired = record.model_copy(
+                    update={"state": RunState.RUNNING, "node_runs": nodes, "events": events}
+                )
+                saved = self.runs.save_run(
+                    project, RunRecord.model_validate(repaired.model_dump(mode="json"))
+                )
+                self._ensure_driver_locked(project, run_id)
+                return saved
+            decided = node.review_pause.model_copy(
+                update={"decided_at": timestamp, "decision": "rejected", "note": note}
             )
-            saved = self.runs.save_run(
-                project, RunRecord.model_validate(repaired.model_dump(mode="json"))
+            failure = FailureRecord(
+                schema_version="1.0",
+                code="review_rejected",
+                message=note or "Reviewer rejected the paused output.",
+                node_run_id=node_run_id,
+                at=timestamp,
             )
-            self._ensure_driver(project, run_id)
-            return saved
-        decided = node.review_pause.model_copy(
-            update={"decided_at": timestamp, "decision": "rejected", "note": note}
-        )
-        failure = FailureRecord(
-            schema_version="1.0",
-            code="review_rejected",
-            message=note or "Reviewer rejected the paused output.",
-            node_run_id=node_run_id,
-            at=timestamp,
-        )
-        return self.runs.save_run(
-            project, _fail_run(record, node_run_id, failure, timestamp, decided)
-        )
+            return self.runs.save_run(
+                project, _fail_run(record, node_run_id, failure, timestamp, decided)
+            )
 
     # -- driver ----------------------------------------------------------
     def _ensure_driver(self, project: str, run_id: str) -> None:
-        key = (project, run_id)
         with self._guard:
-            thread = self._threads.get(key)
-            if thread is not None and thread.is_alive():
-                # A review can be approved after the driver has persisted its
-                # parked state but before that thread leaves ``_drive``. Mark
-                # the run for another pass so the approval cannot be stranded
-                # behind a thread that is alive only long enough to exit.
-                self._redrive.add(key)
-                return
-            worker = threading.Thread(target=self._drive, args=(project, run_id), daemon=True)
-            self._threads[key] = worker
-            self._cancel.setdefault(key, threading.Event())
-            worker.start()
+            self._ensure_driver_locked(project, run_id)
+
+    def _ensure_driver_locked(self, project: str, run_id: str) -> None:
+        """Ensure a driver while the caller holds :attr:`_guard`."""
+
+        key = (project, run_id)
+        thread = self._threads.get(key)
+        if thread is not None and thread.is_alive():
+            # A review can be approved after the driver has persisted its
+            # parked state but before that thread leaves ``_drive``. Mark the
+            # run for another pass so the approval cannot be stranded behind
+            # a thread that is alive only long enough to exit.
+            self._redrive.add(key)
+            return
+        worker = threading.Thread(target=self._drive, args=(project, run_id), daemon=True)
+        self._threads[key] = worker
+        self._cancel.setdefault(key, threading.Event())
+        worker.start()
 
     def _cancel_flag(self, project: str, run_id: str) -> threading.Event:
         with self._guard:
@@ -921,10 +930,7 @@ class WorkerService:
                     self._settle(project, record, bool(waiting))
                     return
                 if waiting and record.state != RunState.WAITING_FOR_REVIEW:
-                    parked = record.model_copy(update={"state": RunState.WAITING_FOR_REVIEW})
-                    self.runs.save_run(
-                        project, RunRecord.model_validate(parked.model_dump(mode="json"))
-                    )
+                    self._park_if_still_waiting(project, run_id)
                 self._execute_node(project, record, sorted(ready)[0])
         except BaseException as exc:
             log_fault(
@@ -946,12 +952,47 @@ class WorkerService:
     def _settle(self, project: str, record: RunRecord, has_waiting: bool) -> None:
         """Park a waiting run or finish/stalemate one with nothing ready."""
 
-        if has_waiting:
-            if record.state == RunState.WAITING_FOR_REVIEW:
+        record_id = record.id
+        del record, has_waiting
+        with self._guard:
+            # Re-read under the same lock used by review decisions. The
+            # driver may have reached this method with a pre-decision record.
+            fresh = self.runs.get_run(project, record_id)
+            if fresh.state in RUN_TERMINAL_STATES:
                 return
-            parked = record.model_copy(update={"state": RunState.WAITING_FOR_REVIEW})
+            waiting = any(node.state == NodeRunState.WAITING_FOR_REVIEW for node in fresh.node_runs)
+            if waiting:
+                if fresh.state == RunState.WAITING_FOR_REVIEW:
+                    return
+                parked = fresh.model_copy(update={"state": RunState.WAITING_FOR_REVIEW})
+                self.runs.save_run(
+                    project, RunRecord.model_validate(parked.model_dump(mode="json"))
+                )
+                return
+            dependencies = {n.id: list(n.dependencies) for n in fresh.node_runs}
+            states = {n.id: n.state for n in fresh.node_runs}
+            if ready_node_ids(states, dependencies):
+                # A concurrent approval scheduled a redrive; do not turn its
+                # newly-ready work into a stale scheduler failure.
+                self._redrive.add((project, record_id))
+                return
+            self._settle_without_waiting(project, fresh)
+
+    def _park_if_still_waiting(self, project: str, run_id: str) -> None:
+        """Park only a fresh pending review, serialized with decisions."""
+
+        with self._guard:
+            fresh = self.runs.get_run(project, run_id)
+            if fresh.state == RunState.WAITING_FOR_REVIEW or not any(
+                node.state == NodeRunState.WAITING_FOR_REVIEW for node in fresh.node_runs
+            ):
+                return
+            parked = fresh.model_copy(update={"state": RunState.WAITING_FOR_REVIEW})
             self.runs.save_run(project, RunRecord.model_validate(parked.model_dump(mode="json")))
-            return
+
+    def _settle_without_waiting(self, project: str, record: RunRecord) -> None:
+        """Finish or fail one fresh run with no ready or waiting nodes."""
+
         if all(
             node.state in {NodeRunState.SUCCEEDED, NodeRunState.CACHE_REUSED}
             for node in record.node_runs
