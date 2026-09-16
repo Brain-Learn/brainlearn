@@ -2,9 +2,9 @@
 
 This document covers the read-only provider boundary only: listing public
 datasets and resolving one immutable snapshot tag into schema-`1.0`
-catalog data. File downloads, archive extraction, resume/cancellation of
-bytes, dataset UI, and MNE/BIDS inspection are explicitly out of scope and
-arrive in later Step 5A units.
+catalog data, plus the read-only byte sources the verified downloader
+consumes. Archive extraction, dataset UI, and MNE/BIDS inspection arrive
+in later Step 5A units.
 
 ## Provenance
 
@@ -84,6 +84,12 @@ is public-only: `list_datasets` never reports non-public records, and
   GraphQL `errors` are `ProviderError`; missing/misshapen payloads and
   contract rejections are `ProviderMalformed`; unknown or non-public
   snapshots are `ProviderNotFound`.
+- Every redirect hop is validated against `RedirectPolicy` before any
+  response body is consumed: only explicitly approved HTTPS hosts, at most
+  five hops, no scheme downgrade, no embedded credentials, and no query or
+  fragment on any hop target. POST bodies cross only method-preserving
+  statuses. Refusals raise static `ProviderError` values that never echo
+  URLs, tokens, or signatures.
 - There is no automatic retry: callers decide when a metadata fetch is
   worth repeating, so a tight loop can never hammer the public API.
 - Listing pages are bounded (`first` within 1..25 for OpenNeuro, 1..50
@@ -93,14 +99,24 @@ is public-only: `list_datasets` never reports non-public records, and
   the transport; a cancelled metadata request never becomes a provider
   error.
 
+## File downloads
+
+`OpenNeuroDownloadSource` streams individual snapshot files from
+`https://openneuro.org/crn/datasets/<id>/snapshots/<tag>/files/<path>`
+under the same redirect policy and bounded timeouts. Probed 2026-09-14,
+the endpoint ignores `Range` requests (HTTP 200 with the full body), so
+`supports_resume` is false: resume keeps completed files and restarts the
+in-progress file from zero. OpenNeuro serves per-file bytes only; whole
+snapshot archives arrive through provider-neutral
+`SnapshotArchiveSource` implementations, never from this adapter.
+
 ## No-download boundary
 
-The metadata adapter never requests per-file `urls`, never derives transfer
-endpoints, and never writes bytes. A later retrieval unit will resolve
-transfer endpoints ephemerally from `(provider, dataset_id, snapshot)`,
-fetch into staging, verify sizes/checksums plus BIDS structure, and only
-then write a `DatasetLock` whose identity is recomputed from verified
-facts.
+The metadata adapter never requests per-file `urls` and never writes
+bytes. The file source derives transfer endpoints ephemerally from
+`(provider, dataset_id, snapshot)` plus the catalog-listed path, streams
+bytes without persisting them, and carries no credentials. Verification,
+lock publication, and the UI live in their own units.
 
 ## Tests
 

@@ -1,8 +1,9 @@
 # Verified dataset download lifecycle (Step 5A.4)
 
 This document covers downloading an explicitly selected immutable public
-snapshot through the local Python service into the authorized project. It
-does not cover archive extraction, local/private import, MNE/BIDS
+snapshot through the local Python service into the authorized project,
+including snapshot-archive delivery and hardened extraction. It
+does not cover local/private import, MNE/BIDS
 inspection, or credentials: those arrive in later Step 5 units.
 
 ## What a download fulfills
@@ -93,12 +94,36 @@ Free space must cover the catalog expectation plus a 64 MiB safety margin
 resume. Mid-download exhaustion pauses the transfer with bytes kept. The
 service answers 507 when space is short.
 
-## Sources and resume behavior
+## Sources, archives, and resume behavior
 
 Providers expose streamed bytes through `FileDownloadSource`; sources
-never write, verify, or persist. The OpenNeuro source serves
+never write, verify, or persist. A source may additionally implement
+`SnapshotArchiveSource` to deliver the whole snapshot as one ZIP or tar
+archive (container detected by magic bytes, never by suffix). The engine
+prefers the archive path when present: it streams the archive under a
+budget of expected bytes plus margin (checking twice the expected bytes
+free, since blob and members coexist), extracts exactly the catalog-listed
+members through `brainlearn_core.archives`, verifies each member against
+the catalog, deletes the blob, and continues through the shared atomic
+finalization. Members already verified on disk are adopted by re-hashing
+and skipped during extraction, so resume never rewrites proven bytes.
+A catalog that lists the reserved `.snapshot-archive` staging name is
+refused at start.
+
+Archive extraction rejects absolute paths, parent traversal, unsafe
+portable names, duplicate/conflicting paths, links, devices, FIFOs,
+sockets, unexpected or missing members, and encrypted containers. Limits
+cover member count, individual and total expanded bytes, compression
+ratio, path depth/length, and disk budget, enforced from declared metadata
+before extraction and re-enforced live while streaming with bounded
+memory. Corrupt or truncated archives retry within the normal attempt
+budget; structural faults fail fast. Cancellation is honored between
+members and chunks; the partial tree is always cleaned up or resumed
+through the standard lifecycle, never represented as successful.
+
+The OpenNeuro source serves
 `https://openneuro.org/crn/datasets/<id>/snapshots/<tag>/files/<path>`
-(same host only; cross-host redirects are refused) in bounded chunks.
+under the redirect policy in bounded chunks.
 Probed 2026-09-14, the endpoint ignores `Range` requests (HTTP 200 with
 the full body), so `supports_resume` is false there: resume keeps
 completed files and restarts the in-progress file from zero. A source that

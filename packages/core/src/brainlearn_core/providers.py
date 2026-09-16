@@ -20,7 +20,7 @@ import asyncio
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from brainlearn_core.datasets import CatalogEntry
 
@@ -319,6 +319,23 @@ class FileDownloadSource(Protocol):
         ...
 
 
+@runtime_checkable
+class SnapshotArchiveSource(Protocol):
+    """Optional whole-snapshot archive delivery for a download source.
+
+    A source implementing this capability serves the snapshot's files
+    packed in one archive (ZIP or tar container, detected by magic bytes).
+    Engines prefer this path when present: they stream the archive with a
+    bounded budget, extract exactly the catalog-listed members, and verify
+    each member against the catalog before the shared atomic finalization.
+    Per-file streaming stays the path for sources without this capability.
+    """
+
+    def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Iterator[bytes]:
+        """Yield one snapshot archive from its first byte."""
+        ...
+
+
 class ScriptedDownloadSource:
     """Deterministic in-memory byte source for offline download tests.
 
@@ -396,3 +413,82 @@ class ScriptedDownloadSource:
         """How many scripted failures are still queued for ``path``."""
 
         return len(self._failures.get(path, []))
+
+
+class ScriptedSnapshotArchive:
+    """Deterministic whole-snapshot archive source for offline tests.
+
+    ``members`` maps relative paths to exact bytes; the archive container
+    is built eagerly with the real stdlib writers so engines parse genuine
+    ZIP/tar bytes. ``failures`` queues exceptions raised from successive
+    archive stream attempts, modelling retryable faults and exhaustion.
+    ``gate`` is waited on before every chunk when set, modelling slow
+    archives for cancellation tests.
+    """
+
+    def __init__(
+        self,
+        members: Mapping[str, bytes],
+        *,
+        format: Literal["zip", "tar.gz"] = "zip",
+        source_name: str = "mock-archive",
+        failures: list[Exception] | None = None,
+        chunk_size: int = 65536,
+        gate: threading.Event | None = None,
+    ) -> None:
+        import io
+        import tarfile
+        import zipfile
+
+        self._members = dict(members)
+        self._source_name = source_name
+        self._failures = list(failures) if failures else []
+        self._chunk_size = chunk_size
+        self._gate = gate
+        self.requests: list[dict[str, Any]] = []
+        buffer = io.BytesIO()
+        if format == "zip":
+            with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as archive:
+                for path, blob in self._members.items():
+                    archive.writestr(path, blob)
+        elif format == "tar.gz":
+            with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+                for path, blob in self._members.items():
+                    info = tarfile.TarInfo(path)
+                    info.size = len(blob)
+                    info.mode = 0o644
+                    archive.addfile(info, io.BytesIO(blob))
+        else:
+            raise ValueError(f"Unsupported scripted archive format {format!r}.")
+        self._blob = buffer.getvalue()
+
+    @property
+    def source_name(self) -> str:
+        return self._source_name
+
+    @property
+    def supports_resume(self) -> bool:
+        return False
+
+    def stream_file(
+        self, dataset_id: str, snapshot: str, path: str, offset: int
+    ) -> Iterator[bytes]:
+        """Archive-only doubles never serve individual files."""
+
+        raise ProviderNotFound(f"Archive source has no individual file {path!r}.")
+
+    def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Iterator[bytes]:
+        """Yield the scripted snapshot archive from its first byte."""
+
+        self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+        if self._failures:
+            raise self._failures.pop(0)
+        for start in range(0, len(self._blob), self._chunk_size):
+            if self._gate is not None:
+                self._gate.wait(timeout=30.0)
+            yield self._blob[start : start + self._chunk_size]
+
+    def failures_remaining(self) -> int:
+        """How many scripted archive failures are still queued."""
+
+        return len(self._failures)

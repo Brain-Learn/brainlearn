@@ -32,6 +32,7 @@ Provenance and limits are documented in ``docs/openneuro-provider.md``:
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import re
 import urllib.error
@@ -58,9 +59,6 @@ OPENNEURO_DOCS_URL = "https://docs.openneuro.org/api.html"
 OPENNEURO_OBSERVED_VERSION = "5.6.0"
 OPENNEURO_USER_AGENT = "BrainLearn/5A.2 (read-only metadata; no downloads)"
 OPENNEURO_DOWNLOAD_USER_AGENT = "BrainLearn/5A.4 (verified dataset download)"
-OPENNEURO_FILES_URL_TEMPLATE = (
-    "https://openneuro.org/crn/datasets/{dataset_id}/snapshots/{snapshot}/files/{path}"
-)
 DOWNLOAD_TIMEOUT_S = 30.0
 DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 DEFAULT_TIMEOUT_S = 10.0
@@ -90,6 +88,30 @@ _TAG_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _DOI_PRECHECK = re.compile(r"^10\.\d{4,}/\S+$")
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class RedirectPolicy:
+    """Explicit bounds for following server redirects.
+
+    Only plain HTTPS hosts on the allowlist are followed (exact match,
+    case-insensitive; ports unrestricted), at most ``max_hops`` hops, with
+    no scheme downgrade, no embedded credentials, and no query or fragment
+    on any hop target. ``allow_http`` permits plain-HTTP hops for loopback
+    tests, but an ``https`` hop never downgrades to ``http``. POST bodies
+    are resent only across method-preserving statuses; anything else is
+    refused rather than silently converted.
+    """
+
+    allowed_hosts: tuple[str, ...] = ("openneuro.org",)
+    max_hops: int = 5
+    allow_http: bool = False
+
+
+OPENNEURO_REDIRECT_POLICY = RedirectPolicy()
+
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_SAFE_HOP_HEADERS = ("user-agent", "accept", "range")
+
+
 class GraphQLTransport(Protocol):
     """Async source of decoded GraphQL ``data`` objects."""
 
@@ -113,6 +135,7 @@ class UrllibGraphQLTransport:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         max_bytes: int = MAX_RESPONSE_BYTES,
         user_agent: str = OPENNEURO_USER_AGENT,
+        redirect_policy: RedirectPolicy = OPENNEURO_REDIRECT_POLICY,
     ) -> None:
         if timeout_s <= 0:
             raise ValueError(f"timeout_s must be positive, got {timeout_s}.")
@@ -122,6 +145,8 @@ class UrllibGraphQLTransport:
         self._timeout_s = timeout_s
         self._max_bytes = max_bytes
         self._user_agent = user_agent
+        self._redirect_policy = redirect_policy
+        self._opener = _redirect_opener()
 
     async def execute(self, query: str, variables: Mapping[str, Any]) -> dict[str, Any]:
         """POST ``query`` and return its ``data`` object."""
@@ -171,7 +196,9 @@ class UrllibGraphQLTransport:
 
     def _post(self, body: bytes, headers: dict[str, str]) -> bytes:
         request = urllib.request.Request(self._endpoint, data=body, headers=headers, method="POST")
-        with urllib.request.urlopen(request, timeout=self._timeout_s) as response:
+        with _open_with_redirect_policy(
+            self._opener, request, policy=self._redirect_policy, timeout_s=self._timeout_s
+        ) as response:
             status = getattr(response, "status", 200)
             if status != 200:
                 raise ProviderError(f"OpenNeuro answered HTTP {status}.")
@@ -179,12 +206,12 @@ class UrllibGraphQLTransport:
             return raw
 
 
-class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
-    """Refuse file-download redirects that leave the approved host.
+class _ManualRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Disable urllib's automatic redirect following.
 
-    Full redirect hardening (allowlist policy, redirect chains, archive
-    endpoints) belongs to the later hardening slice; this guard keeps the
-    downloader on ``https://openneuro.org`` in the meantime.
+    Returning ``None`` turns every redirect into an ``HTTPError`` so the
+    manual hop loop validates each target before any response body is
+    consumed. Replaces the earlier same-host guard with explicit policy.
     """
 
     def redirect_request(
@@ -196,14 +223,112 @@ class _SameHostRedirectHandler(urllib.request.HTTPRedirectHandler):
         headers: Any,
         newurl: str,
     ) -> urllib.request.Request | None:
-        parts = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl))
-        approved = urllib.parse.urlsplit(OPENNEURO_ENDPOINT)
-        if (
-            parts.scheme != "https"
-            or (parts.hostname or "").lower() != (approved.hostname or "").lower()
-        ):
-            raise ProviderError("OpenNeuro redirected the file request outside the approved host.")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+        return None
+
+
+def _redirect_opener() -> urllib.request.OpenerDirector:
+    # Passing our handler instance suppresses urllib's default follower;
+    # every other default handler (including error processing) stays.
+    return urllib.request.build_opener(_ManualRedirectHandler())
+
+
+def _check_hop_url(url: str, policy: RedirectPolicy, current_scheme: str) -> None:
+    try:
+        parts = urllib.parse.urlsplit(url)
+    except ValueError:
+        raise ProviderError("Server redirect target is not a valid URL.") from None
+    if parts.scheme == "https":
+        pass
+    elif parts.scheme == "http" and policy.allow_http and current_scheme == "http":
+        pass
+    else:
+        raise ProviderError("Server redirect left the approved scheme.") from None
+    host = parts.hostname or ""
+    if host.lower() not in tuple(item.lower() for item in policy.allowed_hosts):
+        raise ProviderError("Server redirected outside the approved hosts.") from None
+    if parts.username is not None or parts.password is not None:
+        raise ProviderError("Server redirect carried credentials.") from None
+    if parts.query or parts.fragment:
+        raise ProviderError("Server redirect carried a signed address.") from None
+
+
+def _validated_redirect_target(
+    base_url: str, location: str | None, code: int, method: str, policy: RedirectPolicy
+) -> tuple[str, str]:
+    """Resolve one hop target; return ``(url, method)`` or raise statically.
+
+    POST bodies are resent only across method-preserving statuses; anything
+    that would silently convert the method is refused instead.
+    """
+
+    if not location or not location.strip():
+        raise ProviderError("Server redirected without a target.") from None
+    target = urllib.parse.urljoin(base_url, location.strip())
+    try:
+        current_scheme = urllib.parse.urlsplit(base_url).scheme
+    except ValueError:
+        raise ProviderError("Server redirect target is not a valid URL.") from None
+    _check_hop_url(target, policy, current_scheme)
+    if code == 303:
+        return target, "GET"
+    if method != "GET" and code in (301, 302):
+        raise ProviderError("Server redirect would change the request method.") from None
+    return target, method
+
+
+def _open_with_redirect_policy(
+    opener: urllib.request.OpenerDirector,
+    request: urllib.request.Request,
+    *,
+    policy: RedirectPolicy,
+    timeout_s: float,
+) -> Any:
+    """Open one request, following only policy-approved redirect hops.
+
+    Response bodies are never touched until the final response is returned,
+    and every intermediate error object is closed without reading.
+    """
+
+    try:
+        current_scheme = urllib.parse.urlsplit(request.full_url).scheme
+    except ValueError:
+        raise ProviderError("Server request target is not a valid URL.") from None
+    _check_hop_url(request.full_url, policy, current_scheme)
+    current = request
+    hops = 0
+    while True:
+        try:
+            return opener.open(current, timeout=timeout_s)
+        except urllib.error.HTTPError as exc:
+            if exc.code not in _REDIRECT_STATUSES or hops >= policy.max_hops:
+                if exc.code in _REDIRECT_STATUSES:
+                    try:
+                        exc.close()
+                    except Exception:
+                        # Best-effort release; the static error below stands.
+                        pass
+                    raise ProviderError("Server redirected too many times.") from None
+                raise
+            headers = exc.headers
+            location = headers.get("Location") if headers else None
+            try:
+                exc.close()
+            except Exception:
+                # Best-effort release of the redirect response; failure here
+                # must not mask the hop validation below.
+                pass
+            url, method = _validated_redirect_target(
+                current.full_url, location, exc.code, current.get_method(), policy
+            )
+            hops += 1
+            kept = {
+                name: value
+                for name, value in current.header_items()
+                if name.lower() in _SAFE_HOP_HEADERS
+                or (method != "GET" and name.lower() == "content-type")
+            }
+            data = current.data if method != "GET" else None
+            current = urllib.request.Request(url, data=data, headers=kept, method=method)
 
 
 class OpenNeuroDownloadSource:
@@ -221,6 +346,8 @@ class OpenNeuroDownloadSource:
         timeout_s: float = DOWNLOAD_TIMEOUT_S,
         chunk_size: int = DOWNLOAD_CHUNK_BYTES,
         user_agent: str = OPENNEURO_DOWNLOAD_USER_AGENT,
+        files_base_url: str = "https://openneuro.org/crn",
+        redirect_policy: RedirectPolicy = OPENNEURO_REDIRECT_POLICY,
     ) -> None:
         if timeout_s <= 0:
             raise ValueError(f"timeout_s must be positive, got {timeout_s}.")
@@ -229,7 +356,9 @@ class OpenNeuroDownloadSource:
         self._timeout_s = timeout_s
         self._chunk_size = chunk_size
         self._user_agent = user_agent
-        self._opener = urllib.request.build_opener(_SameHostRedirectHandler)
+        self._files_base_url = files_base_url.rstrip("/")
+        self._redirect_policy = redirect_policy
+        self._opener = _redirect_opener()
 
     @property
     def source_name(self) -> str:
@@ -255,17 +384,18 @@ class OpenNeuroDownloadSource:
             or offset < 0
         ):
             raise ValueError(f"Refusing unsafe file request for {path!r}.")
-        url = OPENNEURO_FILES_URL_TEMPLATE.format(
-            dataset_id=dataset_id,
-            snapshot=snapshot,
-            path=urllib.parse.quote(path, safe="/"),
+        url = (
+            f"{self._files_base_url}/datasets/{dataset_id}"
+            f"/snapshots/{snapshot}/files/{urllib.parse.quote(path, safe='/')}"
         )
         headers = {"User-Agent": self._user_agent, "Accept": "application/octet-stream"}
         if offset > 0:
             headers["Range"] = f"bytes={offset}-"
         request = urllib.request.Request(url, headers=headers, method="GET")
         try:
-            response = self._opener.open(request, timeout=self._timeout_s)
+            response = _open_with_redirect_policy(
+                self._opener, request, policy=self._redirect_policy, timeout_s=self._timeout_s
+            )
         except TimeoutError:
             raise ProviderTimeout(
                 f"OpenNeuro file request did not answer within {self._timeout_s:g}s."

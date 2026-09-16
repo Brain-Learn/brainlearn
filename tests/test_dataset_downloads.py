@@ -6,12 +6,15 @@ poll terminal states with deadlines, mirroring the run-worker suite.
 """
 
 import hashlib
+import io
 import json
 import os
 import shutil
+import tarfile
 import threading
 import time
 import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +24,7 @@ from brainlearn_core import (
     DownloadRecord,
     MockDatasetProvider,
     ScriptedDownloadSource,
+    ScriptedSnapshotArchive,
     catalog_entry_identity,
     migrate_download_dict,
 )
@@ -1179,3 +1183,422 @@ def test_tampered_persisted_record_is_rejected_on_read(client: TestClient, tmp_p
         headers=AUTH_HEADERS,
     )
     assert response.status_code == 404
+
+
+# -- snapshot-archive engine path (Step 5A.5) ---------------------------------
+
+
+def _wire_archive(
+    entry: CatalogEntry,
+    members: dict[str, bytes],
+    **source_kwargs: Any,
+) -> ScriptedSnapshotArchive:
+    source = ScriptedSnapshotArchive(members, **source_kwargs)
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": source}
+    return source
+
+
+def _make_archive_entry(
+    files: list[tuple[str, bytes, bool]],
+) -> tuple[CatalogEntry, dict[str, bytes]]:
+    entry, _ = _make_entry(files=files)
+    members = {path: blob for path, blob, _ in files}
+    return entry, members
+
+
+def test_archive_snapshot_finalizes_with_lock(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry(
+        [("a.bin", b"a" * 1000, True), ("sub/b.bin", b"b" * 500, False)]
+    )
+    _wire_archive(entry, members)
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert finished["bytes_completed"] == 1500
+    assert finished["lock_identity"] is not None
+    assert all(item["verified"] for item in finished["files"])
+
+    final = _final_dir(project)
+    assert (final / "a.bin").read_bytes() == b"a" * 1000
+    assert (final / "sub" / "b.bin").read_bytes() == b"b" * 500
+    lock = json.loads((final / "dataset-lock-1.0.json").read_text(encoding="utf-8"))
+    assert lock["dataset_identity"] == finished["lock_identity"]
+    assert lock["catalog_identity"] == entry.catalog_identity
+    partial = project / "datasets" / ".partial" / started["download_id"]
+    assert partial.exists() is False
+
+
+def test_archive_tar_gz_snapshot_finalizes(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 300, True)])
+    _wire_archive(entry, members, format="tar.gz")
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert (_final_dir(project) / "a.bin").read_bytes() == b"a" * 300
+    assert finished["lock_identity"] is not None
+
+
+def test_archive_traversal_member_fails_without_escape(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, _ = _make_archive_entry([("a.bin", b"a" * 64, True)])
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("a.bin", b"a" * 64)
+        archive.writestr("../evil.bin", b"escape")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_bytes(b"do-not-touch")
+
+    class _TraversalSource(ScriptedSnapshotArchive):
+        def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Any:
+            self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+            yield buffer.getvalue()
+
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": _TraversalSource({"a.bin": b"a" * 64})}
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "archive_rejected"
+    assert _final_dir(project).exists() is False
+    assert sentinel.read_bytes() == b"do-not-touch"
+    assert sorted(path.name for path in outside.iterdir()) == ["sentinel.txt"]
+
+
+def test_archive_symlink_member_fails_safely(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, _ = _make_archive_entry([("a.bin", b"a" * 64, True)])
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        info = tarfile.TarInfo("a.bin")
+        info.size = 64
+        archive.addfile(info, io.BytesIO(b"a" * 64))
+        link = tarfile.TarInfo("link.bin")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "/etc/passwd"
+        archive.addfile(link)
+
+    class _LinkSource(ScriptedSnapshotArchive):
+        def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Any:
+            self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+            yield buffer.getvalue()
+
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": _LinkSource({"a.bin": b"a" * 64})}
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "archive_rejected"
+    assert _final_dir(project).exists() is False
+
+
+def test_archive_transient_fault_recovers_then_succeeds(client: TestClient, tmp_path: Path) -> None:
+    from brainlearn_core import ProviderTimeout
+
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 200, True)])
+    source = _wire_archive(
+        entry, members, failures=[ProviderTimeout("slow"), ProviderTimeout("slow")]
+    )
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert finished["attempt"] == 3
+    assert source.failures_remaining() == 0
+    assert (_final_dir(project) / "a.bin").read_bytes() == b"a" * 200
+
+
+def test_archive_corrupt_bytes_fail_fast(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 200, True)])
+
+    class _GarbageSource(ScriptedSnapshotArchive):
+        def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Any:
+            self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+            yield b"this is not an archive at all"
+
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": _GarbageSource(members)}
+    assert members == {"a.bin": b"a" * 200}
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "archive_rejected"
+    # Unrecognizable bytes can never become an archive: no retry is spent.
+    assert finished["attempt"] == 1
+    assert _final_dir(project).exists() is False
+
+
+def test_archive_truncated_bytes_retry_then_fail(client: TestClient, tmp_path: Path) -> None:
+    import io
+    import zipfile
+
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 200, True)])
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("a.bin", b"a" * 200)
+    blob = buffer.getvalue()[: len(buffer.getvalue()) // 2]
+
+    class _TruncatedSource(ScriptedSnapshotArchive):
+        def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Any:
+            self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+            yield blob
+
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": _TruncatedSource(members)}
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "archive_rejected"
+    # A truncated stream might complete on retry, so attempts are spent.
+    assert finished["attempt"] == 3
+    assert _final_dir(project).exists() is False
+
+
+def test_archive_cancel_mid_stream_keeps_partial_and_resumes(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project = _make_project(tmp_path)
+    blob = b"b" * (256 * 1024)
+    entry, members = _make_archive_entry([("big.bin", blob, True)])
+    gate = threading.Event()
+    source = _wire_archive(entry, members, gate=gate, chunk_size=8192)
+    started = _start(client, project)
+    deadline = time.monotonic() + 20.0
+    partial_blob = project / "datasets" / ".partial" / started["download_id"] / ".snapshot-archive"
+    while not partial_blob.is_file():
+        assert time.monotonic() < deadline, "archive blob never started"
+        time.sleep(0.02)
+    cancelled = client.post(
+        f"/api/datasets/downloads/{started['download_id']}/cancel",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert cancelled.status_code == 200
+    gate.set()
+    state = _wait_for_state(client, project, started["download_id"], {"cancelled"})
+    assert state["failure"] is None
+    assert _final_dir(project).exists() is False
+
+    resumed = client.post(
+        f"/api/datasets/downloads/{started['download_id']}/resume",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert resumed.status_code == 200
+    _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert (_final_dir(project) / "big.bin").read_bytes() == blob
+    assert len(source.requests) == 2
+
+
+def test_archive_checksum_mismatch_fails(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, _ = _make_archive_entry([("a.bin", b"a" * 100, True)])
+    _wire_archive(entry, {"a.bin": b"CORRUPT" + b"a" * 93})
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "checksum_mismatch"
+    assert _final_dir(project).exists() is False
+
+
+def test_archive_mid_extract_disk_full_pauses(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import brainlearn_server.downloads as downloads_module
+
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 512, True)])
+    _wire_archive(entry, members)
+    real_extract = downloads_module.extract_archive
+
+    def flaky(*args: Any, **kwargs: Any) -> Any:
+        from brainlearn_core.archives import ArchiveRejectedError
+
+        raise ArchiveRejectedError("disk-full", "No space left for archive member.")
+
+    monkeypatch.setattr(downloads_module, "extract_archive", flaky)
+    started = _start(client, project)
+    parked = _wait_for_state(client, project, started["download_id"], {"paused"})
+    assert parked["failure"]["code"] == "disk_full"
+    assert _final_dir(project).exists() is False
+    monkeypatch.undo()
+    assert real_extract is not None
+
+    resumed = client.post(
+        f"/api/datasets/downloads/{started['download_id']}/resume",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert resumed.status_code == 200
+    _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert (_final_dir(project) / "a.bin").read_bytes() == b"a" * 512
+
+
+def test_archive_resume_skips_verified_members(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry(
+        [("keep.bin", b"k" * 256, True), ("fresh.bin", b"f" * 256, True)]
+    )
+    gate = threading.Event()
+    source = _wire_archive(entry, members, gate=gate, chunk_size=4096)
+    started = _start(client, project)
+    download_id = started["download_id"]
+    partial_dir = project / "datasets" / ".partial" / download_id
+    deadline = time.monotonic() + 20.0
+    while not (partial_dir / ".snapshot-archive").is_file():
+        assert time.monotonic() < deadline, "archive blob never started"
+        time.sleep(0.02)
+    cancelled = client.post(
+        f"/api/datasets/downloads/{download_id}/cancel",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert cancelled.status_code == 200
+    gate.set()
+    _wait_for_state(client, project, download_id, {"cancelled"})
+    # Seed one member with exact bytes and a pinned mtime; resume must adopt
+    # it by re-hashing instead of rewriting it.
+    seeded = partial_dir / "keep.bin"
+    seeded.write_bytes(b"k" * 256)
+    marker = time.time() - 10_000
+    os.utime(seeded, (marker, marker))
+    seeded_ns = seeded.stat().st_mtime_ns
+    requests_before = len(source.requests)
+
+    resumed = client.post(
+        f"/api/datasets/downloads/{download_id}/resume",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert resumed.status_code == 200
+    finished = _wait_for_state(client, project, download_id, {"succeeded"})
+    assert (_final_dir(project) / "keep.bin").read_bytes() == b"k" * 256
+    assert (_final_dir(project) / "fresh.bin").read_bytes() == b"f" * 256
+    # Exactly one more archive fetch served the resume, and the adopted
+    # member kept its bytes: it was verified, never rewritten.
+    assert len(source.requests) == requests_before + 1
+    assert (_final_dir(project) / "keep.bin").stat().st_mtime_ns == seeded_ns
+    assert finished["bytes_completed"] == 512
+
+
+def test_archive_resume_rejects_symlinked_member_parent(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry(
+        [("sub/keep.bin", b"k" * 256, True), ("fresh.bin", b"f" * 256, True)]
+    )
+    gate = threading.Event()
+    _wire_archive(entry, members, gate=gate, chunk_size=4096)
+    started = _start(client, project)
+    download_id = started["download_id"]
+    partial_dir = project / "datasets" / ".partial" / download_id
+    deadline = time.monotonic() + 20.0
+    while not (partial_dir / ".snapshot-archive").is_file():
+        assert time.monotonic() < deadline, "archive blob never started"
+        time.sleep(0.02)
+    cancelled = client.post(
+        f"/api/datasets/downloads/{download_id}/cancel",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert cancelled.status_code == 200
+    gate.set()
+    _wait_for_state(client, project, download_id, {"cancelled"})
+    # Swap the member parent for a symlink to attacker bytes of the exact
+    # expected size and checksum input shape: adoption must refuse to hash
+    # through it instead of blessing outside bytes as verified.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.bin").write_bytes(b"k" * 256)
+    (partial_dir / "sub").mkdir(exist_ok=True)
+    (partial_dir / "sub" / "keep.bin").write_bytes(b"k" * 256)
+    (partial_dir / "sub" / "keep.bin").unlink()
+    (partial_dir / "sub").rmdir()
+    (partial_dir / "sub").symlink_to(outside, target_is_directory=True)
+
+    resumed = client.post(
+        f"/api/datasets/downloads/{download_id}/resume",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert resumed.status_code == 200
+    finished = _wait_for_state(client, project, download_id, {"failed", "succeeded"})
+    assert finished["state"] == "failed"
+    assert _final_dir(project).exists() is False
+    assert (outside / "keep.bin").read_bytes() == b"k" * 256
+
+
+def test_archive_oversized_blob_fails(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 100, True)])
+
+    class _FloodSource(ScriptedSnapshotArchive):
+        def stream_snapshot_archive(self, dataset_id: str, snapshot: str) -> Any:
+            self.requests.append({"dataset_id": dataset_id, "snapshot": snapshot})
+            while True:
+                yield b"\x00" * (1024 * 1024)
+
+    downloads.providers_override = {"mock-archive": MockDatasetProvider([entry])}
+    downloads.sources_override = {"mock-archive": _FloodSource(members)}
+    started = _start(client, project)
+    finished = _wait_for_state(client, project, started["download_id"], {"failed"})
+    assert finished["failure"]["code"] == "archive_too_large"
+    assert _final_dir(project).exists() is False
+
+
+def test_archive_recovery_preserves_cancelled_transfer(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([("a.bin", b"a" * 1024, True)])
+    gate = threading.Event()
+    _wire_archive(entry, members, gate=gate, chunk_size=1024)
+    started = _start(client, project)
+    deadline = time.monotonic() + 20.0
+    partial_blob = project / "datasets" / ".partial" / started["download_id"] / ".snapshot-archive"
+    while not partial_blob.is_file():
+        assert time.monotonic() < deadline, "archive blob never started"
+        time.sleep(0.02)
+    cancelled = client.post(
+        f"/api/datasets/downloads/{started['download_id']}/cancel",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert cancelled.status_code == 200
+    gate.set()
+    _wait_for_state(client, project, started["download_id"], {"cancelled"})
+
+    from brainlearn_server.downloads import DownloadService
+
+    restarted = DownloadService(store)
+    restarted.providers_override = downloads.providers_override
+    restarted.sources_override = downloads.sources_override
+    recovered = restarted.recover_project(str(project))
+    # A deliberate cancellation is a stable user decision, not an
+    # interruption: recovery leaves it alone with bytes intact.
+    assert recovered[0].state == "cancelled"
+    assert recovered[0].bytes_completed == 0
+
+    resumed = client.post(
+        f"/api/datasets/downloads/{started['download_id']}/resume",
+        json={"path": str(project)},
+        headers=AUTH_HEADERS,
+    )
+    assert resumed.status_code == 200
+    _wait_for_state(client, project, started["download_id"], {"succeeded"})
+    assert (_final_dir(project) / "a.bin").read_bytes() == b"a" * 1024
+
+
+def test_archive_reserved_staging_name_refused_at_start(client: TestClient, tmp_path: Path) -> None:
+    project = _make_project(tmp_path)
+    entry, members = _make_archive_entry([(".snapshot-archive", b"x" * 16, True)])
+    _wire_archive(entry, members)
+    response = client.post(
+        "/api/datasets/downloads",
+        json={
+            "path": str(project),
+            "provider": "mock-archive",
+            "dataset_id": "zz20a",
+            "snapshot": "2026-09-01",
+        },
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 409
+    assert "reserved staging name" in response.json()["detail"]
+    records = project / "downloads"
+    assert not records.exists() or list(records.iterdir()) == []
