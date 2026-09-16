@@ -179,7 +179,9 @@ test("Run workflow launches and renders the result in the drawer", async () => {
   await openProjectAndRun();
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   expect(await screen.findByText("Succeeded")).toBeInTheDocument();
-  expect(screen.getAllByText("run-demo-1")).toHaveLength(2);
+  await waitFor(() =>
+    expect(screen.getAllByText("run-demo-1")).toHaveLength(2),
+  );
   expect(screen.getByText("Run run-demo-1 started.")).toBeInTheDocument();
 });
 
