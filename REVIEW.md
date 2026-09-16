@@ -57,3 +57,27 @@ Step 5 remains open. The next work unit is only Step 5A.6: preserve local/privat
 dataset import as an equal offline path and record an immutable local identity.
 Do not begin the pinned integration fixture, MNE/MNE-BIDS, BIDS discovery, signal
 inspection, or later scientific work in that unit.
+
+## Post-merge CI follow-up
+
+The first `main` run after PR #9 exposed a pre-existing run-review scheduler
+race: a driver holding a stale pre-decision record could enter settlement after
+an approval was saved and overwrite the durable decision by parking the run as
+`waiting_for_review`. GitHub Actions run 35098055658 reproduced the failure in
+`test_two_runs_reuse_trunk_and_reexecute_zero_output_nodes` while every other
+Python test and the complete frontend job passed.
+
+The repair serializes review decisions with every parking transition, reloads
+the run under that guard before settlement, and redrives newly ready work rather
+than treating it as a scheduler stall. A deterministic regression blocks the
+driver immediately before settlement, records an approval, and proves the stale
+snapshot cannot overwrite it; the run succeeds with exactly one
+`review_decided` event.
+
+Local verification for the repair branch: Ruff and format passed (62 files),
+strict mypy passed (25 source files), pytest passed 654 tests with 1 opt-in live
+smoke skipped and 2 upstream warnings, ESLint and Prettier passed, Vitest passed
+152 tests in 16 files, the production build passed (1,843 modules), the
+production npm audit found 0 vulnerabilities, and `git diff --check` passed.
+The repair remains pending its own pull-request CI and merge; no Step 5A.6 work
+has started.

@@ -443,6 +443,54 @@ def test_review_approve_redrives_while_parking_thread_exits(
     assert finished["node_runs"][0]["review_pause"]["decision"] == "approved"
 
 
+def test_review_decision_cannot_be_overwritten_by_stale_parking(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale driver snapshot cannot park over a durable approval."""
+
+    import threading
+
+    from brainlearn_server.worker import WorkerService
+
+    settling = threading.Event()
+    release = threading.Event()
+    original_settle = WorkerService._settle
+
+    def _blocked_before_settle(
+        self: WorkerService, project: str, record: RunRecord, has_waiting: bool
+    ) -> None:
+        if has_waiting:
+            settling.set()
+            assert release.wait(timeout=5.0), "test did not release the stale driver"
+        original_settle(self, project, record, has_waiting)
+
+    monkeypatch.setattr(WorkerService, "_settle", _blocked_before_settle)
+    project = _make_project(client, tmp_path)
+    started = _start(client, project, _review_workflow())
+    assert settling.wait(timeout=5.0), "driver never reached its stale parking window"
+
+    try:
+        decided = client.post(
+            "/api/runs/review",
+            json={
+                "path": str(project),
+                "run_id": started["run_id"],
+                "node_run_id": "gate",
+                "decision": "approved",
+                "note": "decision wins over stale parking",
+            },
+            headers=AUTH_HEADERS,
+        )
+        assert decided.status_code == 200, decided.text
+        assert decided.json()["run"]["node_runs"][0]["review_pause"]["decision"] == "approved"
+    finally:
+        release.set()
+
+    finished = _wait_for_state(client, project, started["run_id"], {"succeeded"}, timeout=5.0)
+    assert finished["node_runs"][0]["review_pause"]["decision"] == "approved"
+    assert _kinds(finished).count("review_decided") == 1
+
+
 def test_review_reject_fails_run(client: TestClient, tmp_path: Path) -> None:
     project = _make_project(client, tmp_path)
     started = _start(client, project, _review_workflow())
