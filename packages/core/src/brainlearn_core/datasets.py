@@ -232,6 +232,11 @@ def _check_https_url(value: str, field_name: str) -> str:
     return value
 
 
+def validate_https_url(value: str, field_name: str) -> str:
+    """Public validator for strict plain-HTTPS URLs without credentials or query strings."""
+    return _check_https_url(value, field_name)
+
+
 def _check_doi(value: str | None, field_name: str) -> str | None:
     if value is None:
         return None

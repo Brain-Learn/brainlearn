@@ -204,3 +204,54 @@ Local dataset identity is computed deterministically via `dataset_lock_identity`
 - API and service errors never return raw exception strings (`str(exc)`),
   server stack traces, session tokens, or absolute filesystem paths. All error
   messages are curated static strings with typed response models.
+
+## Pinned integration snapshot and drift detection (Step 5A.7)
+
+### 1. The pinned integration snapshot
+
+To verify real-world public provider compatibility without committing research data
+or running heavy downloads in CI, BrainLearn pins one genuine, openly accessible
+snapshot from OpenNeuro:
+
+- **Provider**: `openneuro`
+- **Dataset ID**: `ds001037` ("The brain of Chris", CC0 / public access)
+- **Snapshot tag**: `00001` (published 2018-07-14)
+- **Landing page**: `https://openneuro.org/datasets/ds001037/versions/00001`
+- **Members**: exactly 2 root files (`dataset_description.json` [83 bytes, SHA-256 `8cef746e8df99ef7a3efaf4b7f1cea7313f2d732b22abf609733fdf38584f400`] and `.gitattributes` [284 bytes, SHA-256 `9476689a1190b1b79c7a65a128f992a551d86f55236c939a74218973423fcdd1`]).
+- **Expected total bytes**: 367 bytes.
+- **Pinned catalog identity**: `brainlearn-v1:dataset:4a7fbd09beef515a1dba89c2fea81f82fbfa13c66c787a7233de6515c056a369`
+- **Pinned lock identity**: `brainlearn-v1:dataset:020cab5e89f2633bf536d2c6e72e04361972991b3b69f3714d359f5a99d09251`
+
+Reviewed fixture stored at `tests/fixtures/pinned-integration-snapshot-1.0.json`.
+Downloaded dataset bytes are never committed to Git.
+
+### 2. Offline-by-default CI
+
+Ordinary pull-request and `main` CI remain strictly offline:
+- Unit tests use deterministic test doubles (`MockDatasetProvider`, `ScriptedDownloadSource`,
+  `ScriptedSnapshotArchive`).
+- `MockDatasetProvider` supports deterministic queued failures (e.g. transient timeouts
+  and errors that recover on retry) and bounds checking.
+- The live smoke test runs only when `BRAINLEARN_INTEGRATION_SMOKE=1` is explicitly set.
+
+### 3. Upstream drift diagnosis
+
+Upstream divergence fails closed with a concise, secret-free diagnostic record
+distinguishing four failure categories:
+
+- **`availability`**: Provider unreachable, gateway timeout, HTTP 5xx, or snapshot not found (404).
+- **`schema`**: GraphQL syntax error, missing fields, or malformed JSON structure.
+- **`identity`**: Upstream metadata mutated, causing catalog identity or lock identity to diverge from the pin.
+- **`checksum`**: Delivered file size or content SHA-256 hash diverged from pinned digests.
+
+Diagnostics are sanitized to eliminate accidental URLs, query parameters, auth tokens,
+or internal paths.
+
+### 4. Scheduled trusted smoke workflow
+
+A dedicated, scheduled GitHub Actions job (`.github/workflows/dataset-smoke.yml`):
+- Runs weekly and on manual dispatch (`workflow_dispatch`).
+- Requires no credentials and uses minimal read-only permissions (`contents: read`).
+- Enforces strict execution limits: 10-minute timeout, max 5 redirect hops restricted to `openneuro.org`, max 10 files, and max 10 MiB download size.
+- Verifies the full lifecycle: GraphQL resolution, download, lock generation, and offline reopening with network calls blocked.
+- Uploads small diagnostic JSON logs (`diagnostic-drift.json`) only on failure.
