@@ -120,3 +120,26 @@ build success (1,844 modules), production audit with 0 vulnerabilities, and a
 clean diff check. Both required hosted CI jobs are also green on `f69c7e7`.
 These passing gates do not cover the direct probes above. PR #12 remains open;
 Step 5A.6 stays unchecked and no later Step 5 work may begin.
+
+## Step 5A.6 final monitoring review
+
+Review date: 2026-09-17
+
+Scope: PR #12 after repairs at `0daa1f7`, local/private offline dataset import
+and immutable local identity.
+
+Status: **approved**. All five blocking findings are resolved. The monitor
+reproduced the restored-mtime mutation refusal, location-independent identity,
+record/lock binding refusal, and model-boundary local-invariant refusal. Focused
+browser guard and local-import tests passed 17 tests.
+
+The complete gate also passed: Ruff; formatting for 64 files; strict mypy for 26
+source files; pytest with 703 passed, 1 opt-in smoke skipped, and 2 upstream
+warnings; ESLint; Prettier; Vitest with 161 passed in 17 files; production build
+with 1,844 modules; production audit with 0 vulnerabilities; and
+`git diff --check`. Both required hosted CI jobs were green on `0daa1f7`.
+
+No scientific assumptions changed and no blocking findings remain. Step 5A.6 is
+approved and checked. Step 5 remains open; the next bounded work unit is Step
+5A.7, deterministic mock-provider coverage plus one tiny pinned scheduled
+integration download.

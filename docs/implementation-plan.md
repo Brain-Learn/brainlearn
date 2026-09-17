@@ -125,7 +125,7 @@ Goal: acquire a pinned public dataset safely from the UI and introduce the first
 - [x] Add a searchable dataset library and details panel showing size, disk requirement, version, license, citation, limitations, and workflow compatibility before download.
 - [x] Download through the local Python service into the authorized project with persisted progress, bounded retry, cancellation/resume, disk-space checks, checksum verification, and atomic finalization.
 - [x] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
-- [ ] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
+- [x] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
 - [ ] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
 - [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
 - [ ] Add MNE-Python and MNE-BIDS as an optional, pinned EEG dependency group.
@@ -423,38 +423,40 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-09-17 | Step 5A.6 local/private dataset import and identity | Verified; PR pending | (1) Reconciled `DatasetLock` and `dataset_lock_identity` for local/private datasets: formats and citations default to empty tuples `()`, while `landing_page`, `license_name`, `license_spdx`, and `reuse_statement` default to `None`, and modality/task to `""`, honestly representing absent or unassessed metadata without fake placeholders; strict validation for public catalog providers (`provider != "local"`) is strictly preserved. (2) Local dataset identity is derived deterministically from canonical sorted verified files, total bytes, title, limitations, formats, and citations; local path and retrieval timestamp are excluded; order-invariance, byte-sensitivity, and metadata-sensitivity proved by unit regressions. (3) Hardened scanning through no-follow boundary: `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`, `fstat` descriptor checks before and after chunked hashing (`VERIFY_CHUNK_BYTES`), tree rescan after hashing, refusal of symlinks (ancestor, directory, leaf), hard links (`st_nlink > 1`), special files (FIFOs, devices, sockets), non-regular entries, unreadable files, same-size in-place mutation, and rename/replacement; limits enforced for depth (16), file count (10,000), and total bytes (10 GiB). (4) Refusal of BrainLearn-owned mutable directories (`local-imports`, `downloads`, `datasets`, `runs`, `staging`, `cache`, `project.json`, `workflow.json`, etc.) or project root. Source data is strictly read-only and never moved, copied, or modified. (5) Static, path-safe, secret-free HTTP error responses using typed `LocalImportRecord` models; static endpoints registered before wildcard routes in `app.py`. (6) Restart recovery (`POST /api/datasets/local/recover`) reconciling interrupted scans to `failed` with code `interrupted`; completed records reload offline with exact identity verified against tampering. (7) UI ownership, accessibility, and focus management repaired: distinct guidance text, focus transitions only on user actions (completion -> ready heading, failure -> Back button, Back/Escape -> directory input), no focus stealing on project/token change, and context isolation dropping stale responses. Full gate: `uv run ruff check .` passed; `ruff format --check .` 64 files clean; strict mypy 26 source files clean; `uv run pytest -q` 699 passed, 1 skipped, with 2 upstream warnings (45 new tests in `tests/test_local_import.py`); ESLint passed; Prettier passed; Vitest 159 passed in 17 files (7 new tests in `LocalImport.test.tsx`); production build passed (1,844 modules); `npm audit --omit=dev` found 0 vulnerabilities; `git diff --check` passed. Step 5A.6 checkbox left unchecked for the monitor. | Ready for review PR pending |
 | 2026-09-17 | Step 5A.6 first monitoring review | Changes requested | The complete gate was reproduced: Ruff and format passed (64 files), strict mypy passed (26 source files), pytest 699 passed with 1 opt-in smoke skipped and 2 upstream warnings, ESLint/Prettier passed, Vitest 159 passed in 17 files, production build passed (1,844 modules), audit found 0 vulnerabilities, `git diff --check` passed, and both required hosted checks were green on `f69c7e7`. Five blocking gaps were independently demonstrated: restored-mtime same-size mutation is accepted because ctime is omitted from descriptor/path/tree comparisons; `LocalImportRecord` accepts an embedded lock for another local path and does not bind local invariants; arbitrary re-identified `provider="local"` locks can claim public access, a non-local snapshot, scientific metadata, and a license; the browser guard accepts state-inconsistent/incomplete lock payloads; and directory basename flows through `dataset_id`, so identical bytes and explicit metadata at differently named locations do not have the documented location-independent identity. Inline review threads contain exact probes and repairs. Step 5A.6 remains unchecked; PR #12 stays open and no later work may begin. | Monitored review failed on PR #12 |
 | 2026-09-17 | Step 5A.6 monitoring review repairs | Repaired; re-review requested | Resolved all five monitored review findings: (1) Added `st_ctime_ns` to before-hash descriptor check, post-hash descriptor check, lstat check, and both tree snapshots in `_scan_regular_files`; direct 128 KiB probe proves same-size in-place mutation with restored mtime is detected and rejected as `verification_failed`. (2) `LocalImportRecord` binds strictly to embedded lock: verifies `lock.local_path == local_path`, `lock.provider == "local"`, `lock.dataset_id == "local"`, `lock.snapshot == "local"`, `lock.access == RESTRICTED`, and `lock.catalog_identity is None`, with strict state consistency across ready/failed/cancelled/scanning. (3) `DatasetLock` enforces local invariants at model boundary: `provider == "local"` requires `dataset_id == "local"`, `snapshot == "local"`, `access == RESTRICTED`, `catalog_identity == None`, empty modality/task, 0 participants, empty compatible templates, no license metadata, and no landing page; public locks retain strict requirements. (4) Browser response guard (`assertDatasetLock`, `assertDatasetVerifiedFile`, `assertLocalImportRecord`) enforces identity format, individual file integrity (hex sha256, portable path, non-negative size), byte sums, local invariants, and state consistency; hostile response suite added. (5) Location-independent identity: `dataset_id` is constant `"local"` for all local datasets, removing directory basename from identity; cross-directory regression proves identical files and metadata in `folder-a` and `folder-b` yield identical `dataset_identity`. Complete gate rerun: `uv run ruff check .` passed (0 errors); `ruff format --check .` 64 files clean; strict mypy 26 source files clean; `uv run pytest -q` 703 passed, 1 skipped, with 2 upstream warnings (49 tests in `tests/test_local_import.py`); ESLint passed; Prettier passed; Vitest 161 passed in 17 files; production build passed (1,844 modules); `npm audit --omit=dev` 0 vulnerabilities; `git diff --check` passed. Step 5A.6 checkbox remains unchecked for the monitor. | Re-review requested on PR #12 |
+| 2026-09-17 | Step 5A.6 final monitored gate | Complete | Reviewer inspected all five repairs and reran the adversarial probes: restored-mtime same-size mutation is rejected; identical content and explicit metadata in differently named directories has the same identity; mismatched record/lock paths and invalid local-provider claims fail validation; and focused browser guard/import tests passed 17 tests. The complete gate was reproduced: Ruff passed; format checked 64 files; strict mypy passed for 26 source files; pytest passed 703 tests with 1 opt-in smoke skipped and 2 upstream warnings; ESLint and Prettier passed; Vitest passed 161 tests in 17 files; the production build passed with 1,844 modules; `npm audit --omit=dev` found 0 vulnerabilities; and `git diff --check` passed. Both required hosted CI jobs were green on `0daa1f7`. No scientific assumptions changed and no blocking findings remain. The local/private dataset import item is approved and checked; Step 5 remains open. | Monitored review complete on PR #12 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `docs/dataset-contract.md`, and this plan before
 acting. Preserve every completion-log row.
 
-### Step 5A.6 — local/private offline dataset import
+### Step 5A.7 — deterministic provider tests and pinned integration smoke
 
-Implement only the next checklist item: preserve local/private dataset import as
-an equal offline path and record an immutable local dataset identity. Do not add
-the pinned integration fixture, MNE/MNE-BIDS, BIDS discovery, signal inspection,
-credentials, or later Step 5 work.
+Implement only the next checklist item: add deterministic mock-provider tests
+plus one tiny pinned scheduled integration download. Keep large datasets out of
+ordinary CI and Git. Do not begin fixture selection for BIDS EEG, add
+MNE/MNE-BIDS, implement BIDS discovery or signal inspection, add credentials,
+or start later Step 5 work.
 
-1. Add a provider-independent local import boundary that accepts only an
-   explicitly selected directory inside the active authorized project. Never
-   upload, relocate, mutate, or silently copy source research data.
-2. Scan through the existing no-follow storage boundary. Reject escapes,
-   symlinks, links, devices/FIFOs/sockets, unreadable entries, unsafe relative
-   names, and tree changes observed during hashing; enforce bounded file count,
-   depth, and total bytes with cancellation.
-3. Hash every regular file in bounded chunks and create a schema-`1.0`
-   self-contained `DatasetLock` whose verified file list, total size, local
-   relative path, and identity are derived from the landed bytes. Local/private
-   metadata and limitations must remain explicit; do not infer a license,
-   citation, modality, BIDS validity, or scientific compatibility.
-4. Add authenticated, project-scoped API and accessible UI entry points beside
-   the public catalog. Show selection guidance, scanning/ready/failure states,
-   immutable identity and limitations, and static leak-free errors; never expose
-   arbitrary server paths or credentials.
-5. Add deterministic offline tests for success, stable identity, changed bytes,
-   cancellation, project isolation, path traversal, symlink and special-file
-   refusal, concurrent mutation, bounds, restart/offline reopening, and UI focus
-   behavior. Run the complete gate, append exact evidence, leave the local-import
-   checkbox unchecked for monitoring, commit/push the scoped branch, open a ready
-   PR, and request review.
+1. Keep pull-request and ordinary `main` CI fully offline. Extend the existing
+   deterministic provider/source doubles only where needed to cover the complete
+   public retrieval contract, including immutable resolution, pagination,
+   retry/timeout/error behavior, cancellation/resume, checksum refusal, and
+   successful offline reopening.
+2. Select one genuinely tiny, openly accessible integration object from the
+   already supported public provider path. Pin the exact provider, dataset,
+   immutable snapshot, expected member path and byte count, SHA-256, license,
+   citation, and upstream URL in a reviewed manifest or fixture. Do not commit
+   downloaded dataset bytes.
+3. Add a scheduled and manually dispatchable trusted GitHub Actions smoke job.
+   It must use strict time, redirect, download, extraction, file-count, and byte
+   limits; require no credentials; verify the pinned digest and resulting lock;
+   prove the downloaded record can be reopened without network access; use
+   minimal permissions; and upload only small diagnostic logs on failure.
+4. Make upstream drift fail closed with a concise, secret-free diagnostic that
+   distinguishes availability, schema, identity, and checksum failures. The
+   scheduled smoke must never mutate the pin automatically or weaken ordinary CI.
+5. Run the complete local gate, append exact evidence, leave the deterministic
+   mock/pinned-integration checkbox unchecked for monitoring, commit and push one
+   scoped branch, open a ready-for-review PR, and request re-review on that same
+   PR for any repairs.
