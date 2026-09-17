@@ -83,3 +83,63 @@ PR #10 passed both required hosted checks, received a monitored approval
 comment, and was squash-merged as `7a72f54`. The resulting `main` run
 35102093017 passed both Python and frontend jobs, including the test that had
 failed before the repair. No Step 5A.6 work has started.
+
+## Step 5A.6 first monitoring review
+
+Review date: 2026-09-17
+
+Scope: PR #12, local/private offline dataset import and immutable local
+identity.
+
+Status: **changes requested**. The complete baseline gate passes, but five
+contract and integrity findings remain:
+
+1. A same-size in-place mutation can evade verification when the writer
+   restores `st_mtime_ns`. A direct 128 KiB probe modified the second half
+   during hashing, restored mtime, and was accepted because descriptor,
+   pathname, and tree snapshots omit `st_ctime_ns`.
+2. `LocalImportRecord` does not bind a ready record to its embedded lock. A
+   record whose `local_path` is `source-b` accepts a valid lock naming
+   `source-a`, and the record does not require the local provider/snapshot,
+   restricted access, or null catalog identity.
+3. `DatasetLock` exempts every `provider="local"` record from public metadata
+   requirements without enforcing the documented local invariants. A directly
+   constructed, correctly re-identified record accepted public access, a
+   non-local snapshot, EEG/task/participant/template claims, and MIT metadata.
+4. The browser guard accepts state-inconsistent records and incomplete locks,
+   including a ready record with no lock and expected-file entries without
+   path, size, or hash validation.
+5. The claimed location-independent identity still includes the final source
+   directory name via `dataset_id`; identical bytes and explicit metadata in
+   `folder-a` and `folder-b` produced different identities.
+
+The monitor reproduced Ruff and format success (64 files), strict mypy success
+(26 source files), pytest 699 passed with 1 opt-in smoke skipped and 2 upstream
+warnings, ESLint and Prettier success, Vitest 159 passed in 17 files, production
+build success (1,844 modules), production audit with 0 vulnerabilities, and a
+clean diff check. Both required hosted CI jobs are also green on `f69c7e7`.
+These passing gates do not cover the direct probes above. PR #12 remains open;
+Step 5A.6 stays unchecked and no later Step 5 work may begin.
+
+## Step 5A.6 final monitoring review
+
+Review date: 2026-09-17
+
+Scope: PR #12 after repairs at `0daa1f7`, local/private offline dataset import
+and immutable local identity.
+
+Status: **approved**. All five blocking findings are resolved. The monitor
+reproduced the restored-mtime mutation refusal, location-independent identity,
+record/lock binding refusal, and model-boundary local-invariant refusal. Focused
+browser guard and local-import tests passed 17 tests.
+
+The complete gate also passed: Ruff; formatting for 64 files; strict mypy for 26
+source files; pytest with 703 passed, 1 opt-in smoke skipped, and 2 upstream
+warnings; ESLint; Prettier; Vitest with 161 passed in 17 files; production build
+with 1,844 modules; production audit with 0 vulnerabilities; and
+`git diff --check`. Both required hosted CI jobs were green on `0daa1f7`.
+
+No scientific assumptions changed and no blocking findings remain. Step 5A.6 is
+approved and checked. Step 5 remains open; the next bounded work unit is Step
+5A.7, deterministic mock-provider coverage plus one tiny pinned scheduled
+integration download.

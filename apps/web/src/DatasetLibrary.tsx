@@ -12,6 +12,7 @@ import {
   resumeDownload,
   startDownload,
 } from "./datasets";
+import { LocalImport } from "./LocalImport";
 import type { CatalogEntry, DatasetListItem, DownloadRecord } from "./types";
 
 interface DatasetLibraryProps {
@@ -567,6 +568,9 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
             </div>
           )}
         </>
+      )}
+      {selection === null && (
+        <LocalImport projectPath={projectPath} token={token} />
       )}
       {selection !== null && (
         <article

@@ -335,3 +335,53 @@ export interface CatalogEntry {
   reviewed_at: string | null;
   limitations: string;
 }
+
+export interface DatasetVerifiedFile {
+  path: string;
+  byte_size: number;
+  sha256: string;
+}
+
+export interface DatasetLock {
+  schema_version: "1.0";
+  dataset_identity: string;
+  catalog_identity: string | null;
+  provider: string;
+  dataset_id: string;
+  snapshot: string;
+  access: "public" | "restricted" | "credentialed";
+  title: string;
+  modality: string;
+  task: string;
+  participants: number;
+  formats: string[];
+  citations: DatasetCitation[];
+  compatible_templates: string[];
+  landing_page: string | null;
+  limitations: string;
+  retrieved_at: string;
+  local_path: string;
+  expected_total_bytes: number;
+  expected_files: DatasetVerifiedFile[];
+  license_name: string | null;
+  license_spdx: string | null;
+  reuse_statement: string | null;
+}
+
+export type LocalImportState = "scanning" | "ready" | "failed" | "cancelled";
+
+export interface LocalImportFailure {
+  code: string;
+  message: string;
+}
+
+export interface LocalImportRecord {
+  schema_version: "1.0";
+  import_id: string;
+  state: LocalImportState;
+  local_path: string;
+  lock: DatasetLock | null;
+  failure: LocalImportFailure | null;
+  created_at: string;
+  updated_at: string;
+}

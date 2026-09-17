@@ -643,17 +643,17 @@ test("opening a second project atomically switches graph and identity", async ()
     target: { value: "/tmp/project-b" },
   });
   fireEvent.click(screen.getByRole("button", { name: /^Open$/ }));
-  await waitFor(() =>
+  await waitFor(() => {
     expect(
       screen.getByText("Active project: /tmp/project-b"),
-    ).toBeInTheDocument(),
-  );
-  const draft = JSON.parse(
-    localStorage.getItem("brainlearn.unsaved-workflow.v1") as string,
-  ) as { workflow: Workflow; projectPath: string | null };
-  expect(draft.workflow.id).toBe("b");
-  expect(draft.projectPath).toBe("/tmp/project-b");
-  expect(draft.workflow.nodes.map((node) => node.id)).toEqual(["node-b"]);
+    ).toBeInTheDocument();
+    const draft = JSON.parse(
+      localStorage.getItem("brainlearn.unsaved-workflow.v1") as string,
+    ) as { workflow: Workflow; projectPath: string | null };
+    expect(draft.workflow.id).toBe("b");
+    expect(draft.projectPath).toBe("/tmp/project-b");
+    expect(draft.workflow.nodes.map((node) => node.id)).toEqual(["node-b"]);
+  });
 });
 
 test("leaves graph and project unchanged when the graph changes during open", async () => {

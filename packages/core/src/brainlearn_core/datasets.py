@@ -24,6 +24,7 @@ header-unsafe values.
 import ipaddress
 import re
 import urllib.parse
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
@@ -34,6 +35,11 @@ from brainlearn_core.identity import content_identity
 
 DATASET_SCHEMA_VERSION: Literal["1.0"] = "1.0"
 SUPPORTED_DATASET_VERSIONS: tuple[str, ...] = ("1.0",)
+
+# Provider tag for researcher-selected local/private directories.  The value
+# matches _PROVIDER_PATTERN and is stable across schema versions.
+LOCAL_PROVIDER: str = "local"
+
 
 _DATASET_IDENTITY_PATTERN = r"^brainlearn-v1:dataset:[0-9a-f]{64}$"
 _PROVIDER_PATTERN = r"^[a-z0-9][a-z0-9-]*$"
@@ -361,9 +367,9 @@ def dataset_lock_identity(
     dataset_id: str,
     snapshot: str,
     access: str,
-    license_name: str,
+    license_name: str | None,
     license_spdx: str | None,
-    reuse_statement: str,
+    reuse_statement: str | None,
     title: str,
     modality: str,
     task: str,
@@ -371,7 +377,7 @@ def dataset_lock_identity(
     formats: list[str],
     citations: list[dict[str, Any]],
     compatible_templates: list[str],
-    landing_page: str,
+    landing_page: str | None,
     limitations: str,
     expected_total_bytes: int,
     expected_files: list[dict[str, Any]],
@@ -627,21 +633,21 @@ class DatasetLock(BaseModel):
     snapshot: str = Field(min_length=1)
     access: DatasetAccess = DatasetAccess.PUBLIC
     title: str = Field(min_length=1)
-    modality: str = Field(min_length=1)
+    modality: str = ""
     task: str = ""
     participants: int = Field(ge=0, default=0)
     formats: tuple[str, ...] = ()
-    citations: tuple[DatasetCitation, ...] = Field(min_length=1)
+    citations: tuple[DatasetCitation, ...] = ()
     compatible_templates: tuple[str, ...] = ()
-    landing_page: str = Field(min_length=1)
+    landing_page: str | None = None
     limitations: str = Field(default="", max_length=_NOTES_MAX_LENGTH)
     retrieved_at: str = Field(min_length=1)
     local_path: str = Field(min_length=1)
     expected_total_bytes: int = Field(ge=0)
     expected_files: tuple[VerifiedFile, ...] = Field(min_length=1)
-    license_name: str = Field(min_length=1)
+    license_name: str | None = None
     license_spdx: str | None = None
-    reuse_statement: str = Field(min_length=1)
+    reuse_statement: str | None = None
 
     @field_validator("provider", "dataset_id", "snapshot", mode="before")
     @classmethod
@@ -650,12 +656,19 @@ class DatasetLock(BaseModel):
             return value
         return _check_path_component(value, "Dataset identifier")
 
-    @field_validator("title", "modality", "license_name", "reuse_statement")
+    @field_validator("title")
     @classmethod
-    def _descriptive_text_must_be_nonblank(cls, value: str, info: Any) -> str:
+    def _title_must_be_nonblank(cls, value: str) -> str:
+        return _stripped_text(value, "title", allow_empty=False)
+
+    @field_validator("license_name", "reuse_statement")
+    @classmethod
+    def _optional_license_must_be_stripped(cls, value: str | None, info: Any) -> str | None:
+        if value is None:
+            return None
         return _stripped_text(value, info.field_name or "field", allow_empty=False)
 
-    @field_validator("task", "limitations")
+    @field_validator("modality", "task", "limitations")
     @classmethod
     def _optional_text_must_not_be_blank(cls, value: str, info: Any) -> str:
         return _stripped_text(value, info.field_name or "field", allow_empty=True)
@@ -680,7 +693,9 @@ class DatasetLock(BaseModel):
 
     @field_validator("landing_page")
     @classmethod
-    def _landing_page_must_be_https(cls, value: str) -> str:
+    def _landing_page_must_be_https(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         return _check_https_url(value, "Landing page")
 
     @field_validator("retrieved_at")
@@ -697,8 +712,48 @@ class DatasetLock(BaseModel):
 
     @model_validator(mode="after")
     def _files_must_be_consistent(self) -> "DatasetLock":
-        if not self.formats:
-            raise ValueError("A dataset lock must name at least one format.")
+        if self.provider == LOCAL_PROVIDER:
+            if self.dataset_id != LOCAL_PROVIDER:
+                raise ValueError("A local dataset lock must use dataset_id 'local'.")
+            if self.snapshot != "local":
+                raise ValueError("A local dataset lock must use snapshot 'local'.")
+            if self.access != DatasetAccess.RESTRICTED:
+                raise ValueError("A local dataset lock must require restricted access.")
+            if self.catalog_identity is not None:
+                raise ValueError("A local dataset lock must not record catalog_identity.")
+            if self.modality:
+                raise ValueError("A local dataset lock must not make scientific modality claims.")
+            if self.task:
+                raise ValueError("A local dataset lock must not make scientific task claims.")
+            if self.participants != 0:
+                raise ValueError("A local dataset lock must not make participant count claims.")
+            if self.compatible_templates:
+                raise ValueError(
+                    "A local dataset lock must not make template compatibility claims."
+                )
+            if (
+                self.license_name is not None
+                or self.license_spdx is not None
+                or self.reuse_statement is not None
+            ):
+                raise ValueError("A local dataset lock must not record license metadata.")
+            if self.landing_page is not None:
+                raise ValueError("A local dataset lock must not record a landing page.")
+        else:
+            if self.snapshot == "local":
+                raise ValueError("A public dataset lock must not use snapshot 'local'.")
+            if not self.formats:
+                raise ValueError("A public dataset lock must name at least one format.")
+            if not self.citations:
+                raise ValueError("A public dataset lock must name at least one citation.")
+            if self.landing_page is None:
+                raise ValueError("A public dataset lock must record a landing page.")
+            if self.license_name is None:
+                raise ValueError("A public dataset lock must record license_name.")
+            if self.reuse_statement is None:
+                raise ValueError("A public dataset lock must record reuse_statement.")
+            if not self.modality:
+                raise ValueError("A public dataset lock must record modality.")
         if len(set(self.formats)) != len(self.formats):
             raise ValueError("Dataset lock formats must be unique.")
         seen = {_stripped_citation_key(item) for item in self.citations}
@@ -820,6 +875,180 @@ def project_lock_from_catalog(
     )
 
 
+def local_import_lock(
+    *,
+    title: str,
+    limitations: str = "",
+    citations: Sequence[dict[str, Any] | DatasetCitation] = (),
+    formats: Sequence[str] = (),
+    retrieved_at: str,
+    local_path: str,
+    verified_files: Sequence[dict[str, Any] | VerifiedFile],
+    dataset_id: str = LOCAL_PROVIDER,
+) -> DatasetLock:
+    """Build an immutable DatasetLock for a researcher-selected local directory.
+
+    No CatalogEntry is required: the caller supplies explicit title,
+    limitations, citations, and formats. The provider is always
+    ``LOCAL_PROVIDER`` (``"local"``), the dataset_id is always
+    ``LOCAL_PROVIDER`` (``"local"``), the snapshot is always ``"local"``,
+    and the access class is always ``RESTRICTED`` — the most conservative
+    choice for private research data. Unassessed or absent metadata fields
+    (modality, landing_page, license_name, reuse_statement) remain None or
+    empty rather than inventing synthetic placeholder values.
+
+    Identity is derived deterministically from the canonical verified file list,
+    total bytes, and explicit user-declared metadata (title, limitations,
+    formats, citations), excluding local path and scan timestamp.
+    """
+
+    if dataset_id != LOCAL_PROVIDER:
+        raise ValueError("A local dataset lock must use dataset_id 'local'.")
+
+    clean_formats = tuple(sorted(set(f.strip() for f in formats if f.strip())))
+    clean_citations = tuple(
+        sorted(
+            (
+                c if isinstance(c, DatasetCitation) else DatasetCitation.model_validate(c)
+                for c in citations
+            ),
+            key=_citation_sort_key,
+        )
+    )
+    verified = sorted(
+        (
+            item if isinstance(item, VerifiedFile) else VerifiedFile.model_validate(item)
+            for item in verified_files
+        ),
+        key=lambda item: item.path,
+    )
+    total_bytes = sum(item.byte_size for item in verified)
+    clean_limitations = limitations.strip()
+    clean_title = title.strip()
+    identity = dataset_lock_identity(
+        provider=LOCAL_PROVIDER,
+        dataset_id=dataset_id,
+        snapshot="local",
+        access=DatasetAccess.RESTRICTED.value,
+        license_name=None,
+        license_spdx=None,
+        reuse_statement=None,
+        title=clean_title,
+        modality="",
+        task="",
+        participants=0,
+        formats=list(clean_formats),
+        citations=[item.model_dump(mode="json") for item in clean_citations],
+        compatible_templates=[],
+        landing_page=None,
+        limitations=clean_limitations,
+        expected_total_bytes=total_bytes,
+        expected_files=[item.model_dump(mode="json") for item in verified],
+    )
+    return DatasetLock(
+        schema_version="1.0",
+        dataset_identity=identity,
+        catalog_identity=None,
+        provider=LOCAL_PROVIDER,
+        dataset_id=dataset_id,
+        snapshot="local",
+        access=DatasetAccess.RESTRICTED,
+        title=clean_title,
+        modality="",
+        task="",
+        participants=0,
+        formats=clean_formats,
+        citations=clean_citations,
+        compatible_templates=(),
+        landing_page=None,
+        limitations=clean_limitations,
+        retrieved_at=retrieved_at,
+        local_path=local_path,
+        expected_total_bytes=total_bytes,
+        expected_files=tuple(verified),
+        license_name=None,
+        license_spdx=None,
+        reuse_statement=None,
+    )
+
+
+class LocalImportFailure(BaseModel):
+    """Structured failure record for a failed or interrupted local import."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    code: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+
+
+class LocalImportRecord(BaseModel):
+    """Persisted record of one local/private dataset import."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = DATASET_SCHEMA_VERSION
+    import_id: str = Field(pattern=r"^li-[0-9a-f]{12}$")
+    state: Literal["scanning", "ready", "failed", "cancelled"]
+    local_path: str = Field(min_length=1)
+    lock: DatasetLock | None = None
+    failure: LocalImportFailure | None = None
+    created_at: str = Field(min_length=1)
+    updated_at: str = Field(min_length=1)
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def _timestamps_must_be_iso(cls, value: str, info: Any) -> str:
+        checked = _require_iso_timestamp(value, info.field_name or "timestamp")
+        assert checked is not None
+        return checked
+
+    @field_validator("local_path")
+    @classmethod
+    def _local_path_must_be_relative(cls, value: str) -> str:
+        return _check_relative_path(value, "Local import path")
+
+    @model_validator(mode="after")
+    def _state_consistency(self) -> "LocalImportRecord":
+        if self.state == "ready":
+            if self.lock is None:
+                raise ValueError("A ready local import record must include its DatasetLock.")
+            if self.failure is not None:
+                raise ValueError("A ready local import record must not record a failure.")
+            if self.lock.local_path != self.local_path:
+                raise ValueError(
+                    "Ready local import record local_path does not match "
+                    "embedded DatasetLock local_path."
+                )
+            if self.lock.provider != LOCAL_PROVIDER:
+                raise ValueError("A ready local import record lock must use provider 'local'.")
+            if self.lock.snapshot != "local":
+                raise ValueError("A ready local import record lock must use snapshot 'local'.")
+            if self.lock.access != DatasetAccess.RESTRICTED:
+                raise ValueError("A ready local import record lock must require restricted access.")
+            if self.lock.catalog_identity is not None:
+                raise ValueError(
+                    "A ready local import record lock must have catalog_identity=None."
+                )
+            if self.lock.dataset_id != LOCAL_PROVIDER:
+                raise ValueError("A ready local import record lock must use dataset_id 'local'.")
+        elif self.state == "failed":
+            if self.failure is None:
+                raise ValueError("A failed local import record must describe its failure.")
+            if self.lock is not None:
+                raise ValueError("A failed local import record must not include a DatasetLock.")
+        elif self.state == "cancelled":
+            if self.lock is not None:
+                raise ValueError("A cancelled local import record cannot include a DatasetLock.")
+            if self.failure is None or self.failure.code != "cancelled":
+                raise ValueError("A cancelled local import record must record a cancelled failure.")
+        elif self.state == "scanning":
+            if self.lock is not None:
+                raise ValueError("A scanning local import record cannot include a DatasetLock.")
+            if self.failure is not None:
+                raise ValueError("A scanning local import record cannot record a failure.")
+        return self
+
+
 def migrate_catalog_entry_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Migrate a raw catalog entry dict to the current dataset schema."""
 
@@ -842,5 +1071,18 @@ def migrate_dataset_lock_dict(data: dict[str, Any]) -> dict[str, Any]:
             f"Unsupported dataset schema_version {version!r}. "
             f"Supported versions: {', '.join(SUPPORTED_DATASET_VERSIONS)}. "
             "Open the lock record with a compatible BrainLearn release."
+        )
+    return data
+
+
+def migrate_local_import_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a raw local import record dict to the current dataset schema."""
+
+    version = data.get("schema_version")
+    if version not in SUPPORTED_DATASET_VERSIONS:
+        raise ValueError(
+            f"Unsupported local import schema_version {version!r}. "
+            f"Supported versions: {', '.join(SUPPORTED_DATASET_VERSIONS)}. "
+            "Open the import record with a compatible BrainLearn release."
         )
     return data

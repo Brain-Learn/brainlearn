@@ -1,6 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
+  assertDatasetLock,
+  assertLocalImportRecord,
   cancelDownload,
   checksumCoverage,
   formatBytes,
@@ -303,4 +305,235 @@ test("download client maps conflict detail and rejects misshapen records", async
   await expect(
     getDownload("dl-0123456789ab", { path: "/tmp/project", token: "token" }),
   ).rejects.toThrow("does not match contract");
+});
+
+test("assertDatasetLock rejects invalid, hostile, and non-local locks", () => {
+  const validFile = {
+    path: "sub-01/eeg.edf",
+    byte_size: 100,
+    sha256: "a".repeat(64),
+  };
+
+  const validLock = {
+    schema_version: "1.0",
+    dataset_identity: `brainlearn-v1:dataset:${"f".repeat(64)}`,
+    catalog_identity: null,
+    provider: "local",
+    dataset_id: "local",
+    snapshot: "local",
+    access: "restricted",
+    title: "Test Local",
+    modality: "",
+    task: "",
+    participants: 0,
+    formats: [],
+    citations: [],
+    compatible_templates: [],
+    landing_page: null,
+    limitations: "",
+    retrieved_at: "2026-09-17T00:00:00Z",
+    local_path: "data/folder",
+    expected_total_bytes: 100,
+    expected_files: [validFile],
+    license_name: null,
+    license_spdx: null,
+    reuse_statement: null,
+  };
+
+  // Base valid lock passes
+  expect(() => assertDatasetLock(validLock)).not.toThrow();
+
+  // Rejects malformed dataset_identity
+  expect(() =>
+    assertDatasetLock({
+      ...validLock,
+      dataset_identity: "not-a-valid-identity",
+    }),
+  ).toThrow("does not match contract");
+
+  // Rejects invalid expected_files entries (path traversal, missing sha256, negative size)
+  expect(() =>
+    assertDatasetLock({
+      ...validLock,
+      expected_files: [{ ...validFile, path: "../escape.edf" }],
+    }),
+  ).toThrow("verified file entry");
+
+  expect(() =>
+    assertDatasetLock({
+      ...validLock,
+      expected_files: [{ ...validFile, sha256: "short" }],
+    }),
+  ).toThrow("verified file entry");
+
+  expect(() =>
+    assertDatasetLock({
+      ...validLock,
+      expected_files: [{ ...validFile, byte_size: -10 }],
+    }),
+  ).toThrow("verified file entry");
+
+  // Rejects byte sum mismatch
+  expect(() =>
+    assertDatasetLock({ ...validLock, expected_total_bytes: 999 }),
+  ).toThrow("byte sizes do not sum to expected_total_bytes");
+
+  // Rejects local lock claiming public access
+  expect(() => assertDatasetLock({ ...validLock, access: "public" })).toThrow(
+    "invalid local invariants or metadata claims",
+  );
+
+  // Rejects local lock with non-local dataset_id or snapshot
+  expect(() =>
+    assertDatasetLock({ ...validLock, dataset_id: "folder-name" }),
+  ).toThrow("invalid local invariants or metadata claims");
+
+  expect(() => assertDatasetLock({ ...validLock, snapshot: "1.0.0" })).toThrow(
+    "invalid local invariants or metadata claims",
+  );
+
+  // Rejects local lock claiming scientific metadata
+  expect(() => assertDatasetLock({ ...validLock, modality: "EEG" })).toThrow(
+    "invalid local invariants or metadata claims",
+  );
+
+  expect(() => assertDatasetLock({ ...validLock, task: "rest" })).toThrow(
+    "invalid local invariants or metadata claims",
+  );
+
+  expect(() => assertDatasetLock({ ...validLock, participants: 5 })).toThrow(
+    "invalid local invariants or metadata claims",
+  );
+
+  expect(() =>
+    assertDatasetLock({ ...validLock, compatible_templates: ["tmpl"] }),
+  ).toThrow("invalid local invariants or metadata claims");
+
+  // Rejects local lock claiming licenses or landing pages
+  expect(() =>
+    assertDatasetLock({ ...validLock, license_name: "MIT" }),
+  ).toThrow("invalid local invariants or metadata claims");
+
+  expect(() =>
+    assertDatasetLock({ ...validLock, landing_page: "https://example.com" }),
+  ).toThrow("invalid local invariants or metadata claims");
+
+  expect(() =>
+    assertDatasetLock({
+      ...validLock,
+      catalog_identity: `brainlearn-v1:dataset:${"a".repeat(64)}`,
+    }),
+  ).toThrow("invalid local invariants or metadata claims");
+});
+
+test("assertLocalImportRecord validates state consistency and binds to lock", () => {
+  const validFile = {
+    path: "sub-01/eeg.edf",
+    byte_size: 100,
+    sha256: "a".repeat(64),
+  };
+  const validLock = {
+    schema_version: "1.0",
+    dataset_identity: `brainlearn-v1:dataset:${"f".repeat(64)}`,
+    catalog_identity: null,
+    provider: "local",
+    dataset_id: "local",
+    snapshot: "local",
+    access: "restricted",
+    title: "Test Local",
+    modality: "",
+    task: "",
+    participants: 0,
+    formats: [],
+    citations: [],
+    compatible_templates: [],
+    landing_page: null,
+    limitations: "",
+    retrieved_at: "2026-09-17T00:00:00Z",
+    local_path: "data/folder",
+    expected_total_bytes: 100,
+    expected_files: [validFile],
+    license_name: null,
+    license_spdx: null,
+    reuse_statement: null,
+  };
+
+  const validRecord = {
+    schema_version: "1.0",
+    import_id: "li-123456789abc",
+    state: "ready",
+    local_path: "data/folder",
+    lock: validLock,
+    failure: null,
+    created_at: "2026-09-17T00:00:00Z",
+    updated_at: "2026-09-17T00:00:00Z",
+  };
+
+  // Valid ready record passes
+  expect(() => assertLocalImportRecord(validRecord)).not.toThrow();
+
+  // Ready record with lock=null rejected
+  expect(() => assertLocalImportRecord({ ...validRecord, lock: null })).toThrow(
+    "must include its DatasetLock and no failure",
+  );
+
+  // Ready record with failure rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      failure: { code: "err", message: "msg" },
+    }),
+  ).toThrow("must include its DatasetLock and no failure");
+
+  // Ready record with mismatched local_path rejected
+  expect(() =>
+    assertLocalImportRecord({ ...validRecord, local_path: "other/path" }),
+  ).toThrow("does not match embedded DatasetLock local_path");
+
+  // Ready record with non-local lock rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      lock: { ...validLock, provider: "openneuro" },
+    }),
+  ).toThrow("must use local provider invariants");
+
+  // Scanning record with lock rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      state: "scanning",
+      lock: validLock,
+    }),
+  ).toThrow("cannot include a DatasetLock or failure");
+
+  // Failed record without failure rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      state: "failed",
+      lock: null,
+      failure: null,
+    }),
+  ).toThrow("must describe its failure and contain no lock");
+
+  // Failed record with lock rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      state: "failed",
+      lock: validLock,
+      failure: { code: "err", message: "msg" },
+    }),
+  ).toThrow("must describe its failure and contain no lock");
+
+  // Cancelled record with non-cancelled code rejected
+  expect(() =>
+    assertLocalImportRecord({
+      ...validRecord,
+      state: "cancelled",
+      lock: null,
+      failure: { code: "interrupted", message: "Interrupted" },
+    }),
+  ).toThrow("must record a cancelled failure");
 });
