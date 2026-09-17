@@ -32,8 +32,13 @@ from typing import Any
 
 import pytest
 from brainlearn_core import (
+    LOCAL_PROVIDER,
+    DatasetAccess,
+    DatasetLock,
+    LocalImportFailure,
     LocalImportRecord,
     VerifiedFile,
+    dataset_lock_identity,
     local_import_lock,
 )
 from brainlearn_server import project_store as store_module
@@ -45,6 +50,7 @@ from brainlearn_server.local_import import (
     LocalImportService,
 )
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 TEST_TOKEN = "step5a6-test-token-0123456789abcdef"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
@@ -152,7 +158,7 @@ def test_ordinary_successful_import_absent_optional_metadata(tmp_path: Path, cli
     assert lock["compatible_templates"] == []
     assert lock["limitations"] == "Internal laboratory use only."
     assert lock["title"] == "Local Pilot EEG"
-    assert lock["dataset_id"] == "raw_eeg"
+    assert lock["dataset_id"] == "local"
     assert len(lock["expected_files"]) == 2
 
     # Files must be sorted by path
@@ -168,65 +174,62 @@ def test_stable_canonical_identity_properties():
     file_a = VerifiedFile(path="a.txt", byte_size=3, sha256="a" * 64)
     file_b = VerifiedFile(path="b.txt", byte_size=4, sha256="b" * 64)
 
-    # 1. Order independence
+    # 1. Order and local path independence
     lock1 = local_import_lock(
-        dataset_id="study1",
         title="Study 1",
         limitations="None",
         citations=[],
         formats=[],
         retrieved_at="2026-09-17T00:00:00Z",
-        local_path="raw-data/study1",
+        local_path="raw-data/folder-a",
         verified_files=[file_a, file_b],
     )
     lock2 = local_import_lock(
-        dataset_id="study1",
         title="Study 1",
         limitations="None",
         citations=[],
         formats=[],
         retrieved_at="2026-09-17T01:00:00Z",  # Different timestamp
-        local_path="other-path/study1",  # Different local path
+        local_path="other-path/folder-b",  # Different directory name and path
         verified_files=[file_b, file_a],  # Reversed order
     )
     assert lock1.dataset_identity == lock2.dataset_identity
+    assert lock1.dataset_id == "local"
+    assert lock2.dataset_id == "local"
 
     # 2. Changed file bytes change the identity
     file_b_modified = VerifiedFile(path="b.txt", byte_size=4, sha256="c" * 64)
     lock_modified = local_import_lock(
-        dataset_id="study1",
         title="Study 1",
         limitations="None",
         citations=[],
         formats=[],
         retrieved_at="2026-09-17T00:00:00Z",
-        local_path="raw-data/study1",
+        local_path="raw-data/folder-a",
         verified_files=[file_a, file_b_modified],
     )
     assert lock_modified.dataset_identity != lock1.dataset_identity
 
     # 3. Changed title changes the identity
     lock_diff_title = local_import_lock(
-        dataset_id="study1",
         title="Study 1 - Updated",
         limitations="None",
         citations=[],
         formats=[],
         retrieved_at="2026-09-17T00:00:00Z",
-        local_path="raw-data/study1",
+        local_path="raw-data/folder-a",
         verified_files=[file_a, file_b],
     )
     assert lock_diff_title.dataset_identity != lock1.dataset_identity
 
     # 4. Changed limitations changes identity
     lock_diff_lim = local_import_lock(
-        dataset_id="study1",
         title="Study 1",
         limitations="Strict IRB rules apply.",
         citations=[],
         formats=[],
         retrieved_at="2026-09-17T00:00:00Z",
-        local_path="raw-data/study1",
+        local_path="raw-data/folder-a",
         verified_files=[file_a, file_b],
     )
     assert lock_diff_lim.dataset_identity != lock1.dataset_identity
@@ -771,7 +774,6 @@ def test_restart_recovery_and_offline_reopening(tmp_path: Path, client: TestClie
     # 2. Ready record
     file_entry = VerifiedFile(path="eeg.dat", byte_size=10, sha256="e" * 64)
     lock = local_import_lock(
-        dataset_id="study",
         title="Ready Study",
         limitations="",
         citations=[],
@@ -841,3 +843,325 @@ def test_source_bytes_never_mutated_or_relocated(tmp_path: Path, client: TestCli
     copied_files = list(import_dir.iterdir())
     assert len(copied_files) == 1
     assert copied_files[0].name == "import.json"
+
+
+def test_same_size_mutation_with_restored_mtime_detected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Same-size in-place mutation where writer restores mtime is caught by st_ctime_ns."""
+    project_dir, project_path = _create_test_project(tmp_path)
+    source_dir = project_dir / "mtime_tamper"
+    source_dir.mkdir()
+    target = source_dir / "tamper_128k.dat"
+
+    # Create 128 KiB file (two 64 KiB chunks)
+    half_chunk = VERIFY_CHUNK_BYTES
+    initial_bytes = b"A" * half_chunk + b"B" * half_chunk
+    target.write_bytes(initial_bytes)
+
+    initial_stat = target.stat()
+    orig_atime_ns = initial_stat.st_atime_ns
+    orig_mtime_ns = initial_stat.st_mtime_ns
+
+    svc = LocalImportService(projects=store)
+    original_read = os.read
+    tampered = False
+
+    def hooked_read(fd: int, n: int) -> bytes:
+        nonlocal tampered
+        chunk = original_read(fd, n)
+        if not tampered and chunk:
+            tampered = True
+            # Mutate second half with same-size bytes and restore mtime
+            with open(target, "r+b") as f:
+                f.seek(half_chunk)
+                f.write(b"Z" * half_chunk)
+                f.flush()
+            # Restore mtime: changes st_mtime_ns back to original, but bumps st_ctime_ns
+            os.utime(target, ns=(orig_atime_ns, orig_mtime_ns))
+            post_utime_stat = target.stat()
+            assert post_utime_stat.st_mtime_ns == orig_mtime_ns
+        return chunk
+
+    monkeypatch.setattr(os, "read", hooked_read)
+
+    record = svc.import_local_dataset(
+        raw_path=project_path,
+        relative_dir="mtime_tamper",
+        title="Mtime Tamper Test",
+    )
+    deadline = time.time() + 3.0
+    rec = svc.get_import(project_path, record.import_id)
+    while time.time() < deadline:
+        rec = svc.get_import(project_path, record.import_id)
+        if rec.state in ("ready", "failed"):
+            break
+        time.sleep(0.05)
+
+    assert rec.state == "failed"
+    assert rec.failure is not None
+    assert rec.failure.code == "verification_failed"
+
+
+def test_cross_directory_location_independent_identity(tmp_path: Path, client: TestClient):
+    """Identical files and metadata in different folders produce identical dataset_identity."""
+    project_dir, project_path = _create_test_project(tmp_path)
+
+    folder_a = project_dir / "folder-a"
+    folder_a.mkdir()
+    (folder_a / "sub-01.edf").write_bytes(b"IDENTICAL_EEG_RECORDING_BYTES")
+
+    folder_b = project_dir / "folder-b"
+    folder_b.mkdir()
+    (folder_b / "sub-01.edf").write_bytes(b"IDENTICAL_EEG_RECORDING_BYTES")
+
+    res_a = client.post(
+        "/api/datasets/local/import",
+        headers=AUTH_HEADERS,
+        json={"path": project_path, "relative_dir": "folder-a", "title": "Shared Title"},
+    )
+    assert res_a.status_code == 200
+    term_a = _poll_terminal(client, project_path, res_a.json()["import_id"])
+    assert term_a["state"] == "ready"
+
+    res_b = client.post(
+        "/api/datasets/local/import",
+        headers=AUTH_HEADERS,
+        json={"path": project_path, "relative_dir": "folder-b", "title": "Shared Title"},
+    )
+    assert res_b.status_code == 200
+    term_b = _poll_terminal(client, project_path, res_b.json()["import_id"])
+    assert term_b["state"] == "ready"
+
+    assert term_a["lock"]["dataset_id"] == "local"
+    assert term_b["lock"]["dataset_id"] == "local"
+    assert term_a["lock"]["local_path"] == "folder-a"
+    assert term_b["lock"]["local_path"] == "folder-b"
+    assert term_a["lock"]["dataset_identity"] == term_b["lock"]["dataset_identity"]
+
+
+def test_local_import_record_binds_to_embedded_lock_and_enforces_invariants():
+    """LocalImportRecord validates state consistency and binds strictly to its local DatasetLock."""
+    valid_file = VerifiedFile(path="test.edf", byte_size=10, sha256="a" * 64)
+    valid_lock = local_import_lock(
+        title="Test",
+        local_path="source-a",
+        verified_files=[valid_file],
+        retrieved_at="2026-09-17T00:00:00Z",
+    )
+
+    # 1. Matching local_path succeeds
+    rec = LocalImportRecord(
+        schema_version="1.0",
+        import_id="li-111111111111",
+        state="ready",
+        local_path="source-a",
+        lock=valid_lock,
+        failure=None,
+        created_at="2026-09-17T00:00:00Z",
+        updated_at="2026-09-17T00:00:00Z",
+    )
+    assert rec.state == "ready"
+
+    # 2. Mismatched local_path rejected
+    with pytest.raises(ValidationError, match="does not match embedded DatasetLock local_path"):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-222222222222",
+            state="ready",
+            local_path="source-b",  # Mismatch with valid_lock.local_path ("source-a")
+            lock=valid_lock,
+            failure=None,
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+
+    # 3. Ready record requires lock
+    with pytest.raises(
+        ValidationError, match="A ready local import record must include its DatasetLock"
+    ):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-333333333333",
+            state="ready",
+            local_path="source-a",
+            lock=None,
+            failure=None,
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+
+    # 4. Ready record cannot have failure
+    with pytest.raises(
+        ValidationError, match="A ready local import record must not record a failure"
+    ):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-444444444444",
+            state="ready",
+            local_path="source-a",
+            lock=valid_lock,
+            failure=LocalImportFailure(code="err", message="msg"),
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+
+    # 5. Failed record requires failure and no lock
+    with pytest.raises(
+        ValidationError, match="A failed local import record must describe its failure"
+    ):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-555555555555",
+            state="failed",
+            local_path="source-a",
+            lock=None,
+            failure=None,
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+    with pytest.raises(
+        ValidationError, match="A failed local import record must not include a DatasetLock"
+    ):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-666666666666",
+            state="failed",
+            local_path="source-a",
+            lock=valid_lock,
+            failure=LocalImportFailure(code="err", message="msg"),
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+
+    # 6. Cancelled record requires cancelled code
+    with pytest.raises(ValidationError, match="must record a cancelled failure"):
+        LocalImportRecord(
+            schema_version="1.0",
+            import_id="li-777777777777",
+            state="cancelled",
+            local_path="source-a",
+            lock=None,
+            failure=LocalImportFailure(code="other_code", message="msg"),
+            created_at="2026-09-17T00:00:00Z",
+            updated_at="2026-09-17T00:00:00Z",
+        )
+
+
+def test_dataset_lock_enforces_local_invariants_at_model_boundary():
+    """Directly constructing a DatasetLock with provider='local' enforces all local invariants."""
+    verified_file = VerifiedFile(path="data.edf", byte_size=10, sha256="d" * 64)
+
+    def _make_lock(**overrides):
+        kwargs = dict(
+            schema_version="1.0",
+            dataset_identity="",
+            catalog_identity=None,
+            provider=LOCAL_PROVIDER,
+            dataset_id=LOCAL_PROVIDER,
+            snapshot="local",
+            access=DatasetAccess.RESTRICTED,
+            title="Valid Title",
+            modality="",
+            task="",
+            participants=0,
+            formats=(),
+            citations=(),
+            compatible_templates=(),
+            landing_page=None,
+            limitations="",
+            retrieved_at="2026-09-17T00:00:00Z",
+            local_path="valid/path",
+            expected_total_bytes=10,
+            expected_files=[verified_file],
+            license_name=None,
+            license_spdx=None,
+            reuse_statement=None,
+        )
+        kwargs.update(overrides)
+        # Compute valid matching identity unless caller explicitly passed dataset_identity
+        if "dataset_identity" not in overrides:
+            access_val = (
+                kwargs["access"].value
+                if isinstance(kwargs["access"], DatasetAccess)
+                else kwargs["access"]
+            )
+            citations_list = [
+                c.model_dump(mode="json") if hasattr(c, "model_dump") else c
+                for c in kwargs["citations"]
+            ]
+            files_list = [
+                f.model_dump(mode="json") if hasattr(f, "model_dump") else f
+                for f in kwargs["expected_files"]
+            ]
+            kwargs["dataset_identity"] = dataset_lock_identity(
+                provider=kwargs["provider"],
+                dataset_id=kwargs["dataset_id"],
+                snapshot=kwargs["snapshot"],
+                access=access_val,
+                title=kwargs["title"],
+                modality=kwargs["modality"],
+                task=kwargs["task"],
+                participants=kwargs["participants"],
+                formats=list(kwargs["formats"]),
+                citations=citations_list,
+                compatible_templates=list(kwargs["compatible_templates"]),
+                landing_page=kwargs["landing_page"],
+                limitations=kwargs["limitations"],
+                expected_total_bytes=kwargs["expected_total_bytes"],
+                expected_files=files_list,
+                license_name=kwargs["license_name"],
+                license_spdx=kwargs["license_spdx"],
+                reuse_statement=kwargs["reuse_statement"],
+            )
+        return DatasetLock(**kwargs)
+
+    # Base lock succeeds
+    base = _make_lock()
+    assert base.dataset_id == "local"
+
+    # Local lock rejects public access
+    with pytest.raises(ValidationError, match="must require restricted access"):
+        _make_lock(access=DatasetAccess.PUBLIC)
+
+    # Local lock rejects non-local snapshot
+    with pytest.raises(ValidationError, match="must use snapshot 'local'"):
+        _make_lock(snapshot="1.0.0")
+
+    # Local lock rejects non-local dataset_id
+    with pytest.raises(ValidationError, match="must use dataset_id 'local'"):
+        _make_lock(dataset_id="other_id")
+
+    # Local lock rejects catalog_identity
+    with pytest.raises(ValidationError, match="must not record catalog_identity"):
+        _make_lock(catalog_identity="brainlearn-v1:dataset:" + "f" * 64)
+
+    # Local lock rejects scientific modality claim
+    with pytest.raises(ValidationError, match="must not make scientific modality claims"):
+        _make_lock(modality="EEG")
+
+    # Local lock rejects task claim
+    with pytest.raises(ValidationError, match="must not make scientific task claims"):
+        _make_lock(task="rest")
+
+    # Local lock rejects participants claim
+    with pytest.raises(ValidationError, match="must not make participant count claims"):
+        _make_lock(participants=12)
+
+    # Local lock rejects compatible templates claim
+    with pytest.raises(ValidationError, match="must not make template compatibility claims"):
+        _make_lock(compatible_templates=("template_a",))
+
+    # Local lock rejects license claim
+    with pytest.raises(ValidationError, match="must not record license metadata"):
+        _make_lock(license_name="MIT")
+
+    with pytest.raises(ValidationError, match="must not record license metadata"):
+        _make_lock(license_spdx="MIT")
+
+    with pytest.raises(ValidationError, match="must not record license metadata"):
+        _make_lock(reuse_statement="Academic use only.")
+
+    # Local lock rejects landing page
+    with pytest.raises(ValidationError, match="must not record a landing page"):
+        _make_lock(landing_page="https://example.com/dataset")

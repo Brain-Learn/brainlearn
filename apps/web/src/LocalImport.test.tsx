@@ -49,7 +49,7 @@ function mockReadyRecord(importId = "li-123456789abc"): LocalImportRecord {
       dataset_identity: `brainlearn-v1:dataset:${"f".repeat(64)}`,
       catalog_identity: null,
       provider: "local",
-      dataset_id: "raw-data",
+      dataset_id: "local",
       snapshot: "local",
       access: "restricted",
       title: "Pilot EEG Dataset",

@@ -132,28 +132,36 @@ or modifying source files.
 
 ### 1. The local/private boundary
 
-- **Provider**: `provider: "local"`, `snapshot: "local"`, `access: "restricted"`.
+- **Provider**: `provider: "local"`, `dataset_id: "local"`, `snapshot: "local"`, `access: "restricted"`.
 - **Honest metadata**: Unlike public catalog datasets, private local datasets
   often have no DOI, published paper, public license, or landing page. BrainLearn
   does not invent fake citations, licenses, modalities, BIDS status, or landing
   pages. Citations and formats default to empty lists (`()`), while
   `license_name`, `license_spdx`, `reuse_statement`, and `landing_page` default
   to `None`. Modality and task default to unassessed (`""`).
+- **Invariants enforced at model boundary**: `DatasetLock` enforces that any
+  local provider lock strictly has `dataset_id="local"`, `snapshot="local"`,
+  `access="restricted"`, `catalog_identity=None`, empty modality/task, 0
+  participants, no template compatibility claims, and no license or landing
+  page metadata. `LocalImportRecord` binds its `local_path` strictly to its
+  embedded `lock.local_path`.
 - Public dataset locks continue to require nonempty formats, citations,
-  landing page, license, and reuse statement.
+  landing page, license, reuse statement, and catalog identity.
 
 ### 2. Identity inputs
 
 Local dataset identity is computed deterministically via `dataset_lock_identity`:
-- Included: `provider="local"`, `dataset_id` (final segment of relative directory),
-  `snapshot="local"`, `access="restricted"`, `title`, `modality=""`, `task=""`,
-  `participants=0`, sorted `formats`, canonical sorted `citations`, `compatible_templates=[]`,
-  `landing_page=None`, `limitations`, `expected_total_bytes`, and canonically
-  sorted `expected_files` (path, byte size, SHA-256 digest).
+- Included: `provider="local"`, `dataset_id="local"` (constant for all local
+  datasets), `snapshot="local"`, `access="restricted"`, `title`, `modality=""`,
+  `task=""`, `participants=0`, sorted `formats`, canonical sorted `citations`,
+  `compatible_templates=[]`, `landing_page=None`, `limitations`,
+  `expected_total_bytes`, and canonically sorted `expected_files` (path, byte
+  size, SHA-256 digest).
 - Excluded: `local_path` and `retrieved_at`. Two projects importing the same
   directory contents with the same metadata produce the exact same identity
-  regardless of local filesystem location or scan timestamp. Enumeration order is
-  irrelevant because paths are sorted canonically.
+  regardless of local filesystem location, folder directory name, or scan
+  timestamp. Enumeration order is irrelevant because paths are sorted
+  canonically.
 
 ### 3. Hardened filesystem protections
 
@@ -169,12 +177,14 @@ Local dataset identity is computed deterministically via `dataset_lock_identity`
 - **Object verification**: Non-regular files, FIFOs, Unix domain sockets,
   device nodes, unreadable files, and hard links (`st_nlink > 1`) are refused.
 - **Descriptor stat before and after hashing**: Before hashing, `fstat`
-  records `st_dev`, `st_ino`, `st_size`, and `st_mtime_ns`. Hashing proceeds in
-  bounded `VERIFY_CHUNK_BYTES` (64 KiB) chunks, checking cancellation after each
-  chunk. After reading to EOF, `fstat` and `lstat` re-verify that the descriptor
-  and file path were not mutated in place or replaced.
+  records `st_dev`, `st_ino`, `st_size`, `st_mtime_ns`, and `st_ctime_ns`.
+  Hashing proceeds in bounded `VERIFY_CHUNK_BYTES` (64 KiB) chunks, checking
+  cancellation after each chunk. After reading to EOF, `fstat` and `lstat`
+  re-verify that descriptor attributes—including `st_ctime_ns`—and file path
+  were not mutated in place, replaced, or modified with restored mtime.
 - **Complete tree rescan**: The entire source directory is rescanned after
-  hashing all files to detect concurrent file additions, removals, or replacements.
+  hashing all files, comparing (size, dev, ino, mtime_ns, ctime_ns) to detect
+  concurrent file additions, removals, replacements, or mtime-restored mutations.
 - **Resource limits**: Strictly bounded by `MAX_SCAN_DEPTH` (16),
   `MAX_SCAN_FILES` (10,000), and `MAX_IMPORT_BYTES` (10 GiB).
 

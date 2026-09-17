@@ -249,6 +249,7 @@ __all__ = [
     "DatasetAccess",
     "DatasetLock",
     "DatasetReviewStatus",
+    "LOCAL_PROVIDER",
     "LocalImportFailure",
     "LocalImportRecord",
     "VerifiedFile",

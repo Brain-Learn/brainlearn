@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from brainlearn_core import (
+    LOCAL_PROVIDER,
     DatasetCitation,
     DatasetLock,
     LocalImportFailure,
@@ -172,6 +173,8 @@ class LocalImportService:
         expected_size: int,
         expected_dev: int,
         expected_ino: int,
+        expected_mtime_ns: int,
+        expected_ctime_ns: int,
         cancel_event: threading.Event,
         *,
         what: str,
@@ -189,6 +192,11 @@ class LocalImportService:
                 raise _VerificationMismatch(f"{what} does not have its expected size.")
             if info_before.st_dev != expected_dev or info_before.st_ino != expected_ino:
                 raise _VerificationMismatch(f"{what} changed inode before hashing.")
+            if (
+                info_before.st_mtime_ns != expected_mtime_ns
+                or info_before.st_ctime_ns != expected_ctime_ns
+            ):
+                raise _VerificationMismatch(f"{what} changed timestamps before hashing.")
 
             digest = hashlib.sha256()
             remaining = expected_size
@@ -215,6 +223,7 @@ class LocalImportService:
                 or info_after.st_ino != info_before.st_ino
                 or info_after.st_size != info_before.st_size
                 or info_after.st_mtime_ns != info_before.st_mtime_ns
+                or info_after.st_ctime_ns != info_before.st_ctime_ns
             ):
                 raise _VerificationMismatch(f"{what} mutated during hashing.")
 
@@ -225,6 +234,7 @@ class LocalImportService:
                 or info_path.st_ino != info_before.st_ino
                 or info_path.st_size != info_before.st_size
                 or info_path.st_mtime_ns != info_before.st_mtime_ns
+                or info_path.st_ctime_ns != info_before.st_ctime_ns
             ):
                 raise _VerificationMismatch(f"{what} was replaced during hashing.")
 
@@ -234,8 +244,8 @@ class LocalImportService:
 
     def _scan_regular_files(
         self, project: Path, dir_parts: tuple[str, ...], *, what: str
-    ) -> dict[str, tuple[int, int, int, int]]:
-        """Map every regular file under a verified tree to (size, dev, ino, mtime_ns).
+    ) -> dict[str, tuple[int, int, int, int, int]]:
+        """Map every regular file under a verified tree to (size, dev, ino, mtime_ns, ctime_ns).
 
         Refuses symlinks, hard links (st_nlink > 1), devices, FIFOs, sockets,
         unreadable files, and non-regular objects anywhere in the walk.
@@ -245,7 +255,7 @@ class LocalImportService:
         root = self._verified(project, dir_parts, what=what)
         if not root.is_dir():
             raise _VerificationMismatch(f"{what} is not a directory.")
-        found: dict[str, tuple[int, int, int, int]] = {}
+        found: dict[str, tuple[int, int, int, int, int]] = {}
         for current, dirnames, filenames in os.walk(root, followlinks=False):
             depth = len(Path(current).relative_to(root).parts)
             if depth > MAX_SCAN_DEPTH:
@@ -271,7 +281,13 @@ class LocalImportService:
                 validate_relative_path(rel, "Import file path")
                 if len(found) >= MAX_SCAN_FILES:
                     raise _VerificationMismatch(f"{what} holds too many files to import.")
-                found[rel] = (info.st_size, info.st_dev, info.st_ino, info.st_mtime_ns)
+                found[rel] = (
+                    info.st_size,
+                    info.st_dev,
+                    info.st_ino,
+                    info.st_mtime_ns,
+                    info.st_ctime_ns,
+                )
 
         total_bytes = sum(meta[0] for meta in found.values())
         if total_bytes > MAX_IMPORT_BYTES:
@@ -441,7 +457,13 @@ class LocalImportService:
         verified: list[VerifiedFile] = []
 
         # Phase 2: hash — open each file through the no-follow boundary.
-        for rel_path, (expected_size, expected_dev, expected_ino, _) in sorted(scanned.items()):
+        for rel_path, (
+            expected_size,
+            expected_dev,
+            expected_ino,
+            expected_mtime_ns,
+            expected_ctime_ns,
+        ) in sorted(scanned.items()):
             if cancel_event.is_set():
                 raise CancelledByUser(f"Local import {import_id} cancelled.")
 
@@ -454,6 +476,8 @@ class LocalImportService:
                 expected_size,
                 expected_dev,
                 expected_ino,
+                expected_mtime_ns,
+                expected_ctime_ns,
                 cancel_event,
                 what=f"Import file {rel_path!r}",
             )
@@ -534,18 +558,22 @@ class LocalImportService:
         with self._lock(key):
             try:
                 current = self._load_record(project, import_id)
-                # If cancelled externally while we were finishing, preserve cancelled state.
-                if current.state == "cancelled" and state != "cancelled":
-                    return
-                terminal_record = current.model_copy(
-                    update={
-                        "state": state,
-                        "lock": lock_instance,
-                        "failure": failure,
-                        "updated_at": utc_now_iso(),
-                    }
-                )
-                self._save_record(project, terminal_record)
+            except Exception:
+                current = None
+            if current is not None and current.state == "cancelled":
+                return
+            updated = LocalImportRecord(
+                schema_version="1.0",
+                import_id=import_id,
+                state=state,
+                local_path=local_path,
+                lock=lock_instance,
+                failure=failure,
+                created_at=current.created_at if current is not None else utc_now_iso(),
+                updated_at=utc_now_iso(),
+            )
+            try:
+                self._save_record(project, updated)
             except Exception:
                 pass
             finally:
@@ -553,7 +581,7 @@ class LocalImportService:
                     self._threads.pop(key, None)
                     self._cancel.pop(key, None)
 
-    # -- public operations -----------------------------------------------------
+    # -- public API ------------------------------------------------------------
 
     def import_local_dataset(
         self,
@@ -579,8 +607,9 @@ class LocalImportService:
         for item in clean_citations:
             DatasetCitation.model_validate(item)
 
-        # dataset_id is the final component of the relative directory path.
-        dataset_id = dir_parts[-1]
+        # Local provider datasets use constant LOCAL_PROVIDER dataset_id so identity
+        # is independent of local filesystem naming and directory locations.
+        dataset_id = LOCAL_PROVIDER
 
         import_id = f"li-{secrets.token_hex(6)}"
         key = f"{project}::{import_id}"

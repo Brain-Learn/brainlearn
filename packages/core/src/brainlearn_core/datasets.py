@@ -712,7 +712,36 @@ class DatasetLock(BaseModel):
 
     @model_validator(mode="after")
     def _files_must_be_consistent(self) -> "DatasetLock":
-        if self.provider != LOCAL_PROVIDER:
+        if self.provider == LOCAL_PROVIDER:
+            if self.dataset_id != LOCAL_PROVIDER:
+                raise ValueError("A local dataset lock must use dataset_id 'local'.")
+            if self.snapshot != "local":
+                raise ValueError("A local dataset lock must use snapshot 'local'.")
+            if self.access != DatasetAccess.RESTRICTED:
+                raise ValueError("A local dataset lock must require restricted access.")
+            if self.catalog_identity is not None:
+                raise ValueError("A local dataset lock must not record catalog_identity.")
+            if self.modality:
+                raise ValueError("A local dataset lock must not make scientific modality claims.")
+            if self.task:
+                raise ValueError("A local dataset lock must not make scientific task claims.")
+            if self.participants != 0:
+                raise ValueError("A local dataset lock must not make participant count claims.")
+            if self.compatible_templates:
+                raise ValueError(
+                    "A local dataset lock must not make template compatibility claims."
+                )
+            if (
+                self.license_name is not None
+                or self.license_spdx is not None
+                or self.reuse_statement is not None
+            ):
+                raise ValueError("A local dataset lock must not record license metadata.")
+            if self.landing_page is not None:
+                raise ValueError("A local dataset lock must not record a landing page.")
+        else:
+            if self.snapshot == "local":
+                raise ValueError("A public dataset lock must not use snapshot 'local'.")
             if not self.formats:
                 raise ValueError("A public dataset lock must name at least one format.")
             if not self.citations:
@@ -848,7 +877,6 @@ def project_lock_from_catalog(
 
 def local_import_lock(
     *,
-    dataset_id: str,
     title: str,
     limitations: str = "",
     citations: Sequence[dict[str, Any] | DatasetCitation] = (),
@@ -856,24 +884,26 @@ def local_import_lock(
     retrieved_at: str,
     local_path: str,
     verified_files: Sequence[dict[str, Any] | VerifiedFile],
+    dataset_id: str = LOCAL_PROVIDER,
 ) -> DatasetLock:
     """Build an immutable DatasetLock for a researcher-selected local directory.
 
     No CatalogEntry is required: the caller supplies explicit title,
     limitations, citations, and formats. The provider is always
+    ``LOCAL_PROVIDER`` (``"local"``), the dataset_id is always
     ``LOCAL_PROVIDER`` (``"local"``), the snapshot is always ``"local"``,
     and the access class is always ``RESTRICTED`` — the most conservative
     choice for private research data. Unassessed or absent metadata fields
     (modality, landing_page, license_name, reuse_statement) remain None or
     empty rather than inventing synthetic placeholder values.
 
-    The ``dataset_id`` must be a single portable path component derived from
-    the directory name (validated by the DatasetLock field validator).
-
     Identity is derived deterministically from the canonical verified file list,
     total bytes, and explicit user-declared metadata (title, limitations,
     formats, citations), excluding local path and scan timestamp.
     """
+
+    if dataset_id != LOCAL_PROVIDER:
+        raise ValueError("A local dataset lock must use dataset_id 'local'.")
 
     clean_formats = tuple(sorted(set(f.strip() for f in formats if f.strip())))
     clean_citations = tuple(
@@ -984,16 +1014,38 @@ class LocalImportRecord(BaseModel):
                 raise ValueError("A ready local import record must include its DatasetLock.")
             if self.failure is not None:
                 raise ValueError("A ready local import record must not record a failure.")
+            if self.lock.local_path != self.local_path:
+                raise ValueError(
+                    "Ready local import record local_path does not match "
+                    "embedded DatasetLock local_path."
+                )
+            if self.lock.provider != LOCAL_PROVIDER:
+                raise ValueError("A ready local import record lock must use provider 'local'.")
+            if self.lock.snapshot != "local":
+                raise ValueError("A ready local import record lock must use snapshot 'local'.")
+            if self.lock.access != DatasetAccess.RESTRICTED:
+                raise ValueError("A ready local import record lock must require restricted access.")
+            if self.lock.catalog_identity is not None:
+                raise ValueError(
+                    "A ready local import record lock must have catalog_identity=None."
+                )
+            if self.lock.dataset_id != LOCAL_PROVIDER:
+                raise ValueError("A ready local import record lock must use dataset_id 'local'.")
         elif self.state == "failed":
             if self.failure is None:
                 raise ValueError("A failed local import record must describe its failure.")
             if self.lock is not None:
                 raise ValueError("A failed local import record must not include a DatasetLock.")
-        elif self.state in ("scanning", "cancelled"):
+        elif self.state == "cancelled":
             if self.lock is not None:
-                raise ValueError(
-                    f"A {self.state} local import record cannot include a DatasetLock."
-                )
+                raise ValueError("A cancelled local import record cannot include a DatasetLock.")
+            if self.failure is None or self.failure.code != "cancelled":
+                raise ValueError("A cancelled local import record must record a cancelled failure.")
+        elif self.state == "scanning":
+            if self.lock is not None:
+                raise ValueError("A scanning local import record cannot include a DatasetLock.")
+            if self.failure is not None:
+                raise ValueError("A scanning local import record cannot record a failure.")
         return self
 
 
