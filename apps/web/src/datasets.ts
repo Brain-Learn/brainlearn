@@ -2,7 +2,9 @@ import type {
   CatalogEntry,
   DatasetListItem,
   DatasetListResponse,
+  DatasetLock,
   DownloadRecord,
+  LocalImportRecord,
 } from "./types";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -409,4 +411,224 @@ export async function resumeDownload(
     { method: "POST", body: JSON.stringify({ path: options.path }) },
     "Unable to resume the dataset download",
   );
+}
+
+// ── Local import ──────────────────────────────────────────────────────────────
+
+const LOCAL_IMPORT_STATES = ["scanning", "ready", "failed", "cancelled"];
+
+function assertDatasetLock(value: unknown): asserts value is DatasetLock {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== "1.0" ||
+    typeof value.dataset_identity !== "string" ||
+    typeof value.provider !== "string" ||
+    typeof value.dataset_id !== "string" ||
+    typeof value.snapshot !== "string" ||
+    typeof value.title !== "string" ||
+    !Array.isArray(value.formats) ||
+    !Array.isArray(value.citations) ||
+    !Array.isArray(value.expected_files) ||
+    typeof value.expected_total_bytes !== "number" ||
+    typeof value.retrieved_at !== "string" ||
+    typeof value.local_path !== "string"
+  ) {
+    throw new Error(
+      "The dataset lock in the local import response does not match contract version 1.0.",
+    );
+  }
+}
+
+function assertLocalImportRecord(
+  value: unknown,
+): asserts value is LocalImportRecord {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== "1.0" ||
+    typeof value.import_id !== "string" ||
+    !LOCAL_IMPORT_STATES.includes(String(value.state)) ||
+    typeof value.local_path !== "string" ||
+    (value.failure !== null &&
+      (!isRecord(value.failure) ||
+        typeof value.failure.code !== "string" ||
+        typeof value.failure.message !== "string")) ||
+    typeof value.created_at !== "string" ||
+    typeof value.updated_at !== "string"
+  ) {
+    throw new Error(
+      "The local import response does not match contract version 1.0.",
+    );
+  }
+  if (value.lock !== null) {
+    assertDatasetLock(value.lock);
+  }
+}
+
+export interface LocalImportRequestOptions {
+  path: string;
+  token: string;
+  signal?: AbortSignal;
+}
+
+export interface StartLocalImportOptions extends LocalImportRequestOptions {
+  relativeDir: string;
+  title: string;
+  limitations?: string;
+  citations?: Array<{
+    title: string;
+    doi?: string | null;
+    url?: string | null;
+  }>;
+  formats?: string[];
+}
+
+/** Milliseconds between local import progress refreshes while scanning. */
+export const LOCAL_IMPORT_POLL_MS = 1000;
+
+/** Start a local/private dataset import scan for the authorized project. */
+export async function startLocalImport(
+  options: StartLocalImportOptions,
+): Promise<LocalImportRecord> {
+  requireContext(options.path, options.token);
+  let response: Response;
+  try {
+    response = await fetch("/api/datasets/local/import", {
+      method: "POST",
+      headers: authHeaders(options.token),
+      body: JSON.stringify({
+        path: options.path,
+        relative_dir: options.relativeDir,
+        title: options.title,
+        limitations: options.limitations ?? "",
+        citations: options.citations ?? [],
+        formats: options.formats ?? [],
+      }),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the local import service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to start the local import");
+  const payload: unknown = await response.json();
+  assertLocalImportRecord(payload);
+  return payload;
+}
+
+/** Read one local import record for the authorized project. */
+export async function getLocalImport(
+  importId: string,
+  options: LocalImportRequestOptions,
+): Promise<LocalImportRecord> {
+  requireContext(options.path, options.token);
+  const params = new URLSearchParams({ path: options.path });
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/datasets/local/imports/${encodeURIComponent(importId)}?${params.toString()}`,
+      {
+        headers: { Authorization: `Bearer ${options.token}` },
+        signal: options.signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the local import service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to read the local import");
+  const payload: unknown = await response.json();
+  assertLocalImportRecord(payload);
+  return payload;
+}
+
+/** List local import records for the authorized project. */
+export async function listLocalImports(
+  options: LocalImportRequestOptions,
+): Promise<LocalImportRecord[]> {
+  requireContext(options.path, options.token);
+  const params = new URLSearchParams({ path: options.path });
+  let response: Response;
+  try {
+    response = await fetch(`/api/datasets/local/imports?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${options.token}` },
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the local import service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to list local imports");
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error(
+      "The local import listing does not match contract version 1.0.",
+    );
+  }
+  payload.forEach(assertLocalImportRecord);
+  return payload;
+}
+
+/** Signal a running local import scan to stop. */
+export async function cancelLocalImport(
+  importId: string,
+  options: LocalImportRequestOptions,
+): Promise<LocalImportRecord> {
+  requireContext(options.path, options.token);
+  let response: Response;
+  try {
+    response = await fetch(
+      `/api/datasets/local/imports/${encodeURIComponent(importId)}/cancel`,
+      {
+        method: "POST",
+        headers: authHeaders(options.token),
+        body: JSON.stringify({ path: options.path }),
+        signal: options.signal,
+      },
+    );
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the local import service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to cancel the local import");
+  const payload: unknown = await response.json();
+  assertLocalImportRecord(payload);
+  return payload;
+}
+
+/** Reconcile local import records after a service restart. */
+export async function recoverLocalImports(
+  options: LocalImportRequestOptions,
+): Promise<LocalImportRecord[]> {
+  requireContext(options.path, options.token);
+  let response: Response;
+  try {
+    response = await fetch("/api/datasets/local/recover", {
+      method: "POST",
+      headers: authHeaders(options.token),
+      body: JSON.stringify({ path: options.path }),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError")
+      throw error;
+    throw new Error("Unable to reach the local import service.");
+  }
+  if (!response.ok)
+    throw await readError(response, "Unable to recover local imports");
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    throw new Error(
+      "The local import listing does not match contract version 1.0.",
+    );
+  }
+  payload.forEach(assertLocalImportRecord);
+  return payload;
 }

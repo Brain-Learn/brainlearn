@@ -123,3 +123,74 @@ expected sizes and checksums plus BIDS structure, then write the lock record
 with an identity recomputed from verified facts. The OpenNeuro-first
 integration pins exact snapshots and records checksums where the provider
 exposes them; ordinary CI must not fetch large datasets.
+
+## Local/private offline datasets (Step 5A.6)
+
+Local/private imports allow a researcher to import private data from a
+subdirectory inside an authorized project without copying, relocating, uploading,
+or modifying source files.
+
+### 1. The local/private boundary
+
+- **Provider**: `provider: "local"`, `snapshot: "local"`, `access: "restricted"`.
+- **Honest metadata**: Unlike public catalog datasets, private local datasets
+  often have no DOI, published paper, public license, or landing page. BrainLearn
+  does not invent fake citations, licenses, modalities, BIDS status, or landing
+  pages. Citations and formats default to empty lists (`()`), while
+  `license_name`, `license_spdx`, `reuse_statement`, and `landing_page` default
+  to `None`. Modality and task default to unassessed (`""`).
+- Public dataset locks continue to require nonempty formats, citations,
+  landing page, license, and reuse statement.
+
+### 2. Identity inputs
+
+Local dataset identity is computed deterministically via `dataset_lock_identity`:
+- Included: `provider="local"`, `dataset_id` (final segment of relative directory),
+  `snapshot="local"`, `access="restricted"`, `title`, `modality=""`, `task=""`,
+  `participants=0`, sorted `formats`, canonical sorted `citations`, `compatible_templates=[]`,
+  `landing_page=None`, `limitations`, `expected_total_bytes`, and canonically
+  sorted `expected_files` (path, byte size, SHA-256 digest).
+- Excluded: `local_path` and `retrieved_at`. Two projects importing the same
+  directory contents with the same metadata produce the exact same identity
+  regardless of local filesystem location or scan timestamp. Enumeration order is
+  irrelevant because paths are sorted canonically.
+
+### 3. Hardened filesystem protections
+
+- **Read-only**: Source research data is never opened with write permissions,
+  moved, deleted, renamed, or modified.
+- **Storage containment**: Source paths must be project-relative subdirectories.
+  Absolute paths, path traversal (`..`), drive qualifiers, Windows-forbidden
+  characters, and BrainLearn-owned storage or metadata (`local-imports`,
+  `downloads`, `datasets`, `runs`, `staging`, `cache`, `project.json`,
+  `workflow.json`) are refused.
+- **No-follow descriptor boundary**: Every path component is verified
+  against symlinks. Descriptors are opened with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`.
+- **Object verification**: Non-regular files, FIFOs, Unix domain sockets,
+  device nodes, unreadable files, and hard links (`st_nlink > 1`) are refused.
+- **Descriptor stat before and after hashing**: Before hashing, `fstat`
+  records `st_dev`, `st_ino`, `st_size`, and `st_mtime_ns`. Hashing proceeds in
+  bounded `VERIFY_CHUNK_BYTES` (64 KiB) chunks, checking cancellation after each
+  chunk. After reading to EOF, `fstat` and `lstat` re-verify that the descriptor
+  and file path were not mutated in place or replaced.
+- **Complete tree rescan**: The entire source directory is rescanned after
+  hashing all files to detect concurrent file additions, removals, or replacements.
+- **Resource limits**: Strictly bounded by `MAX_SCAN_DEPTH` (16),
+  `MAX_SCAN_FILES` (10,000), and `MAX_IMPORT_BYTES` (10 GiB).
+
+### 4. Restart recovery and offline reopening
+
+- Import records are persisted atomically at
+  `local-imports/<import_id>/import.json`.
+- When the service restarts, `POST /api/datasets/local/recover` reconciles
+  records: any record left in `scanning` or `pending` state is marked `failed`
+  with failure code `interrupted`.
+- Records in `ready` state reload completely offline. On reload, the embedded
+  lock identity is recomputed and checked against the stored `dataset_identity`
+  to detect disk corruption or tampering.
+
+### 5. Leak-free static errors
+
+- API and service errors never return raw exception strings (`str(exc)`),
+  server stack traces, session tokens, or absolute filesystem paths. All error
+  messages are curated static strings with typed response models.

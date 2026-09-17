@@ -7,7 +7,7 @@ import unicodedata
 import urllib.parse
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import uvicorn
 from brainlearn_core import (
@@ -16,6 +16,7 @@ from brainlearn_core import (
     CatalogEntry,
     DatasetSearch,
     DownloadRecord,
+    LocalImportRecord,
     NodeManifest,
     ProjectManifest,
     ProviderError,
@@ -49,6 +50,11 @@ from brainlearn_server.downloads import (
     UnsafeStorageError,
 )
 from brainlearn_server.error_log import ErrorLoggingMiddleware, error_log_dir
+from brainlearn_server.local_import import (
+    LocalImportConflictError,
+    LocalImportNotFoundError,
+    LocalImportService,
+)
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
 from brainlearn_server.run_store import RunStore
@@ -201,6 +207,7 @@ store = ProjectStore()
 runs = RunStore(store)
 workers = WorkerService(runs)
 downloads = DownloadService(store)
+local_imports = LocalImportService(store)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -333,6 +340,155 @@ async def list_datasets(
             modality=_optional_search_text(modality, field="modality", max_length=64),
         ),
     )
+
+
+class LocalImportStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    relative_dir: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    limitations: str = ""
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+    formats: list[str] = Field(default_factory=list)
+
+
+class LocalImportPathRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+
+
+def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
+    return HTTPException(status_code=404, detail=detail)
+
+
+def _local_import_blocked() -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail="The import storage layout is blocked by a symlink or non-directory.",
+    )
+
+
+def _local_import_forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=403,
+        detail="The requested project path cannot be accessed.",
+    )
+
+
+def _local_import_invalid() -> HTTPException:
+    return HTTPException(
+        status_code=422,
+        detail="The import request contains invalid parameters.",
+    )
+
+
+@app.post("/api/datasets/local/import", response_model=LocalImportRecord)
+def start_local_import(
+    payload: LocalImportStartRequest, _auth: None = Depends(require_session_token)
+) -> LocalImportRecord:
+    """Start a local/private dataset import scan for the authorized project.
+
+    Scans and hashes every regular file in the selected directory inside the
+    project, then produces an immutable DatasetLock.  Source data is never
+    uploaded, relocated, or mutated.
+    """
+
+    try:
+        return local_imports.import_local_dataset(
+            payload.path,
+            payload.relative_dir,
+            payload.title,
+            payload.limitations,
+            payload.citations,
+            payload.formats,
+        )
+    except UnsafeStorageError:
+        raise _local_import_blocked() from None
+    except PermissionError:
+        raise _local_import_forbidden() from None
+    except ValueError:
+        raise _local_import_invalid() from None
+
+
+@app.get("/api/datasets/local/imports", response_model=list[LocalImportRecord])
+def list_local_imports(
+    path: str, _auth: None = Depends(require_session_token)
+) -> list[LocalImportRecord]:
+    """List local import records for the authorized project."""
+
+    try:
+        return local_imports.list_imports(path)
+    except UnsafeStorageError:
+        raise _local_import_blocked() from None
+    except PermissionError:
+        raise _local_import_forbidden() from None
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid project path for local imports."
+        ) from None
+
+
+@app.get("/api/datasets/local/imports/{import_id}", response_model=LocalImportRecord)
+def get_local_import(
+    import_id: str, path: str, _auth: None = Depends(require_session_token)
+) -> LocalImportRecord:
+    """Return one local import record for the authorized project."""
+
+    try:
+        return local_imports.get_import(path, import_id)
+    except UnsafeStorageError:
+        raise _local_import_blocked() from None
+    except LocalImportNotFoundError:
+        raise _local_import_not_found() from None
+    except PermissionError:
+        raise _local_import_forbidden() from None
+    except ValueError:
+        raise _local_import_not_found() from None
+
+
+@app.post("/api/datasets/local/imports/{import_id}/cancel", response_model=LocalImportRecord)
+def cancel_local_import(
+    import_id: str,
+    payload: LocalImportPathRequest,
+    _auth: None = Depends(require_session_token),
+) -> LocalImportRecord:
+    """Signal a running local import scan to stop."""
+
+    try:
+        return local_imports.cancel_import(payload.path, import_id)
+    except UnsafeStorageError:
+        raise _local_import_blocked() from None
+    except LocalImportConflictError:
+        raise HTTPException(
+            status_code=409, detail="The local import cannot transition in its current state."
+        ) from None
+    except LocalImportNotFoundError:
+        raise _local_import_not_found() from None
+    except PermissionError:
+        raise _local_import_forbidden() from None
+    except ValueError:
+        raise _local_import_not_found() from None
+
+
+@app.post("/api/datasets/local/recover", response_model=list[LocalImportRecord])
+def recover_local_imports(
+    payload: LocalImportPathRequest,
+    _auth: None = Depends(require_session_token),
+) -> list[LocalImportRecord]:
+    """Reconcile local import records after a service restart."""
+
+    try:
+        return local_imports.recover_project(payload.path)
+    except UnsafeStorageError:
+        raise _local_import_blocked() from None
+    except PermissionError:
+        raise _local_import_forbidden() from None
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid project path for local import recovery."
+        ) from None
 
 
 @app.get("/api/datasets/{provider}/{dataset_id}/{snapshot}", response_model=CatalogEntry)
