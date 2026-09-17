@@ -28,6 +28,7 @@ from brainlearn_core.datasets import (
     migrate_dataset_lock_dict,
     migrate_local_import_dict,
     project_lock_from_catalog,
+    validate_https_url,
     validate_relative_path,
 )
 from brainlearn_core.downloads import (
@@ -97,6 +98,19 @@ from brainlearn_core.openneuro import (
     UrllibGraphQLTransport,
     map_openneuro_snapshot_to_catalog,
     parse_dataset_connection,
+)
+from brainlearn_core.pinned_integration import (
+    PINNED_INTEGRATION_SCHEMA_VERSION,
+    DriftCategory,
+    DriftDiagnostic,
+    PinnedDatasetManifest,
+    PinnedFile,
+    PinnedLimits,
+    UpstreamDriftError,
+    check_catalog_entry_drift,
+    check_lock_drift,
+    classify_upstream_exception,
+    get_pinned_integration_manifest,
 )
 from brainlearn_core.projects import (
     PREVIOUS_WORKFLOW_FILENAME,
@@ -208,6 +222,10 @@ __all__ = [
     "OPENNEURO_REDIRECT_POLICY",
     "OpenNeuroDownloadSource",
     "OpenNeuroProvider",
+    "PINNED_INTEGRATION_SCHEMA_VERSION",
+    "PinnedDatasetManifest",
+    "PinnedFile",
+    "PinnedLimits",
     "PREVIOUS_WORKFLOW_FILENAME",
     "PROVIDER_SCHEMA_VERSION",
     "ProviderDatasetRef",
@@ -217,6 +235,13 @@ __all__ = [
     "ProviderTimeout",
     "RangeUnsupportedError",
     "RedirectPolicy",
+    "DriftCategory",
+    "DriftDiagnostic",
+    "UpstreamDriftError",
+    "check_catalog_entry_drift",
+    "check_lock_drift",
+    "classify_upstream_exception",
+    "get_pinned_integration_manifest",
     "PRESENTATION_ACCENTS",
     "PRESENTATION_NOTES_MAX_LENGTH",
     "PRESENTATION_TITLE_MAX_LENGTH",
@@ -289,6 +314,7 @@ __all__ = [
     "ready_node_ids",
     "topological_order",
     "UrllibGraphQLTransport",
+    "validate_https_url",
     "validate_relative_path",
     "validate_workflow",
 ]

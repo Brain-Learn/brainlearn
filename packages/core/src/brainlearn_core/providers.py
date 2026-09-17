@@ -152,22 +152,30 @@ class MockDatasetProvider:
         delay_s: float = 0.0,
         fail_mode: Literal["none", "error", "timeout", "malformed"] = "none",
         error_message: str = "Mock provider failure.",
+        failures: Sequence[Exception] | None = None,
     ) -> None:
         self._entries: tuple[CatalogEntry | Mapping[str, Any], ...] = tuple(entries)
         self._provider_name = provider_name
         self._delay_s = delay_s
         self._fail_mode = fail_mode
         self._error_message = error_message
+        self._failures: list[Exception] = list(failures) if failures is not None else []
 
     @property
     def provider_name(self) -> str:
         return self._provider_name
+
+    def failures_remaining(self) -> int:
+        """How many scripted provider failures are still queued."""
+        return len(self._failures)
 
     async def _maybe_fail(self, what: str) -> None:
         if self._delay_s > 0:
             # Bare sleep: asyncio cancellation propagates to the caller
             # unchanged instead of becoming a provider error.
             await asyncio.sleep(self._delay_s)
+        if self._failures:
+            raise self._failures.pop(0)
         if self._fail_mode == "error":
             raise ProviderError(f"{self._error_message} ({what})")
         if self._fail_mode == "timeout":
