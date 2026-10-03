@@ -20,8 +20,8 @@ Provenance and limits are documented in ``docs/openneuro-provider.md``:
 - Only immutable snapshots (explicit ``tag``) are mapped, and only
   public ones. The pinned integration snapshot's exact license is the
   reviewed CC0 platform terms (see ``docs/dataset-contract.md``); other
-  datasets keep citation, checksums, and template compatibility pending
-  curator verification, and nothing infers approval for them.
+  snapshots with no explicit license keep licensing, citation, checksums,
+  and template compatibility pending curator verification.
 - File ``urls`` are never requested and transfer endpoints, credentials,
   tokens, cookies, and raw responses are never persisted.
 - Snapshot file bytes stream from
@@ -68,15 +68,12 @@ MAX_RESPONSE_BYTES = 1_000_000
 MAX_REQUEST_BYTES = 65_536
 MAX_OPENNEURO_PAGE = 25
 
-# Reviewed Step 5A.7 platform license: the OpenNeuro upload agreement
-# (https://docs.openneuro.org/faq.html) dedicates every public dataset to
-# the public domain under Creative Commons CC0, and each versioned snapshot
-# page embeds JSON-LD asserting the CC0 1.0 deed URL (rendered from
-# https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/
-# openneuro-app/src/scripts/utils/json-ld.js). The live adapter records
-# these reviewed terms exactly when the provider omits a License field; an
-# explicit provider License value still wins so dataset-specific licenses
-# survive. Nothing here treats accessibility as license evidence.
+# Reviewed Step 5A.7 license for OpenNeuro ds001037:00001: the upload
+# agreement (https://docs.openneuro.org/faq.html) makes public datasets
+# CC0 after its 36-month grace period, and this exact snapshot page embeds
+# JSON-LD asserting the CC0 1.0 deed URL. The adapter applies the reviewed
+# terms only to this exact snapshot when its description omits License;
+# other snapshots remain pending without dataset-specific evidence.
 OPENNEURO_REVIEWED_LICENSE_NAME = "CC0 1.0 Universal (Public Domain Dedication)"
 OPENNEURO_REVIEWED_LICENSE_SPDX = "CC0-1.0"
 OPENNEURO_REVIEWED_LICENSE_EVIDENCE_URL = "https://docs.openneuro.org/faq.html"
@@ -586,13 +583,23 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
             f"OpenNeuro {dataset_id}:{tag} provider license {license_name!r};"
             " reuse terms pending curator verification against the landing page."
         )
-    else:
-        # No provider License field: the reviewed OpenNeuro platform terms
-        # govern (CC0 public-domain dedication). See module docstring.
+    elif dataset_id == "ds001037" and tag == "00001":
+        # CC0 has been reviewed specifically for the pinned snapshot. Do not
+        # extend the inference to other snapshots: OpenNeuro's public-dataset
+        # terms include a 36-month grace period before CC0 applies.
         license_name = OPENNEURO_REVIEWED_LICENSE_NAME
         license_spdx = OPENNEURO_REVIEWED_LICENSE_SPDX
         reuse_statement = _OPENNEURO_REVIEWED_REUSE_TEMPLATE.format(
             dataset_ref=f"{dataset_id}:{tag}"
+        )
+    else:
+        # No explicit license and no snapshot-specific evidence: keep terms
+        # pending curator verification rather than inferring CC0 globally.
+        license_name = "Unverified OpenNeuro license (pending curator review)"
+        license_spdx = None
+        reuse_statement = (
+            f"OpenNeuro {dataset_id}:{tag} public metadata; reuse terms pending "
+            "curator verification against the snapshot landing page."
         )
     authors = description.get("Authors")
     author_note = ""

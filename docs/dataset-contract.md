@@ -224,17 +224,19 @@ snapshot from OpenNeuro:
   omits the `License` field, so the governing license is the OpenNeuro
   platform terms for public datasets: the upload agreement in the OpenNeuro
   FAQ (<https://docs.openneuro.org/faq.html>, "Are there any restrictions on
-  the uploaded data?") dedicates every public dataset to the public domain
-  under Creative Commons CC0, and the versioned snapshot page embeds
-  schema.org JSON-LD asserting
+  the uploaded data?") makes public datasets available under CC0 after a
+  36-month grace period, and the versioned snapshot page embeds schema.org
+  JSON-LD asserting
   `"license": "https://creativecommons.org/publicdomain/zero/1.0/"` for this
   exact tag (server-rendered from
   <https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/openneuro-app/src/scripts/utils/json-ld.js>).
   The evidence URL is recorded on the pin itself (`license_evidence_url`),
-  the runtime adapter records these reviewed terms whenever the provider
-  omits a License field, and catalog drift checks reject any divergence from
-  the reviewed name, SPDX identifier, and reuse statement. Public
-  accessibility was never treated as license evidence.
+  and the runtime adapter applies these reviewed terms only to the exact
+  `ds001037:00001` pin when its description omits a License field. Other
+  snapshots with an omitted License remain pending curator verification.
+  Catalog drift checks reject any divergence from the reviewed name, SPDX
+  identifier, and reuse statement. Public accessibility alone is not treated
+  as snapshot-specific license evidence.
 - **Members**: exactly 2 root files (`dataset_description.json` [83 bytes, SHA-256 `8cef746e8df99ef7a3efaf4b7f1cea7313f2d732b22abf609733fdf38584f400`] and `.gitattributes` [284 bytes, SHA-256 `9476689a1190b1b79c7a65a128f992a551d86f55236c939a74218973423fcdd1`]).
 - **Expected total bytes**: 367 bytes.
 - **Pinned catalog identity**: `brainlearn-v1:dataset:ce691f5aa592178b5a2fa6ce18271833ad9ed784a9223ecf18fd2cdc28e8f05c`

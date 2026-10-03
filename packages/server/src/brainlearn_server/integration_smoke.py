@@ -141,6 +141,19 @@ def _probe_offline_boundary_denies_opener() -> None:
     assert touched["opener_open"] == 1
 
 
+def _missing_lock_diagnostic(*, project_dir: Path, lock_parts: tuple[str, ...]) -> DriftDiagnostic:
+    """Build a missing-lock diagnostic without disclosing a local project path."""
+    # Keep project_dir in the signature to make the trust boundary explicit:
+    # callers know the local root, but diagnostics only expose relative parts.
+    del project_dir
+    return DriftDiagnostic(
+        category=DriftCategory.IDENTITY,
+        code="missing_lock",
+        message=f"Finalized dataset lock is missing or corrupt at {lock_parts}.",
+        details={"dataset": "/".join(lock_parts)},
+    )
+
+
 def _fail_on_call_provider(calls: dict[str, int]) -> DatasetProvider:
     """Provider double that records and raises on any provider call."""
 
@@ -363,12 +376,7 @@ def _execute_smoke_flow(
     lock = service._read_lock(project_dir, lock_parts)
     if lock is None or not isinstance(lock, DatasetLock):
         raise UpstreamDriftError(
-            DriftDiagnostic(
-                category=DriftCategory.IDENTITY,
-                code="missing_lock",
-                message=f"Finalized dataset lock is missing or corrupt at {lock_parts}.",
-                details={"project": str(project_dir)},
-            )
+            _missing_lock_diagnostic(project_dir=project_dir, lock_parts=lock_parts)
         )
 
     check_lock_drift(manifest, lock)

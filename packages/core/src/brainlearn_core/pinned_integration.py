@@ -143,16 +143,15 @@ class PinnedDatasetManifest(BaseModel):
 #
 # License review (Step 5A.7 monitoring repair, 2026-09-26): the snapshot's
 # own dataset_description.json omits the License field, so the license is
-# established by the OpenNeuro platform terms that govern every public
-# snapshot: the upload agreement in the OpenNeuro FAQ dedicates each dataset
-# to the public domain under Creative Commons CC0
+# established for this exact tag: the OpenNeuro FAQ says public datasets
+# become CC0 after a 36-month grace period
 # (https://docs.openneuro.org/faq.html, "Are there any restrictions on the
-# uploaded data?"), and the OpenNeuro snapshot page itself embeds schema.org
-# JSON-LD asserting "license": "https://creativecommons.org/publicdomain/
-# zero/1.0/" for every versioned snapshot (server-rendered from
+# uploaded data?"), and this snapshot page itself embeds schema.org JSON-LD
+# asserting "license": "https://creativecommons.org/publicdomain/zero/1.0/"
+# (server-rendered from
 # https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/
 # openneuro-app/src/scripts/utils/json-ld.js). The reuse statement carries
-# that evidence URL so a curator can re-check it against this exact tag.
+# the evidence URL so a curator can re-check it against this exact tag.
 _PINNED_DS001037_DATA: dict[str, Any] = {
     "schema_version": "1.0",
     "provider": OPENNEURO_PROVIDER,

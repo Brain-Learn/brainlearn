@@ -349,6 +349,34 @@ def test_live_resolved_entry_carries_reviewed_license() -> None:
     )
 
 
+def test_unreviewed_openneuro_snapshots_keep_license_pending() -> None:
+    """CC0 inference is limited to the specifically reviewed immutable pin."""
+
+    other_dataset = _make_sample_entry(dataset_id="ds000001", snapshot="00001")
+    other_snapshot = _make_sample_entry(dataset_id="ds001037", snapshot="00002")
+
+    for entry in (other_dataset, other_snapshot):
+        assert entry.license_name == "Unverified OpenNeuro license (pending curator review)"
+        assert entry.license_spdx is None
+        assert "pending curator verification" in entry.reuse_statement
+
+
+def test_missing_lock_diagnostic_never_includes_project_path(tmp_path: Path) -> None:
+    """CI diagnostics for a missing lock contain no absolute project location."""
+
+    from brainlearn_server.integration_smoke import _missing_lock_diagnostic
+
+    diagnostic = _missing_lock_diagnostic(
+        project_dir=tmp_path / "private-user-data",
+        lock_parts=("datasets", "openneuro", "ds001037", "00001"),
+    )
+    encoded = diagnostic.model_dump_json()
+    assert diagnostic.code == "missing_lock"
+    assert "datasets/openneuro/ds001037/00001" in encoded
+    assert str(tmp_path) not in encoded
+    assert "/Users/" not in encoded
+
+
 def test_no_socket_in_offline_tests() -> None:
     """Ordinary tests must open no real network socket.
 
