@@ -86,6 +86,24 @@ class BidsMetadataError(ValueError):
     """A candidate metadata file cannot be read or parsed safely."""
 
 
+def _bounded_entries(directory: Path, *, metadata: bool = False) -> list[Path]:
+    entries: list[Path] = []
+    try:
+        with os.scandir(directory) as iterator:
+            for entry in iterator:
+                if len(entries) >= MAX_DISCOVERY_ENTRIES:
+                    message = "The directory has too many entries to scan safely."
+                    if metadata:
+                        raise BidsMetadataError(message)
+                    raise BidsDatasetPathError(message)
+                entries.append(Path(entry.path))
+    except OSError as exc:
+        if metadata:
+            raise BidsMetadataError("Dataset directory could not be read safely.") from exc
+        raise BidsDatasetPathError("The selected dataset directory cannot be read.") from exc
+    return sorted(entries, key=lambda item: item.name)
+
+
 def _read_metadata(path: Path, limit: int) -> bytes:
     """Read one bounded regular file without following a leaf symlink."""
 
@@ -165,10 +183,7 @@ def _metadata_candidates(
     candidates: list[tuple[int, int, str, Path]] = []
     current = recording_dir
     while True:
-        try:
-            entries = sorted(current.iterdir(), key=lambda item: item.name)
-        except OSError as exc:
-            raise BidsMetadataError("Dataset directory could not be read safely.") from exc
+        entries = _bounded_entries(current, metadata=True)
         for item in entries:
             if not item.name.endswith(f"_{suffix}{extension}"):
                 continue
@@ -232,23 +247,10 @@ def _finite_number(value: object) -> float | None:
     return numeric if math.isfinite(numeric) else None
 
 
-def _normalize_task_name(value: str) -> str:
-    return re.sub(r"[^0-9a-z]", "", value.casefold())
-
-
 def _find_recording_dirs(root: Path) -> list[tuple[str, str | None, Path]]:
     found: list[tuple[str, str | None, Path]] = []
-    try:
-        subjects = sorted(root.iterdir(), key=lambda item: item.name)
-    except OSError as exc:
-        raise BidsDatasetPathError("The selected dataset directory cannot be read.") from exc
-    visited = 0
+    subjects = _bounded_entries(root)
     for subject_dir in subjects:
-        visited += 1
-        if visited > MAX_DISCOVERY_ENTRIES:
-            raise BidsDatasetPathError(
-                "The selected dataset has too many directory entries to scan."
-            )
         if not subject_dir.name.startswith("sub-"):
             continue
         if subject_dir.is_symlink():
@@ -258,10 +260,7 @@ def _find_recording_dirs(root: Path) -> list[tuple[str, str | None, Path]]:
         subject = subject_dir.name.removeprefix("sub-")
         if not subject or "_" in subject:
             continue
-        try:
-            children = sorted(subject_dir.iterdir(), key=lambda item: item.name)
-        except OSError as exc:
-            raise BidsDatasetPathError("A BIDS subject directory cannot be read.") from exc
+        children = _bounded_entries(subject_dir)
         eeg_dir = subject_dir / "eeg"
         if eeg_dir.exists() or eeg_dir.is_symlink():
             if eeg_dir.is_symlink():
@@ -291,10 +290,7 @@ def _recording_candidates(
     root: Path, directory: Path, subject: str, session: str | None
 ) -> list[tuple[Path, dict[str, str], str | None, list[BidsEegIssue]]]:
     result: list[tuple[Path, dict[str, str], str | None, list[BidsEegIssue]]] = []
-    try:
-        entries = sorted(directory.iterdir(), key=lambda item: item.name)
-    except OSError as exc:
-        raise BidsDatasetPathError("A BIDS EEG directory cannot be read.") from exc
+    entries = _bounded_entries(directory)
     for entry in entries:
         if entry.is_symlink():
             if entry.stem.endswith(_EEG_SUFFIX) and entry.suffix.lower() not in {
@@ -330,17 +326,17 @@ def _recording_candidates(
         if entities.get("ses") != session:
             continue
         task = entities.get("task")
-        if not task:
-            issue = BidsEegIssue(
-                code="missing_task_entity",
-                message="EEG recording filenames must include a task entity.",
-                path=entry.relative_to(root).as_posix(),
-            )
-            result.append((entry, entities, None, [issue]))
-            continue
-        extension = entry.suffix.lower()
-        file_format = _SUPPORTED_EEG_EXTENSIONS.get(extension)
         issues: list[BidsEegIssue] = []
+        if not task:
+            issues.append(
+                BidsEegIssue(
+                    code="missing_task_entity",
+                    message="EEG recording filenames must include a task entity.",
+                    path=entry.relative_to(root).as_posix(),
+                )
+            )
+        extension = entry.suffix
+        file_format = _SUPPORTED_EEG_EXTENSIONS.get(extension)
         if not file_format:
             issues.append(
                 BidsEegIssue(
@@ -535,17 +531,6 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                         path=relative,
                     )
                 )
-            elif task_name.strip() != task:
-                if _normalize_task_name(task_name.strip()) != _normalize_task_name(task):
-                    recording_issues.append(
-                        BidsEegIssue(
-                            code="task_name_mismatch",
-                            message=(
-                                "TaskName in EEG metadata does not match the filename task entity."
-                            ),
-                            path=relative,
-                        )
-                    )
             power_line_frequency = metadata.get("PowerLineFrequency")
             if power_line_frequency != "n/a":
                 numeric_power_line = _finite_number(power_line_frequency)
@@ -622,14 +607,20 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 try:
                     event_rows = _read_tsv(events_files[-1], required=("onset", "duration"))
                     for row in event_rows:
+                        onset_text = row["onset"].strip()
+                        duration_text = row["duration"].strip()
                         try:
-                            onset = float(row["onset"])
-                            duration = float(row["duration"])
+                            onset = None if onset_text.casefold() == "n/a" else float(onset_text)
+                            duration = (
+                                None if duration_text.casefold() == "n/a" else float(duration_text)
+                            )
                         except ValueError as exc:
                             raise BidsMetadataError(
-                                "Event onset and duration values must be numeric."
+                                "Event onset and duration values must be numeric or 'n/a'."
                             ) from exc
-                        if not math.isfinite(onset) or not math.isfinite(duration) or duration < 0:
+                        if (onset is not None and not math.isfinite(onset)) or (
+                            duration is not None and (not math.isfinite(duration) or duration < 0)
+                        ):
                             raise BidsMetadataError(
                                 "Event timing values must be finite and duration non-negative."
                             )

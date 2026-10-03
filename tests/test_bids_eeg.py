@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from brainlearn_server import bids_eeg as bids_eeg_module
 from brainlearn_server import project_store as store_module
 from brainlearn_server.app import app, store
 from brainlearn_server.auth import reset_session_token_for_tests
@@ -153,10 +154,72 @@ def test_reports_missing_and_malformed_required_metadata(tmp_path: Path):
     assert {
         "invalid_sampling_frequency",
         "missing_eeg_reference",
-        "task_name_mismatch",
         "invalid_power_line_frequency",
         "invalid_software_filters",
     } <= codes
+
+
+def test_accepts_unknown_event_timing_and_independent_task_name(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    sidecar = root / "sub-01" / "eeg" / "sub-01_task-Rest_eeg.json"
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    metadata["TaskName"] = "Eyes Closed Rest"
+    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+    events = root / "sub-01" / "eeg" / "sub-01_task-Rest_events.tsv"
+    events.write_text(
+        "onset\tduration\ttrial_type\nn/a\tn/a\tunknown\n",
+        encoding="utf-8",
+    )
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    assert result.status == "ready"
+    assert result.recordings[0].event_count == 1
+    assert result.recordings[0].event_types == ("unknown",)
+    assert "task_name_mismatch" not in {issue.code for issue in result.recordings[0].issues}
+
+
+def test_rejects_uppercase_bids_recording_extension(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root, extension=".EDF")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    assert result.status == "unsupported"
+    assert result.recordings[0].status == "unsupported"
+    assert result.recordings[0].format is None
+    assert "unsupported_format" in {issue.code for issue in result.recordings[0].issues}
+
+
+def test_missing_task_entity_is_incomplete_not_unsupported(tmp_path: Path):
+    _, root = _project(tmp_path)
+    recording = _write_valid_dataset(root)
+    recording.rename(recording.with_name("sub-01_eeg.edf"))
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    assert result.status == "incomplete_metadata"
+    assert result.recordings[0].format == "edf"
+    assert result.recordings[0].status == "incomplete_metadata"
+    assert "missing_task_entity" in {issue.code for issue in result.recordings[0].issues}
+
+
+def test_directory_entry_limit_returns_clear_incomplete_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _, root = _project(tmp_path)
+    root.mkdir(parents=True)
+    (root / "dataset_description.json").write_text(
+        '{"Name":"Bounded","BIDSVersion":"1.2.0"}', encoding="utf-8"
+    )
+    (root / "sub-01").mkdir()
+    monkeypatch.setattr(bids_eeg_module, "MAX_DISCOVERY_ENTRIES", 1)
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    assert result.status == "incomplete_metadata"
+    assert "unsafe_dataset_tree" in {issue.code for issue in result.issues}
 
 
 def test_reports_unsupported_format_and_incomplete_brainvision_set(tmp_path: Path):
