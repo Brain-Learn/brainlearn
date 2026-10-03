@@ -899,7 +899,7 @@ test("a pending quiet stream cannot mutate state after a project switch", async 
   );
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await waitFor(() => expect(screen.getAllByText("run-a")).toHaveLength(2));
-  expect(streamSignals).toHaveLength(1);
+  await waitFor(() => expect(streamSignals).toHaveLength(1));
   expect(streamSignals[0].aborted).toBe(false);
 
   fireEvent.change(screen.getByLabelText("Project folder"), {
