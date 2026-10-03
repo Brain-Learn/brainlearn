@@ -127,7 +127,7 @@ Goal: acquire a pinned public dataset safely from the UI and introduce the first
 - [x] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
 - [x] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
 - [x] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
-- [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
+- [x] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
 - [ ] Add MNE-Python and MNE-BIDS as an optional, pinned EEG dependency group.
 - [ ] Record upstream versions, licenses, citations, and installation status in node metadata.
 - [ ] Implement BIDS EEG discovery and essential metadata validation.
@@ -432,30 +432,20 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-03 | Step 5A.7 final monitor findings repaired | Verified; independent final checkout review pending | Removed the local project root from missing-lock diagnostics; the diagnostic now exposes only the validated relative dataset path, with a regression using a private temporary root. Restricted the CC0 mapping exception to the exact reviewed `ds001037:00001` pin; unreviewed datasets/tags remain pending when `License` is absent. Updated the OpenNeuro provider and dataset contract docs to record the 36-month grace period and exact-snapshot evidence; corrected the pinned manifest explanation. Full local gate: Ruff passed; format checked 67 files; strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in skips, 2 upstream warnings (34.31s); ESLint and Prettier passed; Vitest passed 161 tests in 17 files; production build passed (1,844 modules); production audit found 0 vulnerabilities; focused regression tests passed 3 tests; opt-in live OpenNeuro smoke passed (1 test, 3.06s); `git diff --check` passed. Step 5A.7 checkbox remains unchecked until monitoring approval. | PR #13 additional repair |
 | 2026-10-03 | Step 5A.7 final monitored gate | Complete | Independent review of PR #13 head `52e3014` against `9d3e274` verified all six monitored findings fixed: diagnostics omit exception text and project roots; CC0 inference applies only to the exact reviewed snapshot and its evidence; the actual production opener and sockets are blocked during offline reopen; the JSON fixture matches the runtime pin; and provider docs match runtime behavior. No blockers remain. Clean-checkout completion gate at `52e3014`: Ruff passed; format checked 67 files; strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in skips, 2 upstream warnings (35.14s); ESLint and Prettier passed; Vitest passed 161 tests in 17 files; production build passed (1,844 modules); production audit found 0 vulnerabilities; `git diff --check` passed. The opt-in live integration smoke passed (1 test, 2.74s). Both required hosted checks passed in GitHub Actions run `37118433673`. The monitor approved Step 5A.7; Step 5 remains open and Step 5A.8 is now next. | Monitored review complete on PR #13 |
+| 2026-10-03 | Step 5A.8 BIDS EEG fixture selection | Verified; PR re-review pending | Selected OpenNeuro `ds002181:1.0.0` (snapshot tree `2ec6d5319a5ccd9b4fb45bebb07a30fe743b1810`; CC0-1.0 supported by the exact snapshot's `License: CC0` metadata and OpenNeuro's 36-month policy). Documented five source files totaling 697,051 bytes, stable object/S3 version URLs, byte counts, SHA-256 digests, the associated publication DOI, and the source's non-resolving `mockDOI` limitation. After monitor review found a symlink-escape/overwrite risk and redirect validation occurred after contact, the helper now rejects symlink path components, never replaces an existing file, and blocks off-allowlist redirect targets before following them. Three focused regressions passed; re-running the helper verified all five live snapshot files and accepted the unchanged verified files on a second run. Full gate after repair: `uv run ruff check .` passed; `uv run ruff format --check .` passed (70 files); `uv run mypy` passed (28 source files); `uv run pytest -q` passed (726 passed, 2 skipped, 2 upstream deprecation warnings, 33.48s); frontend ESLint and Prettier checks passed; Vitest passed (161 tests in 17 files); production build passed (1,844 modules); `npm audit --omit=dev` found 0 vulnerabilities; `git diff --check` passed. Step 5 remains unchecked pending monitored review; Step 5A.9 and all scientific processing work were not started. | PR #15 re-review |
+
+| 2026-10-03 | Step 5A.8 final monitored gate | Complete | Independent clean-checkout review of PR #15 head `5310fc1` against `4c7efa0` confirmed the symlink traversal, overwrite, and off-allowlist redirect findings are fixed; three regressions cover those cases. The monitor rechecked source metadata, exact CC0 evidence, citation and `mockDOI` caveat, all source URLs, member paths, sizes, and SHA-256 values, and fetched all five files to a fresh temporary directory. Clean-checkout gate with Python 3.12: Ruff passed; formatting passed for 70 files; mypy passed for 28 source files; pytest passed 726, 2 opt-in skips, and 2 upstream warnings (34.95s); ESLint and Prettier passed; Vitest passed 161 tests in 17 files; production build passed (1,844 modules); production audit found 0 vulnerabilities; `git diff --check` passed. Both hosted checks passed in run `37122628393`. Step 5A.8 is approved; Step 5 remains unchecked. Step 5A.9 is next. | Monitored review complete on PR #15 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5A.8 — select and document a small licensed BIDS EEG fixture
+### Step 5A.9 — add optional pinned EEG dependencies
 
-Implement only the next checklist item: select a small, licensed BIDS EEG
-fixture or document a reproducible retrieval process. Record the exact
-provider/source, immutable snapshot, license evidence, citation, member paths,
-byte counts, and checksums. Keep data out of ordinary Git unless it is tiny,
-redistributable, and explicitly approved for bundling. Do not add MNE/MNE-BIDS,
-BIDS discovery, signal inspection, processing nodes, credentials, or later
-Step 5 work.
-
-1. Prefer an openly accessible, genuinely small BIDS EEG dataset whose exact
-   license and snapshot can be verified from authoritative source material.
-2. If the dataset is too large to bundle, document a deterministic retrieval
-   command or script pinned to an immutable snapshot, with expected files,
-   sizes, SHA-256 values, citation, license, and source URLs.
-3. Do not treat public accessibility as license evidence. Keep private or
-   restricted data out of the fixture and document any exclusions or limits.
-4. Add only the fixture/retrieval manifest and documentation needed for the
-   next Step 5A checklist item; do not implement scientific processing.
-5. Run the full repository gate, append exact evidence, commit and push one
-   scoped branch, and deliver the result through a ready-for-review PR.
+Implement only the next unchecked checklist item: add MNE-Python and MNE-BIDS
+as an optional, pinned EEG dependency group. Do not add node metadata changes,
+BIDS discovery, signal inspection, processing nodes, or later Step 5 work in
+this unit. Run the full repository gate, append exact evidence, and deliver the
+change through one ready-for-review PR. Step 5 remains open until its full
+scientific completion gate and monitoring review are complete.

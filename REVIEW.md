@@ -211,3 +211,47 @@ Step 5A.7 is approved and checked. Step 5 remains open. The next bounded work
 unit is Step 5A.8: select and document a small licensed BIDS EEG fixture or a
 reproducible retrieval process with exact snapshot and checksums. No scientific
 processing assumptions were introduced.
+
+## Step 5A.8 initial monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #15 initial head `24fa992`, compact BIDS EEG fixture retrieval.
+
+Status: **changes requested**. The fixture and provenance claims checked out,
+but the retrieval helper had two safety defects: an existing symlink in the
+destination path could redirect writes outside that directory and replace
+existing files, and it followed redirects before validating the target host.
+The monitor reproduced the live five-file hashes, exact snapshot metadata,
+CC0 evidence, and associated paper citation. The implementer repaired both
+issues on the same PR branch and added regression tests for symlink rejection,
+no-overwrite behavior, and redirect rejection before follow-up contact.
+
+## Step 5A.8 final monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #15 final head `5310fc1`, compared with `4c7efa0`.
+
+Status: **approved**. Re-review confirmed that all initial findings are fixed:
+the helper rejects every existing symlink path component; verified files are
+accepted only when size and digest match; differing existing paths are never
+replaced; atomic installation uses a same-directory hard link; and redirect
+hosts are validated before urllib follows them. Three focused regressions
+cover the symlink, overwrite, and redirect cases. The manifest and docs agree
+with the immutable OpenNeuro snapshot, CC0 policy evidence, file paths, byte
+counts, SHA-256 digests, and valid associated publication DOI. The source's
+`mockDOI` placeholder is explicitly not treated as a citation identifier.
+
+The monitor reproduced the full gate in a clean Python 3.12 checkout at
+`5310fc1`: Ruff passed; formatting passed for 70 files; mypy passed for 28
+source files; pytest passed 726 tests, 2 opt-in tests skipped, and 2 upstream
+deprecation warnings in 34.95 seconds; ESLint and Prettier passed; Vitest
+passed 161 tests in 17 files; production build passed with 1,844 modules;
+production audit found 0 vulnerabilities; and `git diff --check` passed. A
+fresh live retrieval verified all five files' sizes and SHA-256 digests. Both
+required hosted checks passed in GitHub Actions run `37122628393`.
+
+Step 5A.8 is approved and checked. Step 5 remains open. The next bounded work
+unit is Step 5A.9: add MNE-Python and MNE-BIDS as an optional, pinned EEG
+dependency group. No signal processing or BIDS discovery behavior was added.
