@@ -178,3 +178,36 @@ clean diff check. Both required hosted CI jobs are green on `a298a81`. The
 opt-in live smoke also passed independently in 2.60 seconds. Passing gates do
 not cover the four probes above. PR #13 remains open; Step 5A.7 stays unchecked
 and Step 5A.8 must not begin.
+
+## Step 5A.7 final monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #13 final head `52e3014`, compared with `9d3e274`.
+
+Status: **approved**. The four original blockers are resolved: diagnostics
+never copy untrusted exception text; the pinned snapshot carries reviewed CC0
+terms with evidence; offline reopening blocks both the production OpenNeuro
+opener and sockets and proves zero provider/source calls; and the reviewed JSON
+fixture is validated against the runtime manifest. A second review found and
+the branch repaired two more issues before approval: the missing-lock
+diagnostic had included an absolute project root, and the initial CC0 mapping
+inference was broader than the exact reviewed snapshot. The diagnostic now
+contains only a relative dataset path, the CC0 exception is limited to
+`ds001037:00001`, other unreviewed snapshots remain pending, and the provider
+documentation describes the 36-month grace period consistently. The pin
+comments now cite evidence for this exact tag.
+
+Independent clean-checkout review found no remaining blockers. The complete
+gate was reproduced at `52e3014`: Ruff passed; formatting passed for 67 files;
+strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in tests
+skipped, and 2 upstream warnings in 35.14 seconds; ESLint and Prettier passed;
+Vitest passed 161 tests in 17 files; production build passed with 1,844 modules;
+production audit found 0 vulnerabilities; and `git diff --check` passed. The
+opt-in live OpenNeuro smoke passed in 2.74 seconds. Both required hosted CI
+checks passed in run `37118433673`.
+
+Step 5A.7 is approved and checked. Step 5 remains open. The next bounded work
+unit is Step 5A.8: select and document a small licensed BIDS EEG fixture or a
+reproducible retrieval process with exact snapshot and checksums. No scientific
+processing assumptions were introduced.

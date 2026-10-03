@@ -126,7 +126,7 @@ Goal: acquire a pinned public dataset safely from the UI and introduce the first
 - [x] Download through the local Python service into the authorized project with persisted progress, bounded retry, cancellation/resume, disk-space checks, checksum verification, and atomic finalization.
 - [x] Harden redirects and archive extraction against unapproved hosts, traversal, symlinks, excessive expansion, and writes outside the dataset root; never persist credentials in project records or logs.
 - [x] Preserve local/private dataset import as an equal offline path and record an immutable local dataset identity.
-- [ ] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
+- [x] Add deterministic mock-provider tests plus a tiny pinned scheduled integration download; keep large datasets out of ordinary CI and Git.
 - [ ] Select and document a small licensed BIDS EEG fixture or reproducible retrieval process with checksum and exact snapshot.
 - [ ] Add MNE-Python and MNE-BIDS as an optional, pinned EEG dependency group.
 - [ ] Record upstream versions, licenses, citations, and installation status in node metadata.
@@ -431,39 +431,31 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-03 | Step 5A.7 repair verification rerun | Verified; re-review pending | Reproduced the full local gate on the repair working tree: `uv run ruff check .` passed; `uv run ruff format --check .` passed (67 files); `uv run mypy` passed (28 source files); `uv run pytest -q` passed (721 passed, 2 opt-in skips, 2 upstream warnings in 33.18s); frontend ESLint and Prettier checks passed; Vitest passed (161 tests in 17 files); production build passed (1,844 modules); `npm audit --omit=dev` found 0 vulnerabilities; `git diff --check main...HEAD` and working-tree `git diff --check` passed. Opt-in live OpenNeuro smoke `BRAINLEARN_INTEGRATION_SMOKE=1 uv run pytest -q tests/test_pinned_integration.py -k test_live_pinned_integration_download_smoke -vv` passed (1 passed in 2.50s), resolving, downloading, verifying, and reopening `ds001037:00001` offline. PR #13 remains open; its currently green hosted checks are still on the pre-repair commit and must rerun after push. The Step 5A.7 checkbox remains unchecked for monitored re-review; Step 5A.8 was not started. | Repair verification complete; PR #13 push and re-review pending |
 
 | 2026-10-03 | Step 5A.7 final monitor findings repaired | Verified; independent final checkout review pending | Removed the local project root from missing-lock diagnostics; the diagnostic now exposes only the validated relative dataset path, with a regression using a private temporary root. Restricted the CC0 mapping exception to the exact reviewed `ds001037:00001` pin; unreviewed datasets/tags remain pending when `License` is absent. Updated the OpenNeuro provider and dataset contract docs to record the 36-month grace period and exact-snapshot evidence; corrected the pinned manifest explanation. Full local gate: Ruff passed; format checked 67 files; strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in skips, 2 upstream warnings (34.31s); ESLint and Prettier passed; Vitest passed 161 tests in 17 files; production build passed (1,844 modules); production audit found 0 vulnerabilities; focused regression tests passed 3 tests; opt-in live OpenNeuro smoke passed (1 test, 3.06s); `git diff --check` passed. Step 5A.7 checkbox remains unchecked until monitoring approval. | PR #13 additional repair |
+| 2026-10-03 | Step 5A.7 final monitored gate | Complete | Independent review of PR #13 head `52e3014` against `9d3e274` verified all six monitored findings fixed: diagnostics omit exception text and project roots; CC0 inference applies only to the exact reviewed snapshot and its evidence; the actual production opener and sockets are blocked during offline reopen; the JSON fixture matches the runtime pin; and provider docs match runtime behavior. No blockers remain. Clean-checkout completion gate at `52e3014`: Ruff passed; format checked 67 files; strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in skips, 2 upstream warnings (35.14s); ESLint and Prettier passed; Vitest passed 161 tests in 17 files; production build passed (1,844 modules); production audit found 0 vulnerabilities; `git diff --check` passed. The opt-in live integration smoke passed (1 test, 2.74s). Both required hosted checks passed in GitHub Actions run `37118433673`. The monitor approved Step 5A.7; Step 5 remains open and Step 5A.8 is now next. | Monitored review complete on PR #13 |
 
 ## Next assignment
 
-Read `AGENTS.md`, `REVIEW.md`, `docs/dataset-contract.md`, and this plan before
-acting. Preserve every completion-log row.
+Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
+Preserve every completion-log row.
 
-### Step 5A.7 — deterministic provider tests and pinned integration smoke
+### Step 5A.8 — select and document a small licensed BIDS EEG fixture
 
-Implement only the next checklist item: add deterministic mock-provider tests
-plus one tiny pinned scheduled integration download. Keep large datasets out of
-ordinary CI and Git. Do not begin fixture selection for BIDS EEG, add
-MNE/MNE-BIDS, implement BIDS discovery or signal inspection, add credentials,
-or start later Step 5 work.
+Implement only the next checklist item: select a small, licensed BIDS EEG
+fixture or document a reproducible retrieval process. Record the exact
+provider/source, immutable snapshot, license evidence, citation, member paths,
+byte counts, and checksums. Keep data out of ordinary Git unless it is tiny,
+redistributable, and explicitly approved for bundling. Do not add MNE/MNE-BIDS,
+BIDS discovery, signal inspection, processing nodes, credentials, or later
+Step 5 work.
 
-1. Keep pull-request and ordinary `main` CI fully offline. Extend the existing
-   deterministic provider/source doubles only where needed to cover the complete
-   public retrieval contract, including immutable resolution, pagination,
-   retry/timeout/error behavior, cancellation/resume, checksum refusal, and
-   successful offline reopening.
-2. Select one genuinely tiny, openly accessible integration object from the
-   already supported public provider path. Pin the exact provider, dataset,
-   immutable snapshot, expected member path and byte count, SHA-256, license,
-   citation, and upstream URL in a reviewed manifest or fixture. Do not commit
-   downloaded dataset bytes.
-3. Add a scheduled and manually dispatchable trusted GitHub Actions smoke job.
-   It must use strict time, redirect, download, extraction, file-count, and byte
-   limits; require no credentials; verify the pinned digest and resulting lock;
-   prove the downloaded record can be reopened without network access; use
-   minimal permissions; and upload only small diagnostic logs on failure.
-4. Make upstream drift fail closed with a concise, secret-free diagnostic that
-   distinguishes availability, schema, identity, and checksum failures. The
-   scheduled smoke must never mutate the pin automatically or weaken ordinary CI.
-5. Run the complete local gate, append exact evidence, leave the deterministic
-   mock/pinned-integration checkbox unchecked for monitoring, commit and push one
-   scoped branch, open a ready-for-review PR, and request re-review on that same
-   PR for any repairs.
+1. Prefer an openly accessible, genuinely small BIDS EEG dataset whose exact
+   license and snapshot can be verified from authoritative source material.
+2. If the dataset is too large to bundle, document a deterministic retrieval
+   command or script pinned to an immutable snapshot, with expected files,
+   sizes, SHA-256 values, citation, license, and source URLs.
+3. Do not treat public accessibility as license evidence. Keep private or
+   restricted data out of the fixture and document any exclusions or limits.
+4. Add only the fixture/retrieval manifest and documentation needed for the
+   next Step 5A checklist item; do not implement scientific processing.
+5. Run the full repository gate, append exact evidence, commit and push one
+   scoped branch, and deliver the result through a ready-for-review PR.
