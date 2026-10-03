@@ -17,6 +17,14 @@ uv sync --all-packages
 npm --prefix apps/web install
 ```
 
+The pinned MNE-Python and MNE-BIDS dependencies are optional and are not
+installed by the default development setup. Install them when working on the
+EEG integration with:
+
+```bash
+uv sync --all-packages --group eeg
+```
+
 The generated `uv.lock` and `apps/web/package-lock.json` should remain committed so a clean checkout resolves the reviewed dependency set.
 
 ## Run
