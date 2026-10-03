@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "provider": "OpenNeuro",
+  "dataset_id": "ds002181",
+  "snapshot": "1.0.0",
+  "snapshot_created": "2019-09-27T17:33:40Z",
+  "snapshot_tree_sha1": "2ec6d5319a5ccd9b4fb45bebb07a30fe743b1810",
+  "title": "CRYPTO and PROVIDE EEG Baseline Data",
+  "modality": "eeg",
+  "bids_version": "1.2",
+  "snapshot_landing_page": "https://openneuro.org/datasets/ds002181/versions/1.0.0",
+  "snapshot_metadata_api": "https://openneuro.org/crn/graphql",
+  "snapshot_total_bytes": 158221569,
+  "snapshot_file_count": 1134,
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "spdx": "CC0-1.0",
+    "evidence": [
+      {
+        "url": "https://openneuro.org/crn/graphql",
+        "claim": "The exact snapshot metadata returns dataset_description.License=CC0 and was created on 2019-09-27."
+      },
+      {
+        "url": "https://docs.openneuro.org/user_guide.html",
+        "claim": "OpenNeuro requires public datasets to be released under CC0 at publication or after a 36-month grace period from first snapshot creation."
+      }
+    ]
+  },
+  "citations": [
+    {
+      "kind": "dataset",
+      "text": "Xie, W., Jensen, S. K. G., Wade, M., Kumar, S., Westerlund, A., Kakon, S. H., Haque, R., Petri, W. A., & Nelson, C. A. (2019). CRYPTO and PROVIDE EEG Baseline Data. OpenNeuro, ds002181, version 1.0.0.",
+      "doi": null,
+      "url": "https://openneuro.org/datasets/ds002181/versions/1.0.0",
+      "note": "The snapshot's DatasetDOI field is the non-resolving placeholder 'mockDOI'; no OpenNeuro dataset DOI is asserted here."
+    },
+    {
+      "kind": "associated_publication",
+      "text": "Xie, W., Jensen, S. K. G., Wade, M., Kumar, S., Westerlund, A., Kakon, S. H., Haque, R., Petri, W. A., & Nelson, C. A. (2019). Growth faltering is associated with altered brain functional connectivity and cognitive outcomes in urban Bangladeshi children exposed to early adversity. BMC Medicine, 17, 199.",
+      "doi": "10.1186/s12916-019-1431-5",
+      "url": "https://doi.org/10.1186/s12916-019-1431-5"
+    }
+  ],
+  "fixture": {
+    "description": "One raw EEG recording with its BIDS dataset description and recording sidecars. Source bytes are not stored in this repository.",
+    "expected_total_bytes": 697051,
+    "files": [
+      {
+        "path": "dataset_description.json",
+        "byte_size": 379,
+        "sha256": "02120902abf903e6eb3ffd001b2bba8720023a1e21946d38b3ab4ddbd491daad",
+        "source_url": "https://openneuro.org/crn/datasets/ds002181/objects/07684289728c35bd2057d66a52f5c04f2e6497b1?filename=dataset_description.json"
+      },
+      {
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_channels.tsv",
+        "byte_size": 1934,
+        "sha256": "6cc38eb82a7d632a94b077d26a7e31904f44e6152d386ce2d40b6f1422d26cab",
+        "source_url": "https://openneuro.org/crn/datasets/ds002181/objects/31f98a78919a13fbbf54221f9c4ddce341a3d46d?filename=sub-1473_task-Baseline_channels.tsv"
+      },
+      {
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_eeg.json",
+        "byte_size": 613,
+        "sha256": "2abb9356b1f752b4f947a4bf90f3d18643527d7e0d81c4b2ccb633ef57bc5df2",
+        "source_url": "https://openneuro.org/crn/datasets/ds002181/objects/113e99e439460900463b605f5712c71a4cfa4dc9?filename=sub-1473_task-Baseline_eeg.json"
+      },
+      {
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_eeg.set",
+        "byte_size": 693168,
+        "sha256": "123900cfe3b81528f63f24292dc1d1207d05ad17d9b44324e16fed7d0fe31fe2",
+        "source_url": "https://s3.amazonaws.com/openneuro.org/ds002181/sub-1473/eeg/sub-1473_task-Baseline_eeg.set?versionId=7QFDmTz0U5beNA3MDN5E1OvszMczsuL2"
+      },
+      {
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_events.tsv",
+        "byte_size": 957,
+        "sha256": "86cbb325e4b070ece0a9ceed09dcc049eb59167d2327f2a07eeb38a4ee561634",
+        "source_url": "https://openneuro.org/crn/datasets/ds002181/objects/ea9cf3f5280c86f2c8e88cf468cbe3a9295f8521?filename=sub-1473_task-Baseline_events.tsv"
+      }
+    ]
+  },
+  "limitations": [
+    "This five-file subset is intended as a retrieval and later technical-analysis fixture; it is not a standalone redistribution of the full study dataset.",
+    "The source study contains EEG recordings from infants and young children. Do not use this fixture for diagnosis, treatment, participant scoring, or clinical claims.",
+    "The subset omits the full-cohort participants.tsv and other recordings, so it cannot support cohort-level or population analyses.",
+    "The stored .set recording is unprocessed source data; no signal interpretation or processing result is asserted."
+  ]
+}
