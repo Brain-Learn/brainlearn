@@ -282,3 +282,41 @@ were rerun after the monitor-owned evidence update before merge.
 Step 5A.9 is approved and checked. Step 5 remains open; the next bounded item
 is recording upstream versions, licenses, citations, and installation status
 in node metadata. No scientific processing assumptions or claims were added.
+
+## Step 5A.10 final monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #17 final head `93e9ab6`, compared with `abb32c4`.
+
+Status: **approved**. The full diff stays within Step 5A.10: NodeManifest
+contract 1.1 adds strict software dependency metadata; the registry records
+MNE-Python 1.13.2 and MNE-BIDS 0.20.0 with their BSD-3-Clause licenses and
+software citations; and the inspector reports package metadata status and its
+limits. The exact versions and licenses match the published packages, and the
+MNE-Python and MNE-BIDS citations match their canonical upstream records.
+Package mapping is coherent: the BIDS input and signal-inspection nodes list
+both packages, planned EEG processing nodes list MNE-Python, and non-EEG/demo
+nodes do not list these dependencies. No processing or BIDS-discovery behavior
+was added.
+
+Installation status is a startup snapshot read through
+`importlib.metadata.version`; loading the registry did not import `mne` or
+`mne_bids`. In a clean Python 3.12 environment, default sync reported both
+packages `missing` with no installed-version value, while the optional `eeg`
+group reported MNE 1.13.2 and MNE-BIDS 0.20.0 as `installed`; guarded registry
+imports passed in both environments. Focused Python tests passed (27); focused
+run-lifecycle tests passed (9). The complete clean-checkout gate passed:
+Ruff; formatting (71 files); strict mypy (28 source files); pytest (731
+passed, 2 opt-in skips, 2 upstream deprecation warnings in 34.09 seconds);
+ESLint and Prettier; Vitest (162 tests in 17 files); production build (1,844
+modules); production audit (0 vulnerabilities); and `git diff --check`.
+
+Two initial hosted frontend runs exposed test synchronization races. The final
+repair reads current render state for artifact opening, waits for launch and
+button readiness, and targets the new run's event cursor directly. Both
+required hosted checks passed on final head `93e9ab6` in run `37127604967`.
+
+Step 5A.10 is approved and checked. Step 5 remains open; the next bounded item
+is BIDS EEG discovery and essential metadata validation. The registry status
+does not certify imports, runtime compatibility, or scientific behavior.

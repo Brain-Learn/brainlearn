@@ -25,7 +25,7 @@ import {
 import type { NodeManifest } from "./types";
 
 const manifest: NodeManifest = {
-  manifest_schema_version: "1.0",
+  manifest_schema_version: "1.1",
   id: "input.test",
   node_version: "0.1.0",
   label: "Test input",
@@ -46,6 +46,7 @@ const manifest: NodeManifest = {
   citations: [],
   license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
   capability_requirements: [],
+  software_dependencies: [],
 };
 
 test("creates manifest-backed nodes and connects, disconnects, and removes them", () => {

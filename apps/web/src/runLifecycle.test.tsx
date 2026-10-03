@@ -20,7 +20,7 @@ import type {
 } from "./types";
 
 const bidsManifest: NodeManifest = {
-  manifest_schema_version: "1.0",
+  manifest_schema_version: "1.1",
   id: "input.bids_eeg",
   node_version: "0.1.0",
   label: "BIDS EEG",
@@ -33,6 +33,7 @@ const bidsManifest: NodeManifest = {
   citations: [],
   license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
   capability_requirements: [],
+  software_dependencies: [],
 };
 
 const IDENTITY = (domain: string, ch: string) =>
@@ -789,9 +790,13 @@ test("an approved artifact opens through a secure download", async () => {
     .getByText("runs/run-artifact/artifacts/source/output.txt")
     .closest(".run-artifact-row");
   if (!artifactRow) throw new Error("artifact row missing");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Run workflow" })).toBeEnabled(),
+  );
   const openButton = within(artifactRow as HTMLElement).getByRole("button", {
     name: "Open",
   });
+  await waitFor(() => expect(openButton).toBeEnabled());
   fireEvent.click(openButton);
   await waitFor(() => expect(clickedAnchors).toHaveLength(1));
   expect(clickedAnchors[0]).toEqual({
@@ -898,7 +903,7 @@ test("a pending quiet stream cannot mutate state after a project switch", async 
   );
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await waitFor(() => expect(screen.getAllByText("run-a")).toHaveLength(2));
-  expect(streamSignals).toHaveLength(1);
+  await waitFor(() => expect(streamSignals).toHaveLength(1));
   expect(streamSignals[0].aborted).toBe(false);
 
   fireEvent.change(screen.getByLabelText("Project folder"), {
@@ -915,7 +920,11 @@ test("a pending quiet stream cannot mutate state after a project switch", async 
 
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await waitFor(() => expect(screen.getAllByText("run-b")).toHaveLength(2));
-  expect(eventUrls[eventUrls.length - 1]).toContain("after=2");
+  await waitFor(() =>
+    expect(
+      eventUrls.some((url) => url.includes("run-b") && url.includes("after=2")),
+    ).toBe(true),
+  );
 
   const encoder = new TextEncoder();
   await act(async () => {

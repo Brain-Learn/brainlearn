@@ -165,6 +165,7 @@ from brainlearn_core.schema import (
     PortDefinition,
     PortDirection,
     ScientificType,
+    SoftwareDependencyMetadata,
     Workflow,
 )
 from brainlearn_core.validation import ValidationIssue, ValidationResult, validate_workflow
@@ -274,6 +275,7 @@ __all__ = [
     "SUPPORTED_DATASET_VERSIONS",
     "SUPPORTED_DOWNLOAD_VERSIONS",
     "ScientificType",
+    "SoftwareDependencyMetadata",
     "ScriptedDownloadSource",
     "ScriptedSnapshotArchive",
     "SnapshotArchiveSource",

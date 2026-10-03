@@ -3,7 +3,7 @@
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ScientificType(StrEnum):
@@ -81,12 +81,36 @@ class CapabilityRequirement(BaseModel):
     description: str = Field(min_length=1)
 
 
+class SoftwareDependencyMetadata(BaseModel):
+    """Pinned upstream software recorded by a node manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    package_name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    license: LicenseMetadata
+    citations: list[CitationMetadata] = Field(default_factory=list)
+    installation_status: Literal["installed", "missing", "version_mismatch"]
+    installed_version: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_installation_status(self) -> "SoftwareDependencyMetadata":
+        if self.installation_status == "missing":
+            if self.installed_version is not None:
+                raise ValueError("A missing software dependency cannot have an installed version.")
+        elif self.installed_version is None:
+            raise ValueError("An available software dependency must report its installed version.")
+        elif (self.installation_status == "installed") != (self.installed_version == self.version):
+            raise ValueError("Software dependency installation status must match its versions.")
+        return self
+
+
 class NodeManifest(BaseModel):
     """Versioned registry contract; it describes nodes but does not execute them."""
 
     model_config = ConfigDict(extra="forbid")
 
-    manifest_schema_version: Literal["1.0"] = "1.0"
+    manifest_schema_version: Literal["1.1"] = "1.1"
     id: str = Field(min_length=1)
     node_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     label: str = Field(min_length=1)
@@ -99,6 +123,7 @@ class NodeManifest(BaseModel):
     citations: list[CitationMetadata] = Field(default_factory=list)
     license: LicenseMetadata
     capability_requirements: list[CapabilityRequirement] = Field(default_factory=list)
+    software_dependencies: list[SoftwareDependencyMetadata] = Field(default_factory=list)
 
 
 class CanvasPosition(BaseModel):

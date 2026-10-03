@@ -36,7 +36,7 @@ export interface ParameterSchema {
 }
 
 export interface NodeManifest {
-  manifest_schema_version: "1.0";
+  manifest_schema_version: "1.1";
   id: string;
   node_version: string;
   label: string;
@@ -53,6 +53,16 @@ export interface NodeManifest {
     required: boolean;
     description: string;
   }>;
+  software_dependencies: SoftwareDependencyMetadata[];
+}
+
+export interface SoftwareDependencyMetadata {
+  package_name: string;
+  version: string;
+  license: { name: string; spdx_id?: string; url?: string };
+  citations: Array<{ title: string; doi?: string; url?: string }>;
+  installation_status: "installed" | "missing" | "version_mismatch";
+  installed_version?: string | null;
 }
 
 export const PRESENTATION_ACCENTS = [

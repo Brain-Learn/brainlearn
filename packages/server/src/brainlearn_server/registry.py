@@ -8,8 +8,13 @@ ports and versions derive from the authoritative worker contract in
 port the worker would refuse.
 """
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as installed_distribution_version
+from typing import Literal
+
 from brainlearn_core import (
     CanvasPosition,
+    CitationMetadata,
     LicenseMetadata,
     NodeInstance,
     NodeManifest,
@@ -18,6 +23,7 @@ from brainlearn_core import (
     PortDefinition,
     PortDirection,
     ScientificType,
+    SoftwareDependencyMetadata,
 )
 
 from brainlearn_server.demo_nodes import DEMO_NODES
@@ -27,6 +33,84 @@ EXAMPLE_LICENSE = LicenseMetadata(
     spdx_id="BSD-3-Clause",
     url="https://opensource.org/license/bsd-3-clause",
 )
+
+
+_UPSTREAM_LICENSE = LicenseMetadata(
+    name="BSD 3-Clause License",
+    spdx_id="BSD-3-Clause",
+    url="https://opensource.org/license/bsd-3-clause",
+)
+
+
+def software_dependency_metadata(
+    package_name: str,
+    version: str,
+    license: LicenseMetadata,
+    citations: list[CitationMetadata],
+) -> SoftwareDependencyMetadata:
+    """Describe a pinned dependency and snapshot its installed distribution version.
+
+    Reading distribution metadata does not import the optional scientific package
+    or validate that its runtime dependencies and backends work.
+    """
+
+    installation_status: Literal["installed", "missing", "version_mismatch"]
+    try:
+        installed_version = installed_distribution_version(package_name)
+    except PackageNotFoundError:
+        installed_version = None
+        installation_status = "missing"
+    else:
+        installation_status = "installed" if installed_version == version else "version_mismatch"
+    return SoftwareDependencyMetadata(
+        package_name=package_name,
+        version=version,
+        license=license,
+        citations=citations,
+        installation_status=installation_status,
+        installed_version=installed_version,
+    )
+
+
+_MNE_DEPENDENCY = software_dependency_metadata(
+    package_name="mne",
+    version="1.13.2",
+    license=_UPSTREAM_LICENSE,
+    citations=[
+        CitationMetadata(
+            title="MEG and EEG data analysis with MNE-Python",
+            doi="10.3389/fnins.2013.00267",
+            url="https://doi.org/10.3389/fnins.2013.00267",
+        ),
+        CitationMetadata(
+            title="MNE-Python software archive",
+            doi="10.5281/zenodo.592483",
+            url="https://doi.org/10.5281/zenodo.592483",
+        ),
+    ],
+)
+
+_MNE_BIDS_DEPENDENCY = software_dependency_metadata(
+    package_name="mne-bids",
+    version="0.20.0",
+    license=_UPSTREAM_LICENSE,
+    citations=[
+        CitationMetadata(
+            title=(
+                "MNE-BIDS: Organizing electrophysiological data into the BIDS format "
+                "and facilitating their analysis"
+            ),
+            doi="10.21105/joss.01896",
+            url="https://doi.org/10.21105/joss.01896",
+        ),
+    ],
+)
+
+
+def _software_dependencies(
+    *dependencies: SoftwareDependencyMetadata,
+) -> list[SoftwareDependencyMetadata]:
+    return [dependency.model_copy(deep=True) for dependency in dependencies]
 
 
 def _port(
@@ -62,6 +146,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             )
         ],
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.inspect",
@@ -75,6 +160,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
         ],
         review_behavior="required",
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.filter",
@@ -105,6 +191,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             ),
         ],
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.ica_review",
@@ -118,6 +205,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
         ],
         review_behavior="required",
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.epochs",
@@ -153,6 +241,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             ),
         ],
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.erp_average",
@@ -165,6 +254,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             _port("evoked", "Evoked", PortDirection.OUTPUT, ScientificType.EVOKED),
         ],
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="eeg.psd",
@@ -177,6 +267,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             _port("spectrum", "Spectrum", PortDirection.OUTPUT, ScientificType.SPECTRUM),
         ],
         license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="output.report",

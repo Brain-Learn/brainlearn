@@ -59,9 +59,24 @@ def test_registry_lists_versioned_manifests() -> None:
     assert {"demo.copy", "demo.delay", "demo.fail", "demo.review", "demo.relay"} <= {
         manifest["id"] for manifest in manifests
     }
-    assert all(manifest["manifest_schema_version"] == "1.0" for manifest in manifests)
+    assert all(manifest["manifest_schema_version"] == "1.1" for manifest in manifests)
     assert all(manifest["status"] == "example" for manifest in manifests)
     assert all(manifest["license"]["spdx_id"] == "BSD-3-Clause" for manifest in manifests)
+    bids_nodes = {
+        item["id"]: {dep["package_name"]: dep for dep in item["software_dependencies"]}
+        for item in manifests
+        if item["id"] in {"input.bids_eeg", "eeg.inspect"}
+    }
+    assert all(set(items) == {"mne", "mne-bids"} for items in bids_nodes.values())
+    dependencies = bids_nodes["input.bids_eeg"]
+    assert dependencies["mne"]["version"] == "1.13.2"
+    assert dependencies["mne"]["license"]["spdx_id"] == "BSD-3-Clause"
+    assert dependencies["mne"]["citations"]
+    assert dependencies["mne"]["installation_status"] in {
+        "installed",
+        "missing",
+        "version_mismatch",
+    }
 
 
 def test_registry_detail_returns_manifest_or_404() -> None:
