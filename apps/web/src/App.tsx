@@ -1568,8 +1568,8 @@ function App() {
   };
 
   const handleOpenArtifact = async (artifact: ArtifactRecord) => {
-    const run = activeRunRef.current;
-    const path = runPathRef.current;
+    const run = activeRun;
+    const path = runPath;
     if (!run || !path) return;
     setRunActionPending(true);
     try {

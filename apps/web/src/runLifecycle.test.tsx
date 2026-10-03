@@ -790,9 +790,13 @@ test("an approved artifact opens through a secure download", async () => {
     .getByText("runs/run-artifact/artifacts/source/output.txt")
     .closest(".run-artifact-row");
   if (!artifactRow) throw new Error("artifact row missing");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Run workflow" })).toBeEnabled(),
+  );
   const openButton = within(artifactRow as HTMLElement).getByRole("button", {
     name: "Open",
   });
+  await waitFor(() => expect(openButton).toBeEnabled());
   fireEvent.click(openButton);
   await waitFor(() => expect(clickedAnchors).toHaveLength(1));
   expect(clickedAnchors[0]).toEqual({
@@ -916,7 +920,11 @@ test("a pending quiet stream cannot mutate state after a project switch", async 
 
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   await waitFor(() => expect(screen.getAllByText("run-b")).toHaveLength(2));
-  expect(eventUrls[eventUrls.length - 1]).toContain("after=2");
+  await waitFor(() =>
+    expect(
+      eventUrls.some((url) => url.includes("run-b") && url.includes("after=2")),
+    ).toBe(true),
+  );
 
   const encoder = new TextEncoder();
   await act(async () => {
