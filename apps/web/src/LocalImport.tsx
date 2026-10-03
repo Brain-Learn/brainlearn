@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { BidsEegDiscovery } from "./BidsEegDiscovery";
 import {
   LOCAL_IMPORT_POLL_MS,
   cancelLocalImport,
@@ -409,6 +410,13 @@ export function LocalImport({ projectPath, token }: LocalImportProps) {
             The dataset has been scanned and its identity recorded. Source data
             was not moved or modified.
           </div>
+          {importRecord?.lock && (
+            <BidsEegDiscovery
+              projectPath={projectPath}
+              relativeDir={importRecord.lock.local_path}
+              token={token}
+            />
+          )}
           <dl className="dataset-details">
             <dt>Immutable identity</dt>
             <dd>
