@@ -3,10 +3,14 @@
 This module defines:
 1. The pinned integration manifest for the single tiny, openly accessible
    public dataset snapshot (OpenNeuro ds001037:00001) used by the scheduled
-   integration smoke test.
+   integration smoke test, including its reviewed CC0 license terms and the
+   authoritative evidence URL for that review.
 2. The fail-closed upstream drift diagnostic taxonomy distinguishing
    availability, schema, identity, and checksum failures.
-3. Secret-free diagnostic reporting and exception classification.
+3. Secret-free diagnostic reporting: exception classification selects
+   static messages from trusted exception types and validated numeric
+   fields, and never embeds raw ``str(exc)`` text, URLs, tokens, or local
+   paths into any persisted, uploaded, or console diagnostic.
 
 No dataset bytes are committed to Git or stored here.
 """
@@ -84,6 +88,9 @@ class PinnedDatasetManifest(BaseModel):
     title: str = Field(min_length=1)
     landing_page: str = Field(min_length=1)
     license_name: str = Field(min_length=1)
+    license_spdx: str
+    reuse_statement: str = Field(min_length=1)
+    license_evidence_url: str
     citations: tuple[DatasetCitation, ...] = Field(default_factory=tuple)
     expected_files: tuple[PinnedFile, ...] = Field(min_length=1)
     expected_total_bytes: int = Field(ge=0)
@@ -91,10 +98,31 @@ class PinnedDatasetManifest(BaseModel):
     expected_lock_identity: str = Field(pattern=r"^brainlearn-v1:dataset:[0-9a-f]{64}$")
     limits: PinnedLimits = Field(default_factory=PinnedLimits)
 
-    @field_validator("landing_page")
+    @field_validator("landing_page", "license_evidence_url")
     @classmethod
     def _landing_page_must_be_https(cls, value: str) -> str:
         return validate_https_url(value, "Landing page")
+
+    @field_validator("license_name", "reuse_statement")
+    @classmethod
+    def _license_text_must_be_reviewed(cls, value: str, info: Any) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError(f"{info.field_name} must not be blank.")
+        if "pending" in text.lower() and "curator" in text.lower():
+            raise ValueError(
+                f"{info.field_name} must record a reviewed license, not a "
+                "pending-verification placeholder."
+            )
+        return text
+
+    @field_validator("license_spdx")
+    @classmethod
+    def _spdx_must_be_known(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("license_spdx must not be blank.")
+        return text
 
     @model_validator(mode="after")
     def _validate_totals_and_files(self) -> PinnedDatasetManifest:
@@ -112,6 +140,19 @@ class PinnedDatasetManifest(BaseModel):
 
 # Canonical reviewed snapshot pin for OpenNeuro ds001037:00001 ("The brain of Chris").
 # Published 2018-07-14; contains exactly 2 root files (367 bytes total).
+#
+# License review (Step 5A.7 monitoring repair, 2026-09-26): the snapshot's
+# own dataset_description.json omits the License field, so the license is
+# established by the OpenNeuro platform terms that govern every public
+# snapshot: the upload agreement in the OpenNeuro FAQ dedicates each dataset
+# to the public domain under Creative Commons CC0
+# (https://docs.openneuro.org/faq.html, "Are there any restrictions on the
+# uploaded data?"), and the OpenNeuro snapshot page itself embeds schema.org
+# JSON-LD asserting "license": "https://creativecommons.org/publicdomain/
+# zero/1.0/" for every versioned snapshot (server-rendered from
+# https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/
+# openneuro-app/src/scripts/utils/json-ld.js). The reuse statement carries
+# that evidence URL so a curator can re-check it against this exact tag.
 _PINNED_DS001037_DATA: dict[str, Any] = {
     "schema_version": "1.0",
     "provider": OPENNEURO_PROVIDER,
@@ -119,7 +160,18 @@ _PINNED_DS001037_DATA: dict[str, Any] = {
     "snapshot": "00001",
     "title": "The brain of Chris",
     "landing_page": "https://openneuro.org/datasets/ds001037/versions/00001",
-    "license_name": "Unverified OpenNeuro license (pending curator review)",
+    "license_name": "CC0 1.0 Universal (Public Domain Dedication)",
+    "license_spdx": "CC0-1.0",
+    "reuse_statement": (
+        "OpenNeuro ds001037:00001 is dedicated to the public domain under "
+        "Creative Commons CC0 1.0. No rights are reserved; the data may be "
+        "reused for any purpose without permission. Evidence: the OpenNeuro "
+        "upload agreement (https://docs.openneuro.org/faq.html) and the "
+        "snapshot page's JSON-LD license assertion "
+        "(https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/"
+        "openneuro-app/src/scripts/utils/json-ld.js)."
+    ),
+    "license_evidence_url": "https://docs.openneuro.org/faq.html",
     "citations": [
         {"title": "The brain of Chris", "doi": None, "url": None},
     ],
@@ -139,10 +191,10 @@ _PINNED_DS001037_DATA: dict[str, Any] = {
     ],
     "expected_total_bytes": 367,
     "expected_catalog_identity": (
-        "brainlearn-v1:dataset:4a7fbd09beef515a1dba89c2fea81f82fbfa13c66c787a7233de6515c056a369"
+        "brainlearn-v1:dataset:ce691f5aa592178b5a2fa6ce18271833ad9ed784a9223ecf18fd2cdc28e8f05c"
     ),
     "expected_lock_identity": (
-        "brainlearn-v1:dataset:020cab5e89f2633bf536d2c6e72e04361972991b3b69f3714d359f5a99d09251"
+        "brainlearn-v1:dataset:f05a71fcc9f3e8aae67f1bfae0b71b3c2274af7b9b698a152db982e848ef7bc2"
     ),
     "limits": {
         "timeout_s": 30.0,
@@ -196,36 +248,61 @@ class UpstreamDriftError(Exception):
 
 
 def _sanitize_text(text: str) -> str:
-    """Strip any accidental URLs with credentials or query strings."""
-    # Remove query strings and fragments
-    cleaned = re.sub(r"(\?[^ \t\r\n\)\"']*)", "", text)
-    cleaned = re.sub(r"(#[^ \t\r\n\)\"']*)", "", cleaned)
-    # Strip whitespace
-    return " ".join(cleaned.split())
+    """Reduce untrusted text to a bounded, secret-free, static fact.
+
+    The diagnostic pipeline deliberately never embeds exception strings.
+    Untrusted text (any ``str(exc)``) can carry URL userinfo, query tokens,
+    fragments, bearer/API keys, injected provider messages, and absolute
+    filesystem paths, so the only safe redaction is omission: callers pass
+    exception text here only to decide bounded structural facts (does the
+    text name a userinfo-bearing URL, a signed address, or an absolute
+    path), never to copy it into a diagnostic. The result is one of a fixed
+    set of static phrases that contain no characters from the input.
+    """
+
+    lowered = text.lower()
+    if "bearer " in lowered or "authorization:" in lowered:
+        return "untrusted text named an authorization credential"
+    if re.search(r"[a-z][a-z0-9+.-]*://[^/\s]+@", lowered):
+        return "untrusted text named a URL carrying credentials"
+    if "?" in text or "#" in text:
+        return "untrusted text named a signed address"
+    if re.search(r"(^|[\s" + re.escape("'\"(<[{") + r"])(/|[a-z]:[\\/]|~)", lowered):
+        return "untrusted text named a local filesystem path"
+    return "untrusted text was omitted from diagnostics"
 
 
 def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest) -> DriftDiagnostic:
-    """Map any upstream exception to a concise, secret-free drift diagnostic."""
+    """Map any upstream exception to a concise, secret-free drift diagnostic.
+
+    Messages are selected from static templates plus values already trusted
+    or reviewed: the pinned manifest reference, provider name, validated
+    HTTP status codes, and the exception *type* name (a stable stdlib
+    identifier, never exception text). Raw ``str(exc)`` content is never
+    persisted, uploaded, or printed by any diagnostic path.
+    """
     if isinstance(exc, UpstreamDriftError):
         return exc.diagnostic
 
     dataset_ref = f"{manifest.dataset_id}:{manifest.snapshot}"
-    raw_msg = _sanitize_text(str(exc)) if str(exc) else type(exc).__name__
+    provider = manifest.provider
+    untrusted_note = _sanitize_text(str(exc)) if str(exc) else ""
+    untrusted_details = {"untrusted_content": untrusted_note} if untrusted_note else {}
 
-    # 1. Availability failures: timeout, not found, HTTP 5xx, connection drop
+    # 1. Availability failures: timeout, not found, HTTP 4xx/5xx, connection drop
     if isinstance(exc, ProviderTimeout) or isinstance(exc, TimeoutError):
         return DriftDiagnostic(
             category=DriftCategory.AVAILABILITY,
             code="timeout",
             message=f"Upstream provider timed out resolving {dataset_ref}.",
-            details={"provider": manifest.provider, "dataset": dataset_ref},
+            details={"provider": provider, "dataset": dataset_ref},
         )
     if isinstance(exc, ProviderNotFound):
         return DriftDiagnostic(
             category=DriftCategory.AVAILABILITY,
             code="not_found",
             message=f"Upstream snapshot {dataset_ref} was not found or is no longer public.",
-            details={"provider": manifest.provider, "dataset": dataset_ref},
+            details={"provider": provider, "dataset": dataset_ref},
         )
     if isinstance(exc, urllib.error.HTTPError):
         code = exc.code
@@ -235,7 +312,7 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
                 code="not_found",
                 message=f"Upstream snapshot {dataset_ref} returned HTTP {code}.",
                 details={
-                    "provider": manifest.provider,
+                    "provider": provider,
                     "dataset": dataset_ref,
                     "http_status": code,
                 },
@@ -246,7 +323,7 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
                 code="server_error",
                 message=f"Upstream provider returned HTTP {code} for {dataset_ref}.",
                 details={
-                    "provider": manifest.provider,
+                    "provider": provider,
                     "dataset": dataset_ref,
                     "http_status": code,
                 },
@@ -255,8 +332,11 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
         return DriftDiagnostic(
             category=DriftCategory.AVAILABILITY,
             code="connection_failed",
-            message=f"Failed to connect to upstream provider for {dataset_ref}: {raw_msg[:120]}.",
-            details={"provider": manifest.provider, "dataset": dataset_ref},
+            message=(
+                f"Failed to connect to the upstream provider for {dataset_ref}. "
+                "The connection error was not recorded."
+            ),
+            details={"provider": provider, "dataset": dataset_ref, **untrusted_details},
         )
 
     # 2. Schema failures: malformed GraphQL, invalid JSON, unexpected types
@@ -265,9 +345,10 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
             category=DriftCategory.SCHEMA,
             code="malformed_payload",
             message=(
-                f"Upstream payload for {dataset_ref} violated schema expectations: {raw_msg[:120]}."
+                f"Upstream payload for {dataset_ref} violated schema expectations "
+                f"({type(exc).__name__})."
             ),
-            details={"provider": manifest.provider, "dataset": dataset_ref},
+            details={"provider": provider, "dataset": dataset_ref, **untrusted_details},
         )
 
     # 3. Default fallback: generic availability failure
@@ -275,16 +356,22 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
         return DriftDiagnostic(
             category=DriftCategory.AVAILABILITY,
             code="provider_error",
-            message=f"Upstream provider error for {dataset_ref}: {raw_msg[:120]}.",
-            details={"provider": manifest.provider, "dataset": dataset_ref},
+            message=(
+                f"Upstream provider failed while resolving {dataset_ref} "
+                f"({type(exc).__name__}). The provider message was not recorded."
+            ),
+            details={"provider": provider, "dataset": dataset_ref, **untrusted_details},
         )
 
     return DriftDiagnostic(
         category=DriftCategory.AVAILABILITY,
         code="unexpected_error",
-        message=f"Unexpected error retrieving {dataset_ref}: {raw_msg[:120]}.",
+        message=(
+            f"Unexpected {type(exc).__name__} while retrieving {dataset_ref}. "
+            "The error message was not recorded."
+        ),
         details={
-            "provider": manifest.provider,
+            "provider": provider,
             "dataset": dataset_ref,
             "exception_type": type(exc).__name__,
         },
@@ -292,7 +379,12 @@ def classify_upstream_exception(exc: Exception, manifest: PinnedDatasetManifest)
 
 
 def check_catalog_entry_drift(manifest: PinnedDatasetManifest, entry: CatalogEntry) -> None:
-    """Verify that a resolved catalog entry matches the pinned expectation."""
+    """Verify that a resolved catalog entry matches the pinned expectation,
+
+    including the reviewed license: the live entry must carry the exact
+    pinned license name, SPDX identifier, and reuse statement so a silently
+    downgraded or unlicensed upstream snapshot fails closed.
+    """
     dataset_ref = f"{manifest.dataset_id}:{manifest.snapshot}"
     if entry.catalog_identity != manifest.expected_catalog_identity:
         raise UpstreamDriftError(
@@ -308,6 +400,28 @@ def check_catalog_entry_drift(manifest: PinnedDatasetManifest, entry: CatalogEnt
                     "expected_identity": manifest.expected_catalog_identity,
                     "observed_identity": entry.catalog_identity,
                     "dataset": dataset_ref,
+                },
+            )
+        )
+
+    # Verify the reviewed license terms survived live resolution
+    if (
+        entry.license_name != manifest.license_name
+        or entry.license_spdx != manifest.license_spdx
+        or entry.reuse_statement != manifest.reuse_statement
+    ):
+        raise UpstreamDriftError(
+            DriftDiagnostic(
+                category=DriftCategory.IDENTITY,
+                code="license_terms_mismatch",
+                message=(
+                    f"License terms for {dataset_ref} diverged from the reviewed pin "
+                    f"({manifest.license_spdx})."
+                ),
+                details={
+                    "dataset": dataset_ref,
+                    "pinned_license_spdx": manifest.license_spdx,
+                    "observed_license_spdx": entry.license_spdx,
                 },
             )
         )

@@ -214,15 +214,38 @@ or running heavy downloads in CI, BrainLearn pins one genuine, openly accessible
 snapshot from OpenNeuro:
 
 - **Provider**: `openneuro`
-- **Dataset ID**: `ds001037` ("The brain of Chris", CC0 / public access)
-- **Snapshot tag**: `00001` (published 2018-07-14)
+- **Dataset ID**: `ds001037` ("The brain of Chris", MRI, 1 subject)
+- **Snapshot tag**: `00001` (published 2018-07-14, git commit `f996ba587ae3`)
 - **Landing page**: `https://openneuro.org/datasets/ds001037/versions/00001`
+- **License (reviewed)**: **CC0 1.0 Universal (Public Domain Dedication)**,
+  SPDX `CC0-1.0`. The snapshot's own `dataset_description.json`
+  (<https://openneuro.org/crn/datasets/ds001037/snapshots/00001/files/dataset_description.json>,
+  SHA-256 `8cef746e8df99ef7a3efaf4b7f1cea7313f2d732b22abf609733fdf38584f400`)
+  omits the `License` field, so the governing license is the OpenNeuro
+  platform terms for public datasets: the upload agreement in the OpenNeuro
+  FAQ (<https://docs.openneuro.org/faq.html>, "Are there any restrictions on
+  the uploaded data?") dedicates every public dataset to the public domain
+  under Creative Commons CC0, and the versioned snapshot page embeds
+  schema.org JSON-LD asserting
+  `"license": "https://creativecommons.org/publicdomain/zero/1.0/"` for this
+  exact tag (server-rendered from
+  <https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/openneuro-app/src/scripts/utils/json-ld.js>).
+  The evidence URL is recorded on the pin itself (`license_evidence_url`),
+  the runtime adapter records these reviewed terms whenever the provider
+  omits a License field, and catalog drift checks reject any divergence from
+  the reviewed name, SPDX identifier, and reuse statement. Public
+  accessibility was never treated as license evidence.
 - **Members**: exactly 2 root files (`dataset_description.json` [83 bytes, SHA-256 `8cef746e8df99ef7a3efaf4b7f1cea7313f2d732b22abf609733fdf38584f400`] and `.gitattributes` [284 bytes, SHA-256 `9476689a1190b1b79c7a65a128f992a551d86f55236c939a74218973423fcdd1`]).
 - **Expected total bytes**: 367 bytes.
-- **Pinned catalog identity**: `brainlearn-v1:dataset:4a7fbd09beef515a1dba89c2fea81f82fbfa13c66c787a7233de6515c056a369`
-- **Pinned lock identity**: `brainlearn-v1:dataset:020cab5e89f2633bf536d2c6e72e04361972991b3b69f3714d359f5a99d09251`
+- **Pinned catalog identity**: `brainlearn-v1:dataset:ce691f5aa592178b5a2fa6ce18271833ad9ed784a9223ecf18fd2cdc28e8f05c`
+- **Pinned lock identity**: `brainlearn-v1:dataset:f05a71fcc9f3e8aae67f1bfae0b71b3c2274af7b9b698a152db982e848ef7bc2`
 
 Reviewed fixture stored at `tests/fixtures/pinned-integration-snapshot-1.0.json`.
+A parity test loads that fixture, validates it as `PinnedDatasetManifest`, and
+asserts exact semantic and canonical-serialization equality with the runtime
+manifest, so the reviewed record and the executed pin cannot silently diverge;
+mutation regressions prove that changing any pinned value (size, digest,
+license, SPDX, evidence URL, snapshot, identity) fails validation or parity.
 Downloaded dataset bytes are never committed to Git.
 
 ### 2. Offline-by-default CI
@@ -241,11 +264,17 @@ distinguishing four failure categories:
 
 - **`availability`**: Provider unreachable, gateway timeout, HTTP 5xx, or snapshot not found (404).
 - **`schema`**: GraphQL syntax error, missing fields, or malformed JSON structure.
-- **`identity`**: Upstream metadata mutated, causing catalog identity or lock identity to diverge from the pin.
+- **`identity`**: Upstream metadata mutated — including a license downgrade — causing catalog identity, lock identity, or reviewed license terms to diverge from the pin.
 - **`checksum`**: Delivered file size or content SHA-256 hash diverged from pinned digests.
 
-Diagnostics are sanitized to eliminate accidental URLs, query parameters, auth tokens,
-or internal paths.
+Diagnostics are secret-free by construction: classification selects static
+messages from trusted exception types plus reviewed identifiers already in
+the pin, trusted HTTP status codes, stable error codes, counts, and bounded
+non-secret facts (an "untrusted content omitted" note). Raw exception text,
+URL userinfo, query tokens, fragments, bearer/API tokens, injected provider
+messages, and absolute or home-directory paths are never persisted, uploaded,
+or printed. The CLI's unexpected-error path prints only the classified
+diagnostic.
 
 ### 4. Scheduled trusted smoke workflow
 
@@ -253,5 +282,5 @@ A dedicated, scheduled GitHub Actions job (`.github/workflows/dataset-smoke.yml`
 - Runs weekly and on manual dispatch (`workflow_dispatch`).
 - Requires no credentials and uses minimal read-only permissions (`contents: read`).
 - Enforces strict execution limits: 10-minute timeout, max 5 redirect hops restricted to `openneuro.org`, max 10 files, and max 10 MiB download size.
-- Verifies the full lifecycle: GraphQL resolution, download, lock generation, and offline reopening with network calls blocked.
+- Verifies the full lifecycle: GraphQL resolution, download, lock generation, and offline reopening with the production network boundary blocked (denied sockets plus a denied opener factory on the exact `OpenerDirector.open` path both production transports use, fail-on-call provider/source doubles, and offline byte re-verification through the hardened recovery helper). Uploaded failure diagnostics cannot contain secrets because the diagnostic pipeline never embeds exception text.
 - Uploads small diagnostic JSON logs (`diagnostic-drift.json`) only on failure.

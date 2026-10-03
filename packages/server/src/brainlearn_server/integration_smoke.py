@@ -3,12 +3,14 @@
 This module runs the integration smoke against the single pinned snapshot
 (OpenNeuro ds001037:00001). It verifies:
 1. Upstream metadata resolution within strict timeout and redirect bounds.
-2. Catalog identity and file manifest match the reviewed pin.
+2. Catalog identity, reviewed license terms, and file manifest match the pin.
 3. Download and verification into a real project tree within byte and file limits.
 4. Finalized lock identity and per-file SHA-256 digests match the pin.
-5. The downloaded project and lock can be reopened and verified completely offline
-   with all network access blocked.
-6. Fail-closed upstream drift diagnosis that outputs concise, secret-free records.
+5. The downloaded project and lock can be reopened and re-verified completely
+   offline with the production network boundary blocked.
+6. Fail-closed upstream drift diagnosis that outputs concise, secret-free
+   records: diagnostics carry static messages, trusted manifest references,
+   and validated numeric fields only — never exception text.
 
 No credentials are required or accepted.
 """
@@ -17,10 +19,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import socket
 import sys
 import tempfile
 import time
-import urllib.request
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -51,15 +55,124 @@ from brainlearn_server.downloads import DownloadService
 from brainlearn_server.project_store import ProjectStore
 
 
-def _block_network() -> Any:
-    """Return a function that forbids any socket or URL operation."""
+class OfflineNetworkViolation(AssertionError):
+    """Raised when a blocked network entrypoint is touched while offline."""
 
-    def _forbidden(*args: Any, **kwargs: Any) -> Any:
-        raise AssertionError(
-            "Offline reopening violation: network operation attempted while offline."
+
+class _DeniedSocket(socket.socket):
+    """Socket subclass whose connect raises before any syscall can succeed."""
+
+    def connect(self, *args: Any, **kwargs: Any) -> None:
+        raise OfflineNetworkViolation(
+            "Offline reopening violation: a socket connect was attempted while offline."
         )
 
-    return _forbidden
+    def connect_ex(self, *args: Any, **kwargs: Any) -> int:
+        raise OfflineNetworkViolation(
+            "Offline reopening violation: a socket connect was attempted while offline."
+        )
+
+
+@contextmanager
+def _offline_network_boundary() -> Iterator[dict[str, Any]]:
+    """Deterministically deny the production network path while active.
+
+    Production OpenNeuro networking uses :class:`urllib.request.OpenerDirector`
+    (both ``UrllibGraphQLTransport`` and ``OpenNeuroDownloadSource`` build
+    their openers through ``brainlearn_core.openneuro._redirect_opener``), so
+    the boundary replaces ``socket.socket`` with a denied subclass — covering
+    every real connect attempt — and swaps the opener factory used by the
+    production transports for one whose ``open`` denies immediately. Every
+    replaced attribute is restored in ``finally``; the boundary is scoped to
+    this context only and never left installed process-wide while unrelated
+    worker threads could run.
+    """
+
+    touched: dict[str, Any] = {"connect": 0, "opener_open": 0}
+    replaced: list[tuple[Any, str, Any]] = []
+    try:
+        replaced.append((socket, "socket", socket.socket))
+        socket.socket = _DeniedSocket  # type: ignore[misc]
+        opener_module = sys.modules.get("brainlearn_core.openneuro")
+        if opener_module is not None and hasattr(opener_module, "_redirect_opener"):
+            replaced.append((opener_module, "_redirect_opener", opener_module._redirect_opener))
+
+            def _denied_opener(*args: Any, **kwargs: Any) -> Any:
+                class _DeniedOpener:
+                    """Stand-in opener whose every open attempt is recorded and refused."""
+
+                    def open(self, *inner: Any, **inner_kwargs: Any) -> Any:
+                        touched["opener_open"] += 1
+                        raise OfflineNetworkViolation(
+                            "Offline reopening violation: an opener network request "
+                            "was attempted while offline."
+                        )
+
+                return _DeniedOpener()
+
+            setattr(opener_module, "_redirect_opener", _denied_opener)
+        yield touched
+    finally:
+        for target, name, original in reversed(replaced):
+            setattr(target, name, original)
+
+
+def _probe_offline_boundary_denies_opener() -> None:
+    """Prove the boundary denies an actual OpenerDirector.open attempt.
+
+    Uses the production opener factory (``brainlearn_core.openneuro
+    ._redirect_opener``), the exact constructor both production transports
+    call, so the probe exercises the real networking entrypoint.
+    """
+
+    import urllib.request
+
+    from brainlearn_core import openneuro as _openneuro_module
+
+    request = urllib.request.Request("https://openneuro.org/crn/graphql", method="POST")
+    with _offline_network_boundary() as touched:
+        opener = getattr(_openneuro_module, "_redirect_opener")()
+        try:
+            opener.open(request, timeout=1)
+        except OfflineNetworkViolation:
+            pass
+        else:
+            raise AssertionError("Offline boundary did not deny an OpenerDirector.open attempt.")
+    assert touched["opener_open"] == 1
+
+
+def _fail_on_call_provider(calls: dict[str, int]) -> DatasetProvider:
+    """Provider double that records and raises on any provider call."""
+
+    class _FailOnCallProvider:
+        provider_name = OPENNEURO_PROVIDER
+
+        async def list_datasets(self, search: Any) -> Any:
+            calls["list_datasets"] = calls.get("list_datasets", 0) + 1
+            raise OfflineNetworkViolation("Provider list_datasets called while offline.")
+
+        async def resolve_snapshot(self, dataset_id: str, snapshot: str) -> Any:
+            calls["resolve_snapshot"] = calls.get("resolve_snapshot", 0) + 1
+            raise OfflineNetworkViolation("Provider resolve_snapshot called while offline.")
+
+    return _FailOnCallProvider()
+
+
+def _fail_on_call_source(calls: dict[str, int]) -> FileDownloadSource:
+    """Download-source double that records and raises on any stream call."""
+
+    class _FailOnCallSource:
+        source_name = OPENNEURO_PROVIDER
+        supports_resume = False
+
+        def stream_file(
+            self, dataset_id: str, snapshot: str, path: str, offset: int
+        ) -> Iterator[bytes]:
+            calls["stream_file"] = calls.get("stream_file", 0) + 1
+            raise OfflineNetworkViolation("Source stream_file called while offline.")
+            yield b""  # pragma: no cover - keeps this a generator
+
+    return _FailOnCallSource()
 
 
 def run_integration_smoke(
@@ -260,11 +373,20 @@ def _execute_smoke_flow(
 
     check_lock_drift(manifest, lock)
 
-    # 6. Prove offline reopening with network strictly blocked
-    orig_urlopen = urllib.request.urlopen
-    urllib.request.urlopen = _block_network()
-    try:
-        restarted_service = DownloadService(store)
+    # 6. Prove offline reopening across the production network boundary:
+    #    no provider resolution, no file downloads, no opener or socket calls.
+    offline_calls: dict[str, int] = {}
+    fail_provider = _fail_on_call_provider(offline_calls)
+    fail_source = _fail_on_call_source(offline_calls)
+    _probe_offline_boundary_denies_opener()
+    with _offline_network_boundary() as touched:
+        # A restarted service wired with fail-on-call doubles: any provider
+        # or download-source invocation would be recorded and raised.
+        restarted_service = DownloadService(
+            store,
+            providers_override={OPENNEURO_PROVIDER: fail_provider},
+            sources_override={OPENNEURO_PROVIDER: fail_source},
+        )
         reconciled = restarted_service.list_downloads(str(project_dir))
         if len(reconciled) != 1 or reconciled[0].state != DownloadState.SUCCEEDED:
             raise UpstreamDriftError(
@@ -286,8 +408,29 @@ def _execute_smoke_flow(
                     details={},
                 )
             )
-    finally:
-        urllib.request.urlopen = orig_urlopen
+
+        # Re-verify the landed bytes offline through the hardened recovery
+        # path without re-resolving the provider or re-streaming bytes.
+        reverified = restarted_service.recover_project(str(project_dir))
+        if (
+            len(reverified) != 1
+            or reverified[0].state != DownloadState.SUCCEEDED
+            or reverified[0].lock_identity != manifest.expected_lock_identity
+        ):
+            raise UpstreamDriftError(
+                DriftDiagnostic(
+                    category=DriftCategory.IDENTITY,
+                    code="offline_reverification_failed",
+                    message="Offline byte re-verification failed upon reopening.",
+                    details={},
+                )
+            )
+        if offline_calls:
+            raise OfflineNetworkViolation(
+                f"Offline reopening invoked network-facing calls: {sorted(offline_calls)}."
+            )
+        if touched["connect"] or touched["opener_open"]:
+            raise OfflineNetworkViolation("Offline reopening touched a blocked network entrypoint.")
 
 
 def main() -> int:
@@ -309,18 +452,25 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    manifest = get_pinned_integration_manifest()
     try:
         run_integration_smoke(
             project_root=args.project_dir,
             log_file=args.log_file,
         )
-        print("SUCCESS: Pinned integration smoke verified ds001037:00001 and reopened offline.")
+        print(
+            "SUCCESS: Pinned integration smoke verified "
+            f"{manifest.dataset_id}:{manifest.snapshot} and reopened offline."
+        )
         return 0
     except UpstreamDriftError as err:
         print(f"FAILED: {err.diagnostic.format_diagnostic()}", file=sys.stderr)
         return 1
     except Exception as exc:
-        print(f"UNEXPECTED ERROR: {exc}", file=sys.stderr)
+        # Secret-free static path: classify without embedding any exception
+        # text, then report only the trusted type name and the pinned ref.
+        diagnostic = classify_upstream_exception(exc, manifest)
+        print(f"FAILED: {diagnostic.format_diagnostic()}", file=sys.stderr)
         return 2
 
 

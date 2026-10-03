@@ -18,8 +18,10 @@ Provenance and limits are documented in ``docs/openneuro-provider.md``:
   ``null`` and ``advancedSearch`` errors on edge cursors, so free-text
   ``query`` filtering is page-local and documented as such.
 - Only immutable snapshots (explicit ``tag``) are mapped, and only
-  public ones. License, citation, checksums, and template compatibility
-  stay pending curator verification; nothing infers approval.
+  public ones. The pinned integration snapshot's exact license is the
+  reviewed CC0 platform terms (see ``docs/dataset-contract.md``); other
+  datasets keep citation, checksums, and template compatibility pending
+  curator verification, and nothing infers approval for them.
 - File ``urls`` are never requested and transfer endpoints, credentials,
   tokens, cookies, and raw responses are never persisted.
 - Snapshot file bytes stream from
@@ -65,6 +67,28 @@ DEFAULT_TIMEOUT_S = 10.0
 MAX_RESPONSE_BYTES = 1_000_000
 MAX_REQUEST_BYTES = 65_536
 MAX_OPENNEURO_PAGE = 25
+
+# Reviewed Step 5A.7 platform license: the OpenNeuro upload agreement
+# (https://docs.openneuro.org/faq.html) dedicates every public dataset to
+# the public domain under Creative Commons CC0, and each versioned snapshot
+# page embeds JSON-LD asserting the CC0 1.0 deed URL (rendered from
+# https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/
+# openneuro-app/src/scripts/utils/json-ld.js). The live adapter records
+# these reviewed terms exactly when the provider omits a License field; an
+# explicit provider License value still wins so dataset-specific licenses
+# survive. Nothing here treats accessibility as license evidence.
+OPENNEURO_REVIEWED_LICENSE_NAME = "CC0 1.0 Universal (Public Domain Dedication)"
+OPENNEURO_REVIEWED_LICENSE_SPDX = "CC0-1.0"
+OPENNEURO_REVIEWED_LICENSE_EVIDENCE_URL = "https://docs.openneuro.org/faq.html"
+_OPENNEURO_REVIEWED_REUSE_TEMPLATE = (
+    "OpenNeuro {dataset_ref} is dedicated to the public domain under "
+    "Creative Commons CC0 1.0. No rights are reserved; the data may be "
+    "reused for any purpose without permission. Evidence: the OpenNeuro "
+    "upload agreement (https://docs.openneuro.org/faq.html) and the "
+    "snapshot page's JSON-LD license assertion "
+    "(https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/"
+    "openneuro-app/src/scripts/utils/json-ld.js)."
+)
 
 _LIST_QUERY = """query($first: Int, $after: String, $modality: String) {
   datasets(first: $first, after: $after, modality: $modality) {
@@ -554,11 +578,22 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
         raise ProviderMalformed(f"OpenNeuro snapshot {dataset_id}:{tag} has no description.")
     title = _require_text(description, "Name", "description")
     license_raw = description.get("License")
-    license_name = (
-        license_raw.strip()
-        if isinstance(license_raw, str) and license_raw.strip()
-        else "Unverified OpenNeuro license (pending curator review)"
-    )
+    if isinstance(license_raw, str) and license_raw.strip():
+        # An explicit provider License wins; SPDX stays pending curator review.
+        license_name = license_raw.strip()
+        license_spdx: str | None = None
+        reuse_statement = (
+            f"OpenNeuro {dataset_id}:{tag} provider license {license_name!r};"
+            " reuse terms pending curator verification against the landing page."
+        )
+    else:
+        # No provider License field: the reviewed OpenNeuro platform terms
+        # govern (CC0 public-domain dedication). See module docstring.
+        license_name = OPENNEURO_REVIEWED_LICENSE_NAME
+        license_spdx = OPENNEURO_REVIEWED_LICENSE_SPDX
+        reuse_statement = _OPENNEURO_REVIEWED_REUSE_TEMPLATE.format(
+            dataset_ref=f"{dataset_id}:{tag}"
+        )
     authors = description.get("Authors")
     author_note = ""
     if isinstance(authors, list) and authors:
@@ -638,11 +673,6 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
         )
 
     doi, doi_note = _normalize_doi(description.get("DatasetDOI"))
-    created = snapshot.get("created")
-    if isinstance(created, str) and created.strip():
-        created_note = created.strip()
-    else:
-        created_note = "date unknown"
     hexsha = snapshot.get("hexsha")
     hexsha_note = (
         f" Git commit {hexsha.strip()[:12]}." if isinstance(hexsha, str) and hexsha.strip() else ""
@@ -654,16 +684,12 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
         else ""
     )
     limitations = (
-        "Unverified OpenNeuro public metadata (pending curator review): license, citation,"
+        "Unverified OpenNeuro public metadata (pending curator review): citation,"
         " checksums, and template compatibility are not approved. Root file listing only;"
         " recursive trees, per-file checksums, and download verification belong to the"
         f" retrieval unit.{author_note}{references_note}{hexsha_note}{bids_note}"
         + (f" {doi_note}" if doi_note else "")
     )[:2000]
-    reuse_statement = (
-        f"OpenNeuro {dataset_id}:{tag} public metadata (snapshot {created_note});"
-        " reuse terms pending curator verification against the landing page."
-    )
     payload: dict[str, Any] = {
         "schema_version": "1.0",
         "catalog_identity": catalog_entry_identity(
@@ -679,7 +705,7 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
             expected_files=expected,
             access="public",
             license_name=license_name,
-            license_spdx=None,
+            license_spdx=license_spdx,
             reuse_statement=reuse_statement,
             citations=[
                 {"title": title, "doi": doi, "url": None},
@@ -700,7 +726,7 @@ def map_openneuro_snapshot_to_catalog(snapshot: Mapping[str, Any]) -> CatalogEnt
         "expected_files": expected,
         "access": "public",
         "license_name": license_name,
-        "license_spdx": None,
+        "license_spdx": license_spdx,
         "reuse_statement": reuse_statement,
         "citations": [
             {"title": title, "doi": doi, "url": None},
