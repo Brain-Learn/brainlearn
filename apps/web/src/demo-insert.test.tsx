@@ -48,7 +48,7 @@ function demoManifest(
   review_behavior: "none" | "required" = "none",
 ): NodeManifest {
   return {
-    manifest_schema_version: "1.0",
+    manifest_schema_version: "1.1",
     id,
     node_version: "0.1.0",
     label,
@@ -61,6 +61,7 @@ function demoManifest(
     citations: [],
     license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
     capability_requirements: [],
+    software_dependencies: [],
   };
 }
 

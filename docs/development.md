@@ -25,6 +25,9 @@ EEG integration with:
 uv sync --all-packages --group eeg
 ```
 
+The registry's upstream software versions, licenses, citations, and package
+metadata status are described in [node dependency metadata](node-dependency-metadata.md).
+
 The generated `uv.lock` and `apps/web/package-lock.json` should remain committed so a clean checkout resolves the reviewed dependency set.
 
 ## Run

@@ -2,13 +2,16 @@ import { expect, test } from "vitest";
 
 import { assertNodeManifest } from "./api";
 
-test("rejects registry payloads that do not match manifest contract 1.0", () => {
+test("rejects registry payloads that do not match manifest contract 1.1", () => {
+  expect(() => assertNodeManifest({ manifest_schema_version: "1.0" })).toThrow(
+    "The node registry response does not match contract version 1.1.",
+  );
   expect(() => assertNodeManifest({ manifest_schema_version: "2.0" })).toThrow(
-    "The node registry response does not match contract version 1.0.",
+    "The node registry response does not match contract version 1.1.",
   );
   expect(() =>
     assertNodeManifest({
-      manifest_schema_version: "1.0",
+      manifest_schema_version: "1.1",
       id: "broken",
       node_version: "0.1.0",
       label: "Broken",
@@ -21,6 +24,7 @@ test("rejects registry payloads that do not match manifest contract 1.0", () => 
       citations: [],
       license: { name: "Test" },
       capability_requirements: [],
+      software_dependencies: [],
     }),
-  ).toThrow("The node registry response does not match contract version 1.0.");
+  ).toThrow("The node registry response does not match contract version 1.1.");
 });

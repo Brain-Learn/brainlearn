@@ -1,14 +1,18 @@
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 
 import pytest
 from brainlearn_core import (
     CanvasPosition,
+    CitationMetadata,
     Edge,
     EdgeEndpoint,
     GraphMetadata,
+    LicenseMetadata,
     NodeManifest,
     PortDirection,
     ScientificType,
+    SoftwareDependencyMetadata,
     Workflow,
     validate_workflow,
 )
@@ -17,6 +21,7 @@ from brainlearn_server.registry import (
     DEMO_MANIFESTS,
     NODE_REGISTRY,
     instantiate_registered_node,
+    software_dependency_metadata,
 )
 
 EXAMPLE = Path(__file__).parents[1] / "examples" / "eeg-first-look.workflow.json"
@@ -27,6 +32,91 @@ def test_registry_manifests_round_trip_and_have_unique_identity() -> None:
 
     assert restored == list(NODE_REGISTRY)
     assert len({item.id for item in restored}) == len(restored) == 13
+
+
+def test_eeg_manifests_record_upstream_dependency_metadata() -> None:
+    manifests = {manifest.id: manifest for manifest in NODE_REGISTRY}
+
+    bids_input = manifests["input.bids_eeg"].software_dependencies
+    assert {dependency.package_name for dependency in bids_input} == {"mne", "mne-bids"}
+    for node_id, manifest in manifests.items():
+        if not node_id.startswith("eeg.") and node_id != "input.bids_eeg":
+            assert manifest.software_dependencies == []
+            continue
+        dependencies = {item.package_name: item for item in manifest.software_dependencies}
+        assert "mne" in dependencies
+        if node_id in {"input.bids_eeg", "eeg.inspect"}:
+            assert "mne-bids" in dependencies
+        for dependency in dependencies.values():
+            assert dependency.version == (
+                "1.13.2" if dependency.package_name == "mne" else "0.20.0"
+            )
+            assert dependency.license.spdx_id == "BSD-3-Clause"
+            assert dependency.citations
+            assert dependency.installation_status in {
+                "installed",
+                "missing",
+                "version_mismatch",
+            }
+            if dependency.installation_status == "missing":
+                assert dependency.installed_version is None
+            elif dependency.installation_status == "installed":
+                assert dependency.installed_version == dependency.version
+            else:
+                assert dependency.installed_version not in (None, dependency.version)
+
+
+@pytest.mark.parametrize(
+    ("installed_version", "expected_status"),
+    [("1.13.2", "installed"), ("1.13.1", "version_mismatch"), (None, "missing")],
+)
+def test_dependency_metadata_snapshots_distribution_presence_without_importing(
+    installed_version: str | None,
+    expected_status: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import builtins
+
+    import brainlearn_server.registry as registry
+
+    original_import = builtins.__import__
+
+    def forbid_scientific_import(name: str, *args, **kwargs):
+        if name in {"mne", "mne_bids"}:
+            raise AssertionError(f"unexpected scientific import: {name}")
+        return original_import(name, *args, **kwargs)
+
+    def version_reader(package_name: str) -> str:
+        assert package_name == "mne"
+        if installed_version is None:
+            raise PackageNotFoundError(package_name)
+        return installed_version
+
+    monkeypatch.setattr(builtins, "__import__", forbid_scientific_import)
+    monkeypatch.setattr(registry, "installed_distribution_version", version_reader)
+    dependency = software_dependency_metadata(
+        package_name="mne",
+        version="1.13.2",
+        license=LicenseMetadata(name="BSD 3-Clause", spdx_id="BSD-3-Clause"),
+        citations=[CitationMetadata(title="MNE-Python")],
+    )
+
+    assert dependency.installation_status == expected_status
+    assert dependency.installed_version == installed_version
+
+
+def test_dependency_metadata_rejects_inconsistent_installed_version() -> None:
+    with pytest.raises(ValueError, match="installation status must match"):
+        SoftwareDependencyMetadata.model_validate(
+            {
+                "package_name": "mne",
+                "version": "1.13.2",
+                "license": {"name": "BSD 3-Clause", "spdx_id": "BSD-3-Clause"},
+                "citations": [],
+                "installation_status": "installed",
+                "installed_version": "1.13.1",
+            }
+        )
 
 
 def test_registry_ports_and_parameters_match_example_instances() -> None:

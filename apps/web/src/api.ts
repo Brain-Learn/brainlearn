@@ -40,12 +40,38 @@ function isParameterSchema(value: unknown): boolean {
   );
 }
 
+function isSoftwareDependency(value: unknown): boolean {
+  const validShape =
+    isRecord(value) &&
+    typeof value.package_name === "string" &&
+    typeof value.version === "string" &&
+    isRecord(value.license) &&
+    typeof value.license.name === "string" &&
+    Array.isArray(value.citations) &&
+    value.citations.every(
+      (citation) => isRecord(citation) && typeof citation.title === "string",
+    ) &&
+    ["installed", "missing", "version_mismatch"].includes(
+      String(value.installation_status),
+    ) &&
+    (value.installed_version === null ||
+      typeof value.installed_version === "string");
+  if (!validShape) return false;
+  if (value.installation_status === "missing") {
+    return value.installed_version === null;
+  }
+  if (typeof value.installed_version !== "string") return false;
+  return value.installation_status === "installed"
+    ? value.installed_version === value.version
+    : value.installed_version !== value.version;
+}
+
 export function assertNodeManifest(
   value: unknown,
 ): asserts value is NodeManifest {
   if (
     !isRecord(value) ||
-    value.manifest_schema_version !== "1.0" ||
+    value.manifest_schema_version !== "1.1" ||
     typeof value.id !== "string" ||
     typeof value.node_version !== "string" ||
     typeof value.label !== "string" ||
@@ -60,6 +86,8 @@ export function assertNodeManifest(
     !Array.isArray(value.citations) ||
     !isRecord(value.license) ||
     typeof value.license.name !== "string" ||
+    !Array.isArray(value.software_dependencies) ||
+    !value.software_dependencies.every(isSoftwareDependency) ||
     !Array.isArray(value.capability_requirements) ||
     !value.capability_requirements.every(
       (requirement) =>
@@ -70,7 +98,7 @@ export function assertNodeManifest(
     )
   ) {
     throw new Error(
-      "The node registry response does not match contract version 1.0.",
+      "The node registry response does not match contract version 1.1.",
     );
   }
 }

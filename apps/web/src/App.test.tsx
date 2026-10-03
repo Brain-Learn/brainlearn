@@ -13,7 +13,7 @@ import App from "./App";
 import type { NodeManifest, Workflow } from "./types";
 
 const bidsManifest: NodeManifest = {
-  manifest_schema_version: "1.0",
+  manifest_schema_version: "1.1",
   id: "input.bids_eeg",
   node_version: "0.1.0",
   label: "BIDS EEG",
@@ -42,6 +42,26 @@ const bidsManifest: NodeManifest = {
   citations: [],
   license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
   capability_requirements: [],
+  software_dependencies: [
+    {
+      package_name: "mne",
+      version: "1.13.2",
+      license: {
+        name: "BSD 3-Clause License",
+        spdx_id: "BSD-3-Clause",
+        url: "https://opensource.org/license/bsd-3-clause",
+      },
+      citations: [
+        {
+          title: "MEG and EEG data analysis with MNE-Python",
+          doi: "10.3389/fnins.2013.00267",
+          url: "https://doi.org/10.3389/fnins.2013.00267",
+        },
+      ],
+      installation_status: "missing",
+      installed_version: null,
+    },
+  ],
 };
 
 beforeEach(() => {
@@ -112,6 +132,30 @@ test("adds and removes a registry node from an empty canvas", async () => {
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Remove node" }));
   expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument();
+});
+
+test("shows pinned upstream dependency licensing, citation, and install status", async () => {
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: /BIDS EEG/ }));
+
+  expect(await screen.findByText("mne")).toBeInTheDocument();
+  expect(screen.getByText(/1.13.2/)).toBeInTheDocument();
+  expect(document.querySelector(".dependency-list li")).toHaveTextContent(
+    "BSD-3-Clause",
+  );
+  expect(screen.getByRole("link", { name: "BSD-3-Clause" })).toHaveAttribute(
+    "href",
+    "https://opensource.org/license/bsd-3-clause",
+  );
+  expect(screen.getByText(/missing/)).toBeInTheDocument();
+  expect(
+    screen.getByRole("link", {
+      name: "MEG and EEG data analysis with MNE-Python",
+    }),
+  ).toHaveAttribute("href", "https://doi.org/10.3389/fnins.2013.00267");
+  expect(
+    screen.getByText(/does not validate imports, runtime dependencies/),
+  ).toBeInTheDocument();
 });
 
 test("edits a manifest parameter and supports undo and redo", async () => {

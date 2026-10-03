@@ -614,6 +614,51 @@ function Inspector({
         {manifest.license.spdx_id ?? manifest.license.name} ·{" "}
         {manifest.citations.length} citations
       </p>
+      {manifest.software_dependencies.length > 0 && (
+        <>
+          <h3>Upstream software</h3>
+          <ul className="dependency-list">
+            {manifest.software_dependencies.map((dependency) => (
+              <li key={dependency.package_name}>
+                <strong>{dependency.package_name}</strong> {dependency.version}{" "}
+                ·{" "}
+                {dependency.license.url ? (
+                  <a
+                    href={dependency.license.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {dependency.license.spdx_id ?? dependency.license.name}
+                  </a>
+                ) : (
+                  (dependency.license.spdx_id ?? dependency.license.name)
+                )}
+                {" · "}
+                {dependency.installation_status === "version_mismatch"
+                  ? `version mismatch (${dependency.installed_version})`
+                  : dependency.installation_status}
+                {dependency.citations.map((citation) => (
+                  <div
+                    key={`${citation.doi ?? citation.url ?? citation.title}`}
+                  >
+                    {citation.url ? (
+                      <a href={citation.url} rel="noreferrer" target="_blank">
+                        {citation.title}
+                      </a>
+                    ) : (
+                      citation.title
+                    )}
+                  </div>
+                ))}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            Installation status comes from package metadata; it does not
+            validate imports, runtime dependencies, or scientific behavior.
+          </p>
+        </>
+      )}
       <button className="remove-button" onClick={onRemove}>
         <Trash2 size={14} /> Remove node
       </button>
