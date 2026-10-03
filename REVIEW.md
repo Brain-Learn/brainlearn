@@ -255,3 +255,30 @@ required hosted checks passed in GitHub Actions run `37122628393`.
 Step 5A.8 is approved and checked. Step 5 remains open. The next bounded work
 unit is Step 5A.9: add MNE-Python and MNE-BIDS as an optional, pinned EEG
 dependency group. No signal processing or BIDS discovery behavior was added.
+
+## Step 5A.9 final monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #16 implementation head `072d0a2`, optional pinned EEG dependencies.
+
+Status: **approved**. The diff is limited to the optional `eeg` dependency
+group, its resolved lockfile, setup documentation, and implementation-plan
+evidence. `mne==1.13.2` and `mne-bids==0.20.0` are exact pins; the lock resolves
+their runtime requirements, including the matching MNE dependency. The default
+`uv tree --locked` omits both packages, while `uv tree --locked --group eeg`
+includes them. A clean Python 3.12 group install imported the pinned versions;
+a separate default sync had neither import available. No application startup
+imports, node metadata, BIDS discovery, or processing behavior were added.
+
+The clean-checkout Python 3.12 gate passed: Ruff; formatting (70 files); strict
+mypy (28 source files); and pytest (726 passed, 2 opt-in tests skipped, 2
+upstream deprecation warnings in 33.71 seconds). Frontend ESLint and Prettier
+passed; Vitest passed 161 tests in 17 files; the production build passed with
+1,844 modules; `npm audit --omit=dev` found 0 vulnerabilities; and
+`git diff --check` passed. Both required hosted checks passed on the PR, and
+were rerun after the monitor-owned evidence update before merge.
+
+Step 5A.9 is approved and checked. Step 5 remains open; the next bounded item
+is recording upstream versions, licenses, citations, and installation status
+in node metadata. No scientific processing assumptions or claims were added.
