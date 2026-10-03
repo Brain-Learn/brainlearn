@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "provider": "openneuro",
+  "dataset_id": "ds001037",
+  "snapshot": "00001",
+  "title": "The brain of Chris",
+  "landing_page": "https://openneuro.org/datasets/ds001037/versions/00001",
+  "license_name": "CC0 1.0 Universal (Public Domain Dedication)",
+  "license_spdx": "CC0-1.0",
+  "reuse_statement": "OpenNeuro ds001037:00001 is dedicated to the public domain under Creative Commons CC0 1.0. No rights are reserved; the data may be reused for any purpose without permission. Evidence: the OpenNeuro upload agreement (https://docs.openneuro.org/faq.html) and the snapshot page's JSON-LD license assertion (https://github.com/OpenNeuroOrg/openneuro/blob/master/packages/openneuro-app/src/scripts/utils/json-ld.js).",
+  "license_evidence_url": "https://docs.openneuro.org/faq.html",
+  "citations": [
+    {
+      "title": "The brain of Chris",
+      "doi": null,
+      "url": null
+    }
+  ],
+  "expected_files": [
+    {
+      "path": ".gitattributes",
+      "byte_size": 284,
+      "sha256": "9476689a1190b1b79c7a65a128f992a551d86f55236c939a74218973423fcdd1",
+      "url": "https://openneuro.org/crn/datasets/ds001037/snapshots/00001/files/.gitattributes"
+    },
+    {
+      "path": "dataset_description.json",
+      "byte_size": 83,
+      "sha256": "8cef746e8df99ef7a3efaf4b7f1cea7313f2d732b22abf609733fdf38584f400",
+      "url": "https://openneuro.org/crn/datasets/ds001037/snapshots/00001/files/dataset_description.json"
+    }
+  ],
+  "expected_total_bytes": 367,
+  "expected_catalog_identity": "brainlearn-v1:dataset:ce691f5aa592178b5a2fa6ce18271833ad9ed784a9223ecf18fd2cdc28e8f05c",
+  "expected_lock_identity": "brainlearn-v1:dataset:f05a71fcc9f3e8aae67f1bfae0b71b3c2274af7b9b698a152db982e848ef7bc2",
+  "limits": {
+    "timeout_s": 30.0,
+    "max_total_bytes": 10485760,
+    "max_files": 10,
+    "max_redirect_hops": 5
+  }
+}

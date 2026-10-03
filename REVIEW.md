@@ -143,3 +143,71 @@ No scientific assumptions changed and no blocking findings remain. Step 5A.6 is
 approved and checked. Step 5 remains open; the next bounded work unit is Step
 5A.7, deterministic mock-provider coverage plus one tiny pinned scheduled
 integration download.
+
+## Step 5A.7 first monitoring review
+
+Review date: 2026-09-17
+
+Scope: PR #13, deterministic provider tests and pinned integration smoke at
+`a298a81`.
+
+Status: **changes requested**. The complete baseline gate and the opt-in live
+download pass, but four contract gaps remain:
+
+1. Drift diagnostics are not secret-free. `_sanitize_text` removes query and
+   fragment suffixes but retains URL userinfo and arbitrary exception text. A
+   direct `ProviderError` probe emitted `alice:TOPSECRET` verbatim into the JSON
+   diagnostic that the workflow would upload.
+2. The documented CC0 claim is not established by the pin. Live resolution of
+   `ds001037:00001` still yields `license_name="Unverified OpenNeuro license
+   (pending curator review)"`, null SPDX, and reuse terms pending verification,
+   while the documentation and completion log call it CC0. The assignment
+   requires an exact, reviewed license.
+3. The offline guard patches `urllib.request.urlopen`, but both production
+   OpenNeuro transports use `OpenerDirector.open`; an accidental provider call
+   during reopening would bypass the claimed network block.
+4. `tests/fixtures/pinned-integration-snapshot-1.0.json` is described as the
+   reviewed pin but is never loaded. `FIXTURES` is unused, so the fixture and
+   in-code manifest can diverge while all tests and the scheduled smoke pass.
+
+The monitor reproduced Ruff and format success (67 files), strict mypy success
+(28 source files), pytest 710 passed with 2 opt-in tests skipped and 2 upstream
+warnings, ESLint and Prettier success, Vitest 161 passed in 17 files, production
+build success (1,844 modules), production audit with 0 vulnerabilities, and a
+clean diff check. Both required hosted CI jobs are green on `a298a81`. The
+opt-in live smoke also passed independently in 2.60 seconds. Passing gates do
+not cover the four probes above. PR #13 remains open; Step 5A.7 stays unchecked
+and Step 5A.8 must not begin.
+
+## Step 5A.7 final monitoring review
+
+Review date: 2026-10-03
+
+Scope: PR #13 final head `52e3014`, compared with `9d3e274`.
+
+Status: **approved**. The four original blockers are resolved: diagnostics
+never copy untrusted exception text; the pinned snapshot carries reviewed CC0
+terms with evidence; offline reopening blocks both the production OpenNeuro
+opener and sockets and proves zero provider/source calls; and the reviewed JSON
+fixture is validated against the runtime manifest. A second review found and
+the branch repaired two more issues before approval: the missing-lock
+diagnostic had included an absolute project root, and the initial CC0 mapping
+inference was broader than the exact reviewed snapshot. The diagnostic now
+contains only a relative dataset path, the CC0 exception is limited to
+`ds001037:00001`, other unreviewed snapshots remain pending, and the provider
+documentation describes the 36-month grace period consistently. The pin
+comments now cite evidence for this exact tag.
+
+Independent clean-checkout review found no remaining blockers. The complete
+gate was reproduced at `52e3014`: Ruff passed; formatting passed for 67 files;
+strict mypy passed for 28 source files; pytest passed 723 tests, 2 opt-in tests
+skipped, and 2 upstream warnings in 35.14 seconds; ESLint and Prettier passed;
+Vitest passed 161 tests in 17 files; production build passed with 1,844 modules;
+production audit found 0 vulnerabilities; and `git diff --check` passed. The
+opt-in live OpenNeuro smoke passed in 2.74 seconds. Both required hosted CI
+checks passed in run `37118433673`.
+
+Step 5A.7 is approved and checked. Step 5 remains open. The next bounded work
+unit is Step 5A.8: select and document a small licensed BIDS EEG fixture or a
+reproducible retrieval process with exact snapshot and checksums. No scientific
+processing assumptions were introduced.

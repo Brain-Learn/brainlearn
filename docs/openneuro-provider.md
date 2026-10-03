@@ -27,10 +27,14 @@ in later Step 5A units.
   page-local substring filter on dataset id and title; it is not a corpus
   search and the interface documents it as such.
 
-## Mapping rules (all results stay `pending`)
+## Mapping rules (unreviewed results stay `pending`)
 
 Every resolution goes through `CatalogEntry` validation; the provider
-cannot bypass checksums, URL, identity, or licensing rules.
+cannot bypass checksums, URL, identity, or licensing rules. The single
+reviewed integration pin `ds001037:00001` has an evidence-backed CC0
+exception because its exact snapshot is past OpenNeuro's 36-month grace
+period and its landing page asserts the CC0 deed. No general license
+inference is made for other snapshots with missing license metadata.
 
 | Provider fact | Catalog field |
 |---|---|
@@ -42,7 +46,7 @@ cannot bypass checksums, URL, identity, or licensing rules.
 | Constant `["BIDS"]` (OpenNeuro hosts BIDS datasets; version noted in `limitations`) | `formats` |
 | `summary.size` | `approximate_total_bytes`, `expected_total_bytes` |
 | Non-directory root `files` (`filename`, `size`) | `expected_files` with `sha256: None` (provider publishes no per-file hashes) |
-| `description.License` verbatim, else an explicit unverified placeholder; `license_spdx` always `None` | `license_name`, `license_spdx` (SPDX is never inferred; the curator maps e.g. `CC0` during verification) |
+| `description.License` verbatim with SPDX/reuse pending curator verification; if omitted, an unverified placeholder except the reviewed pinned snapshot `ds001037:00001`, whose platform terms and snapshot JSON-LD establish CC0 1.0 | `license_name`, `license_spdx` (SPDX is never inferred from arbitrary provider text; only the snapshot-specific review records `CC0-1.0`) |
 | Authors plus `Name`; `DatasetDOI` with a `doi:` prefix stripped, dropped with a `limitations` note when unparseable; citation `url` always `None` | `citations` (single entry) |
 | `https://openneuro.org/datasets/<id>/versions/<tag>` | `landing_page` |
 | `[]` | `compatible_templates` (no compatibility claim is inferred) |
