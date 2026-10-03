@@ -17,6 +17,10 @@ dev = [
   "pytest>=8.4,<10",
   "ruff>=0.12,<1",
 ]
+eeg = [
+  "mne==1.13.2",
+  "mne-bids==0.20.0",
+]
 
 [tool.uv.sources]
 brainlearn-core = { workspace = true }
