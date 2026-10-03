@@ -12,7 +12,10 @@ The immutable snapshot tree SHA-1 is
 [`docs/fixtures/ds002181-sub-1473-1.0.0.json`](fixtures/ds002181-sub-1473-1.0.0.json).
 The metadata object URLs contain their content object IDs, and the annexed EEG
 file URL pins its S3 `versionId`. The retrieval helper checks the final HTTPS
-host, exact byte count, and SHA-256 before writing each file atomically.
+host before following redirects, rejects symlinked output paths, checks the
+exact byte count and SHA-256, and installs each file atomically without
+replacing existing files. A previously retrieved file is accepted only if it
+already matches its recorded size and digest.
 
 ## License and citation
 
@@ -45,9 +48,10 @@ uv run python scripts/fetch_bids_eeg_fixture.py /tmp/brainlearn-ds002181-fixture
 ```
 
 The helper reads the checked-in manifest, downloads only its five listed files,
-and exits with an error if the source, size, or digest differs. The helper uses
-only the Python standard library and requires no OpenNeuro account or
-credential.
+and exits with an error if the source, size, or digest differs. It also rejects
+redirects to hosts outside the allowlist and preserves files that are already
+present at the destination. The helper uses only the Python standard library
+and requires no OpenNeuro account or credential.
 
 | BIDS path | Bytes | SHA-256 |
 | --- | ---: | --- |
