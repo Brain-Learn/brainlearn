@@ -6,10 +6,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from brainlearn_core import NodeRunState, RunEvent, RunEventKind, RunRecord, RunState, Workflow
+from brainlearn_core import (
+    CanvasPosition,
+    NodeRunState,
+    RunEvent,
+    RunEventKind,
+    RunRecord,
+    RunState,
+    Workflow,
+)
 from brainlearn_server import project_store as store_module
 from brainlearn_server.app import app, runs, store
 from brainlearn_server.auth import reset_session_token_for_tests
+from brainlearn_server.bids_eeg import BidsEegDiscoveryService, BidsEegSignalInspection
+from brainlearn_server.registry import instantiate_registered_node
 from brainlearn_server.worker import build_run_record
 from fastapi.testclient import TestClient
 
@@ -178,6 +188,125 @@ def test_start_runs_chain_to_success(client: TestClient, tmp_path: Path) -> None
     assert "run_started" in _kinds(finished)
     assert _kinds(finished).count("node_started") == 2
     assert list((project / "runs" / run_id / "staging").rglob("*")) == []
+
+
+@pytest.mark.parametrize("mutate_source", [False, True])
+def test_bids_input_and_signal_inspection_run_as_noncacheable_workflow_nodes(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate_source: bool
+) -> None:
+    project = _make_project(client, tmp_path)
+    dataset = project / "raw-data" / "study"
+    eeg_dir = dataset / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    recording = eeg_dir / "sub-01_task-Rest_eeg.edf"
+    recording.write_bytes(b"read-only-source-signal")
+    (dataset / "dataset_description.json").write_text(
+        json.dumps({"Name": "Synthetic", "BIDSVersion": "1.2.0"}), encoding="utf-8"
+    )
+    (eeg_dir / "sub-01_task-Rest_eeg.json").write_text(
+        json.dumps(
+            {
+                "TaskName": "Rest",
+                "SamplingFrequency": 500,
+                "EEGReference": "average",
+                "PowerLineFrequency": 50,
+                "SoftwareFilters": "n/a",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (eeg_dir / "sub-01_task-Rest_channels.tsv").write_text(
+        "name\ttype\tunits\nCz\tEEG\tuV\n", encoding="utf-8"
+    )
+    (eeg_dir / "sub-01_task-Rest_events.tsv").write_text(
+        "onset\tduration\ttrial_type\n0\t0.5\tstandard\n", encoding="utf-8"
+    )
+    source_before = {
+        path.relative_to(dataset).as_posix(): path.read_bytes()
+        for path in dataset.rglob("*")
+        if path.is_file()
+    }
+
+    def inspect_signal(
+        self: BidsEegDiscoveryService,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegSignalInspection:
+        if mutate_source:
+            recording.write_bytes(b"changed during inspection")
+        return BidsEegSignalInspection(
+            recording_path=recording_path,
+            format="edf",
+            sampling_frequency_hz=500,
+            sample_count=2_000,
+            duration_seconds=4,
+            channel_count=1,
+            channel_types={"eeg": 1},
+            bad_channel_count=0,
+            annotation_count=1,
+            annotation_descriptions=("standard",),
+            highpass_hz=0,
+            lowpass_hz=250,
+        )
+
+    monkeypatch.setattr(BidsEegDiscoveryService, "inspect_signal", inspect_signal)
+    bids = instantiate_registered_node("input.bids_eeg", "bids", CanvasPosition(x=0, y=0))
+    bids.parameters[0].value = "raw-data/study"
+    inspect = instantiate_registered_node("eeg.inspect", "inspect", CanvasPosition(x=200, y=0))
+    inspect.parameters[0].value = "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+    workflow = {
+        "schema_version": "1.0",
+        "id": "read-only-inspection",
+        "metadata": {
+            "name": "Read-only inspection",
+            "description": "",
+            "created_with": "BrainLearn tests",
+            "modality": "EEG",
+            "status": "example",
+        },
+        "nodes": [bids.model_dump(mode="json"), inspect.model_dump(mode="json")],
+        "edges": [
+            _edge(
+                "dataset-edge",
+                "bids",
+                "inspect",
+                source_port="dataset",
+                target_port="dataset",
+            )
+        ],
+    }
+
+    started = _start(client, project, workflow)
+    finished = _wait_for_state(client, project, started["run_id"], {"succeeded", "failed"})
+    if mutate_source:
+        inspection_node = next(node for node in finished["node_runs"] if node["id"] == "inspect")
+        assert finished["state"] == "failed"
+        assert "changed during signal inspection" in inspection_node["failure"]["message"]
+        assert inspection_node["artifacts"] == []
+        assert not (project / "cache").exists()
+        return
+
+    assert finished["state"] == "succeeded", finished
+    inspection_node = next(node for node in finished["node_runs"] if node["id"] == "inspect")
+    artifacts = {
+        artifact["port_id"]: json.loads((project / artifact["path"]).read_text(encoding="utf-8"))
+        for artifact in inspection_node["artifacts"]
+    }
+    reference = artifacts["raw"]
+    result = artifacts["report"]
+
+    assert reference["recording_path"] == "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+    assert reference["source_content_identity"] == result["source_content_identity"]
+    assert result["inspection"]["sample_count"] == 2_000
+    assert result["source_content_identity"].startswith("brainlearn-v1:artifact:")
+    assert result["source_files"]
+    assert {
+        path.relative_to(dataset).as_posix(): path.read_bytes()
+        for path in dataset.rglob("*")
+        if path.is_file()
+    } == source_before
+    assert not (project / "cache").exists()
 
 
 def test_failure_skips_downstream_and_fails_run(client: TestClient, tmp_path: Path) -> None:

@@ -40,7 +40,9 @@ from brainlearn_server.bids_eeg import (
     BidsEegDiscovery,
     BidsEegDiscoveryService,
     BidsEegInputIdentity,
+    BidsEegSignalInspection,
     BidsIdentityResourceLimit,
+    BidsSignalInspectionError,
 )
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
 from brainlearn_server.datasets import (
@@ -382,6 +384,14 @@ class BidsEegIdentityRequest(BaseModel):
     recording_path: str = Field(min_length=1)
 
 
+class BidsEegSignalInspectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    relative_dir: str = Field(min_length=1)
+    recording_path: str = Field(min_length=1)
+
+
 def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
     return HTTPException(status_code=404, detail=detail)
 
@@ -543,6 +553,29 @@ def identify_bids_eeg_recording(
         return bids_eeg.identify(payload.path, payload.relative_dir, payload.recording_path)
     except BidsIdentityResourceLimit as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from None
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="The requested project path cannot be accessed.",
+        ) from None
+
+
+@app.post(
+    "/api/datasets/bids-eeg/inspect",
+    response_model=BidsEegSignalInspection,
+)
+def inspect_bids_eeg_signal(
+    payload: BidsEegSignalInspectionRequest,
+    _auth: None = Depends(require_session_token),
+) -> BidsEegSignalInspection:
+    """Read signal headers and annotations through the pinned MNE-BIDS reader."""
+
+    try:
+        return bids_eeg.inspect_signal(payload.path, payload.relative_dir, payload.recording_path)
+    except BidsSignalInspectionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     except BidsDatasetPathError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except PermissionError:

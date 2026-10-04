@@ -16,10 +16,16 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
-from brainlearn_core import content_identity, validate_relative_path
+from brainlearn_core import (
+    PROJECT_MANIFEST_FILENAME,
+    WORKFLOW_FILENAME,
+    content_identity,
+    validate_relative_path,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
@@ -117,6 +123,31 @@ class BidsEegInputIdentity(BaseModel):
         elif self.content_identity is not None or self.files or not self.message:
             raise ValueError("A resource-limited input identity must contain no hashes.")
         return self
+
+
+class BidsEegSignalInspection(BaseModel):
+    """Measured, non-persisted properties returned by MNE for one recording."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    recording_path: str
+    format: Literal["edf", "bdf", "brainvision", "eeglab"]
+    sampling_frequency_hz: float = Field(gt=0)
+    sample_count: int = Field(gt=0)
+    duration_seconds: float = Field(gt=0)
+    channel_count: int = Field(gt=0)
+    channel_types: dict[str, int]
+    bad_channel_count: int = Field(ge=0)
+    annotation_count: int = Field(ge=0)
+    annotation_descriptions: tuple[str, ...] = ()
+    highpass_hz: float | None = Field(default=None, ge=0)
+    lowpass_hz: float | None = Field(default=None, gt=0)
+    inspection_scope: Literal["read_only_signal_metadata"] = "read_only_signal_metadata"
+
+
+class BidsSignalInspectionError(ValueError):
+    """A recording could not be inspected safely through the pinned MNE stack."""
 
 
 class BidsDatasetPathError(ValueError):
@@ -815,7 +846,10 @@ class BidsEegDiscoveryService:
             raise BidsDatasetPathError(
                 "Open an authorized project and choose a project-relative dataset path."
             ) from exc
-        if not (project / "project.json").is_file() or not (project / "workflow.json").is_file():
+        if (
+            not (project / PROJECT_MANIFEST_FILENAME).is_file()
+            or not (project / WORKFLOW_FILENAME).is_file()
+        ):
             raise BidsDatasetPathError("The selected path is not an open BrainLearn project.")
         root = project
         for part in relative.split("/"):
@@ -839,6 +873,103 @@ class BidsEegDiscoveryService:
 
         root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
         return discover_bids_eeg(root, relative)
+
+    def inspect_signal(
+        self,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegSignalInspection:
+        """Measure raw signal metadata with MNE without preloading or writing data."""
+
+        root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
+        try:
+            recording_relative = validate_relative_path(recording_path, "Recording path")
+        except ValueError as exc:
+            raise BidsDatasetPathError(
+                "Choose a discovered recording inside this dataset."
+            ) from exc
+        discovery = discover_bids_eeg(root, relative)
+        recording = next(
+            (item for item in discovery.recordings if item.path == recording_relative), None
+        )
+        if recording is not None and recording.status == "unsupported":
+            raise BidsSignalInspectionError(
+                "Unsupported EEG format. Signal inspection supports EDF, BDF, "
+                "complete BrainVision, and EEGLAB recordings."
+            )
+        if recording is None or recording.status != "ready" or recording.format is None:
+            raise BidsDatasetPathError(
+                "Only a discovered recording with complete supported BIDS EEG metadata "
+                "can be inspected."
+            )
+        signal_path = root / recording_relative
+        source_paths = [signal_path]
+        if recording.format == "brainvision":
+            source_paths.extend((signal_path.with_suffix(".vmrk"), signal_path.with_suffix(".eeg")))
+        elif recording.format == "eeglab":
+            fdt_path = signal_path.with_suffix(".fdt")
+            if fdt_path.exists() or fdt_path.is_symlink():
+                source_paths.append(fdt_path)
+        for path in source_paths:
+            try:
+                info = os.lstat(path)
+            except OSError as exc:
+                raise BidsSignalInspectionError(
+                    f"Required {recording.format} signal file {path.name} is missing or unreadable."
+                ) from exc
+            if path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+                raise BidsSignalInspectionError(
+                    f"Required {recording.format} signal file {path.name} is not safe."
+                )
+
+        try:
+            mne_bids = import_module("mne_bids")
+            get_bids_path_from_fname = mne_bids.get_bids_path_from_fname
+            read_raw_bids = mne_bids.read_raw_bids
+        except ImportError as exc:
+            raise BidsSignalInspectionError(
+                "Signal inspection requires the pinned optional EEG dependencies. "
+                "Install BrainLearn with its eeg dependency group."
+            ) from exc
+
+        raw = None
+        try:
+            bids_path = get_bids_path_from_fname(signal_path, check=False)
+            bids_path.root = root
+            raw = read_raw_bids(bids_path, verbose="ERROR", extra_params={"preload": False})
+            sampling_frequency = float(raw.info["sfreq"])
+            sample_count = int(raw.n_times)
+            channel_types: dict[str, int] = {}
+            for channel_type in raw.get_channel_types():
+                channel_types[channel_type] = channel_types.get(channel_type, 0) + 1
+            descriptions = tuple(
+                dict.fromkeys(str(value) for value in raw.annotations.description)
+            )[:100]
+            return BidsEegSignalInspection(
+                recording_path=recording_relative,
+                format=cast(Literal["edf", "bdf", "brainvision", "eeglab"], recording.format),
+                sampling_frequency_hz=sampling_frequency,
+                sample_count=sample_count,
+                duration_seconds=sample_count / sampling_frequency,
+                channel_count=len(raw.ch_names),
+                channel_types=channel_types,
+                bad_channel_count=len(raw.info["bads"]),
+                annotation_count=len(raw.annotations),
+                annotation_descriptions=descriptions,
+                highpass_hz=float(raw.info["highpass"]),
+                lowpass_hz=float(raw.info["lowpass"]),
+            )
+        except BidsSignalInspectionError:
+            raise
+        except Exception as exc:
+            raise BidsSignalInspectionError(
+                f"MNE could not read this {recording.format} EEG recording. "
+                f"Check that its signal file and required companion files are complete: {exc}"
+            ) from exc
+        finally:
+            if raw is not None:
+                raw.close()
 
     def identify(
         self,

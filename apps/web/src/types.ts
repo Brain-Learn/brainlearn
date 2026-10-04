@@ -449,3 +449,20 @@ export interface BidsEegInputIdentity {
   message: string | null;
   inspection_scope: "bounded_source_hashes";
 }
+
+export interface BidsEegSignalInspection {
+  schema_version: "1.0";
+  recording_path: string;
+  format: "edf" | "bdf" | "brainvision" | "eeglab";
+  sampling_frequency_hz: number;
+  sample_count: number;
+  duration_seconds: number;
+  channel_count: number;
+  channel_types: Record<string, number>;
+  bad_channel_count: number;
+  annotation_count: number;
+  annotation_descriptions: string[];
+  highpass_hz: number | null;
+  lowpass_hz: number | null;
+  inspection_scope: "read_only_signal_metadata";
+}

@@ -11,12 +11,18 @@ beneath the run directory; promotion to successful artifacts happens only in
 the worker after success.
 """
 
+from __future__ import annotations
+
+import json
 import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from brainlearn_server.project_store import ProjectStore
 
 
 class ControlledFailure(Exception):
@@ -46,6 +52,8 @@ class NodeContext:
     inputs: dict[str, Path]
     staging_dir: Path
     cancel: threading.Event = field(default_factory=threading.Event)
+    project_path: str | None = None
+    project_store: ProjectStore | None = None
 
 
 DemoAdapter = Callable[[NodeContext], list[StagedOutput]]
@@ -118,6 +126,120 @@ def relay_adapter(ctx: NodeContext) -> list[StagedOutput]:
     return [StagedOutput(port_id="output", relative_path="output.txt", media_type="text/plain")]
 
 
+def bids_input_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Resolve a project-relative BIDS dataset and emit a path-only reference."""
+
+    from brainlearn_server.bids_eeg import BidsDatasetPathError, BidsEegDiscoveryService
+
+    _require_cancel(ctx)
+    if ctx.project_path is None or ctx.project_store is None:
+        raise ControlledFailure("The BIDS EEG input requires an open BrainLearn project.")
+    dataset_path = str(ctx.parameters.get("root", ""))
+    if not dataset_path:
+        raise ControlledFailure("Choose a project-relative BIDS EEG dataset path.")
+    service = BidsEegDiscoveryService(ctx.project_store)
+    try:
+        discovery = service.discover(ctx.project_path, dataset_path)
+    except BidsDatasetPathError as exc:
+        raise ControlledFailure(str(exc)) from exc
+    if discovery.status != "ready":
+        message = "; ".join(issue.message for issue in discovery.issues)
+        raise ControlledFailure(message or "The selected BIDS EEG dataset has no ready recording.")
+    ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+    (ctx.staging_dir / "dataset.json").write_text(
+        json.dumps(
+            {"schema_version": "1.0", "dataset_path": dataset_path},
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    return [
+        StagedOutput(port_id="dataset", relative_path="dataset.json", media_type="application/json")
+    ]
+
+
+def eeg_inspection_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Inspect a selected BIDS EEG recording and persist summary metadata only."""
+
+    from brainlearn_server.bids_eeg import (
+        BidsDatasetPathError,
+        BidsEegDiscoveryService,
+        BidsSignalInspectionError,
+    )
+
+    _require_cancel(ctx)
+    if ctx.project_path is None or ctx.project_store is None:
+        raise ControlledFailure("Signal inspection requires an open BrainLearn project.")
+    try:
+        dataset_reference = json.loads(ctx.inputs["dataset"].read_text(encoding="utf-8"))
+    except (KeyError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ControlledFailure("The upstream BIDS dataset reference is invalid.") from exc
+    if (
+        not isinstance(dataset_reference, dict)
+        or dataset_reference.get("schema_version") != "1.0"
+        or not isinstance(dataset_reference.get("dataset_path"), str)
+    ):
+        raise ControlledFailure("The upstream BIDS dataset reference is invalid.")
+    dataset_path = dataset_reference["dataset_path"]
+    recording_path = str(ctx.parameters.get("recording_path", ""))
+    if not recording_path:
+        raise ControlledFailure("Choose a discovered recording path to inspect.")
+    _require_cancel(ctx)
+    service = BidsEegDiscoveryService(ctx.project_store)
+    try:
+        identity = service.identify(ctx.project_path, dataset_path, recording_path)
+        if identity.status != "ready" or identity.content_identity is None:
+            raise ControlledFailure(
+                identity.message or "The recording could not be identified within limits."
+            )
+        inspection = service.inspect_signal(ctx.project_path, dataset_path, recording_path)
+        identity_after_inspection = service.identify(ctx.project_path, dataset_path, recording_path)
+    except (BidsDatasetPathError, BidsSignalInspectionError) as exc:
+        raise ControlledFailure(str(exc)) from exc
+    if (
+        identity_after_inspection.status != "ready"
+        or identity_after_inspection.content_identity != identity.content_identity
+    ):
+        raise ControlledFailure(
+            "The recording changed during signal inspection; refusing to publish a stale report."
+        )
+    _require_cancel(ctx)
+    ctx.staging_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        ctx.staging_dir / "recording-reference.json",
+        {
+            "schema_version": "1.0",
+            "dataset_path": dataset_path,
+            "recording_path": recording_path,
+            "source_content_identity": identity.content_identity,
+        },
+    )
+    _write_json(
+        ctx.staging_dir / "inspection-report.json",
+        {
+            "schema_version": "1.0",
+            "source_content_identity": identity.content_identity,
+            "source_files": [item.model_dump(mode="json") for item in identity.files],
+            "inspection": inspection.model_dump(mode="json"),
+        },
+    )
+    return [
+        StagedOutput(
+            port_id="raw",
+            relative_path="recording-reference.json",
+            media_type="application/vnd.brainlearn.artifact-reference+json",
+        ),
+        StagedOutput(
+            port_id="report", relative_path="inspection-report.json", media_type="application/json"
+        ),
+    ]
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+
+
 @dataclass(frozen=True)
 class DemoParameter:
     """One execution-relevant parameter of a demonstration node.
@@ -154,6 +276,7 @@ class DemoNodeManifest:
     outputs: dict[str, bool]
     handler: DemoAdapter
     parameters: dict[str, DemoParameter] = field(default_factory=dict)
+    cacheable: bool = True
 
 
 DEMO_NODES: dict[str, DemoNodeManifest] = {
@@ -214,3 +337,42 @@ DEMO_NODES: dict[str, DemoNodeManifest] = {
         handler=relay_adapter,
     ),
 }
+
+EEG_NODES: dict[str, DemoNodeManifest] = {
+    "input.bids_eeg": DemoNodeManifest(
+        version="0.2.0",
+        inputs={},
+        outputs={"dataset": True},
+        handler=bids_input_adapter,
+        parameters={
+            "root": DemoParameter(
+                id="root",
+                label="Dataset root",
+                value_type="string",
+                default="synthetic/example-bids",
+                required=True,
+                description="Project-relative path to a discovered BIDS EEG dataset.",
+            )
+        },
+        cacheable=False,
+    ),
+    "eeg.inspect": DemoNodeManifest(
+        version="0.2.0",
+        inputs={"dataset": True},
+        outputs={"raw": True, "report": True},
+        handler=eeg_inspection_adapter,
+        parameters={
+            "recording_path": DemoParameter(
+                id="recording_path",
+                label="Recording path",
+                value_type="string",
+                default="",
+                required=True,
+                description="Path to one discovered recording, relative to its dataset root.",
+            )
+        },
+        cacheable=False,
+    ),
+}
+
+WORKER_NODES = {**DEMO_NODES, **EEG_NODES}

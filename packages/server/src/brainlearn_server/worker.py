@@ -5,8 +5,7 @@ persisted mutation goes through :class:`RunStore` (and therefore the Step 4B
 serialized writer path): the driver re-reads the record before each step and
 saves through the same locks the API uses.
 
-Execution allowlist: only the internal adapters in
-:mod:`brainlearn_server.demo_nodes` may run. Unknown node types fail
+Execution allowlist: only the internal curated adapters may run. Unknown node types fail
 deterministically with ``unsupported_node_type``; shell commands, module
 paths, and arbitrary Python are never accepted from payloads.
 """
@@ -47,8 +46,10 @@ from brainlearn_core.scheduler import downstream_ids, ready_node_ids, topologica
 
 from brainlearn_server.demo_nodes import (
     DEMO_NODES,
+    EEG_NODES,
     CancelledByUser,
     ControlledFailure,
+    DemoNodeManifest,
     NodeContext,
     ReviewPauseRequested,
 )
@@ -64,6 +65,13 @@ CACHE_NODES_DIRNAME = "nodes"
 CACHE_STAGING_DIRNAME = "staging"
 CACHE_FILES_DIRNAME = "files"
 CACHE_ENTRY_FILENAME = "entry.json"
+
+
+def _worker_manifest(node_type: str) -> DemoNodeManifest | None:
+    """Resolve the current allowlisted manifest, including runtime registry updates."""
+
+    return EEG_NODES.get(node_type) or DEMO_NODES.get(node_type)
+
 
 # Process-wide cache-publication serialization, keyed by raw project string.
 # Workers are threads in this process; concurrent publishes of the same
@@ -387,7 +395,7 @@ def _validate_node_ports(node: NodeInstance, connected_inputs: set[str] | None =
     by an edge, and every required output must be declared.
     """
 
-    manifest = DEMO_NODES.get(node.type)
+    manifest = _worker_manifest(node.type)
     if manifest is None:
         return
     declared_inputs = {port.id for port in node.ports if port.direction == PortDirection.INPUT}
@@ -461,7 +469,7 @@ def build_run_record(workflow: Workflow, seed: int = 0, created_at: str | None =
                 edge.target.port_id,
                 {"node": edge.source.node_id, "port": edge.source.port_id},
             )
-        manifest = DEMO_NODES.get(node.type)
+        manifest = _worker_manifest(node.type)
         version = manifest.version if manifest is not None else "0.0.0"
         parameters = {parameter.id: parameter.value for parameter in node.parameters}
         declared_outputs = sorted(
@@ -1056,7 +1064,12 @@ class WorkerService:
         node = next(item for item in fresh.node_runs if item.id == node_id)
         if node.state != NodeRunState.QUEUED or self._cancel_flag(project, record.id).is_set():
             return
-        cached = self._lookup_cache(project, fresh.id, node)
+        manifest = _worker_manifest(node.node_type)
+        cached = (
+            self._lookup_cache(project, fresh.id, node)
+            if manifest is not None and manifest.cacheable
+            else None
+        )
         if cached is not None and not self._cancel_flag(project, fresh.id).is_set():
             try:
                 self._reuse_from_cache(project, fresh.id, node_id, cached)
@@ -1115,7 +1128,6 @@ class WorkerService:
         )
         staging: Path | None = None
         ctx_inputs: dict[str, Path] = {}
-        manifest = DEMO_NODES.get(node.node_type)
         try:
             run_dir = self._run_dir(project, fresh.id)
             # Reserve worker-owned staging before the adapter runs: adapters must
@@ -1128,7 +1140,7 @@ class WorkerService:
                 raise CancelledByUser(f"Node {node_id!r} cancelled before starting.")
             if manifest is None:
                 raise ControlledFailure(
-                    f"Node type {node.node_type!r} has no demonstration adapter."
+                    f"Node type {node.node_type!r} has no allowed worker adapter."
                 )
             staged = manifest.handler(
                 NodeContext(
@@ -1138,6 +1150,8 @@ class WorkerService:
                     inputs=ctx_inputs,
                     staging_dir=staging,
                     cancel=self._cancel_flag(project, fresh.id),
+                    project_path=project,
+                    project_store=self.runs.projects,
                 )
             )
             if self._cancel_flag(project, fresh.id).is_set():
@@ -1150,7 +1164,8 @@ class WorkerService:
                 self._quarantine(staging, project, fresh.id, node_id, attempt)
                 raise CancelledByUser(f"Node {node_id!r} cancelled during execution.")
             self._finish_node(project, fresh.id, node_id, attempt, artifacts)
-            self._publish_cache(project, fresh.id, node, artifacts)
+            if manifest is not None and manifest.cacheable:
+                self._publish_cache(project, fresh.id, node, artifacts)
         except ReviewPauseRequested as exc:
             self._pause_for_review(project, fresh.id, node_id, attempt, str(exc))
         except CancelledByUser:
@@ -1168,7 +1183,11 @@ class WorkerService:
                 attempt,
                 FailureRecord(
                     schema_version="1.0",
-                    code="node_failed" if node.node_type in DEMO_NODES else "unsupported_node_type",
+                    code=(
+                        "node_failed"
+                        if _worker_manifest(node.node_type) is not None
+                        else "unsupported_node_type"
+                    ),
                     message=str(exc),
                     node_run_id=node_id,
                     at=utc_now_iso(),
@@ -1309,7 +1328,7 @@ class WorkerService:
                 or entry.settings != node.settings
             ):
                 return None
-            manifest = DEMO_NODES.get(node.node_type)
+            manifest = _worker_manifest(node.node_type)
             if manifest is None:
                 return None
             declared = node.settings.get("declared_outputs", [])
@@ -1930,7 +1949,7 @@ class WorkerService:
 
         node_id = node.id
         run_dir = self._run_dir(project, run_id)
-        manifest = DEMO_NODES.get(node.node_type)
+        manifest = _worker_manifest(node.node_type)
         manifest_outputs: dict[str, bool] = manifest.outputs if manifest is not None else {}
         raw_declared = node.settings.get("declared_outputs", [])
         if not isinstance(raw_declared, list) or not all(
