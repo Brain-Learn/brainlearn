@@ -9,10 +9,16 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { BidsEegDiscovery } from "./BidsEegDiscovery";
-import { discoverBidsEeg } from "./datasets";
-import type { BidsEegDiscovery as BidsEegDiscoveryResult } from "./types";
+import { discoverBidsEeg, identifyBidsEegRecording } from "./datasets";
+import type {
+  BidsEegDiscovery as BidsEegDiscoveryResult,
+  BidsEegInputIdentity,
+} from "./types";
 
-vi.mock("./datasets", () => ({ discoverBidsEeg: vi.fn() }));
+vi.mock("./datasets", () => ({
+  discoverBidsEeg: vi.fn(),
+  identifyBidsEegRecording: vi.fn(),
+}));
 
 const result: BidsEegDiscoveryResult = {
   schema_version: "1.0",
@@ -42,6 +48,7 @@ const result: BidsEegDiscoveryResult = {
 };
 
 const discoverMock = vi.mocked(discoverBidsEeg);
+const identifyMock = vi.mocked(identifyBidsEegRecording);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -74,11 +81,55 @@ test("discovers and summarizes BIDS EEG metadata after an explicit action", asyn
   expect(
     screen.getByText(/500 Hz · 2 EEG channels · 2 events/),
   ).toBeInTheDocument();
-  expect(screen.getByText(/not opened/)).toBeInTheDocument();
+  expect(screen.getByText(/bounded chunks/)).toBeInTheDocument();
   expect(discoverMock).toHaveBeenCalledWith(
     "/tmp/brainlearn-project",
     "datasets/OpenNeuro/ds002181/1.0.0",
     expect.objectContaining({ token: "session-token" }),
+  );
+});
+
+test("creates and displays an input identity only after the explicit hash action", async () => {
+  discoverMock.mockResolvedValue(result);
+  const identity: BidsEegInputIdentity = {
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    status: "ready",
+    content_identity: `brainlearn-v1:artifact:${"0".repeat(64)}`,
+    files: [
+      {
+        path: result.recordings[0].path,
+        byte_size: 123,
+        sha256: "a".repeat(64),
+      },
+    ],
+    message: null,
+    inspection_scope: "bounded_source_hashes",
+  };
+  identifyMock.mockResolvedValue(identity);
+  render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  expect(identifyMock).not.toHaveBeenCalled();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  expect(
+    await screen.findByText(/brainlearn-v1:artifact:00000000/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/123 bytes · SHA-256/)).toBeInTheDocument();
+  expect(identifyMock).toHaveBeenCalledWith(
+    "/tmp/brainlearn-project",
+    "datasets/OpenNeuro/ds002181/1.0.0",
+    result.recordings[0].path,
+    { token: "session-token" },
   );
 });
 

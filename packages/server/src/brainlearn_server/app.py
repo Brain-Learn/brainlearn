@@ -39,6 +39,8 @@ from brainlearn_server.bids_eeg import (
     BidsDatasetPathError,
     BidsEegDiscovery,
     BidsEegDiscoveryService,
+    BidsEegInputIdentity,
+    BidsIdentityResourceLimit,
 )
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
 from brainlearn_server.datasets import (
@@ -372,6 +374,14 @@ class BidsEegDiscoveryRequest(BaseModel):
     relative_dir: str = Field(min_length=1)
 
 
+class BidsEegIdentityRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    relative_dir: str = Field(min_length=1)
+    recording_path: str = Field(min_length=1)
+
+
 def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
     return HTTPException(status_code=404, detail=detail)
 
@@ -513,6 +523,26 @@ def discover_bids_eeg_dataset(
 
     try:
         return bids_eeg.discover(payload.path, payload.relative_dir)
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="The requested project path cannot be accessed.",
+        ) from None
+
+
+@app.post("/api/datasets/bids-eeg/identity", response_model=BidsEegInputIdentity)
+def identify_bids_eeg_recording(
+    payload: BidsEegIdentityRequest,
+    _auth: None = Depends(require_session_token),
+) -> BidsEegInputIdentity:
+    """Create a source content identity by hashing bounded chunks without copying files."""
+
+    try:
+        return bids_eeg.identify(payload.path, payload.relative_dir, payload.recording_path)
+    except BidsIdentityResourceLimit as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from None
     except BidsDatasetPathError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except PermissionError:

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { discoverBidsEeg } from "./datasets";
-import type { BidsEegDiscovery as BidsEegDiscoveryResult } from "./types";
+import { discoverBidsEeg, identifyBidsEegRecording } from "./datasets";
+import type {
+  BidsEegDiscovery as BidsEegDiscoveryResult,
+  BidsEegInputIdentity,
+} from "./types";
 
 interface BidsEegDiscoveryProps {
   projectPath: string;
@@ -20,7 +23,7 @@ const STATUS_LABELS: Record<BidsEegDiscoveryResult["status"], string> = {
     "BIDS metadata was found, but no raw EEG recordings were discovered.",
 };
 
-/** Metadata-only BIDS EEG discovery for an already selected project dataset. */
+/** BIDS EEG discovery and explicit source identity actions for a project dataset. */
 export function BidsEegDiscovery({
   projectPath,
   relativeDir,
@@ -29,7 +32,13 @@ export function BidsEegDiscovery({
   const [result, setResult] = useState<BidsEegDiscoveryResult | null>(null);
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [identities, setIdentities] = useState<
+    Record<string, BidsEegInputIdentity>
+  >({});
+  const [identityPending, setIdentityPending] = useState<string | null>(null);
+  const [identityMessage, setIdentityMessage] = useState<string | null>(null);
   const operation = useRef(0);
+  const identityOperation = useRef(0);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -39,6 +48,10 @@ export function BidsEegDiscovery({
     setResult(null);
     setPending(false);
     setMessage(null);
+    setIdentities({});
+    setIdentityPending(null);
+    setIdentityMessage(null);
+    identityOperation.current += 1;
     return () => {
       operation.current += 1;
       controller.current?.abort();
@@ -54,6 +67,10 @@ export function BidsEegDiscovery({
     setPending(true);
     setMessage(null);
     setResult(null);
+    identityOperation.current += 1;
+    setIdentityPending(null);
+    setIdentities({});
+    setIdentityMessage(null);
     try {
       const discovered = await discoverBidsEeg(projectPath, relativeDir, {
         token,
@@ -77,12 +94,45 @@ export function BidsEegDiscovery({
     }
   };
 
+  const handleIdentify = async (recordingPath: string) => {
+    if (identityPending || !projectPath || !relativeDir || !token) return;
+    const sequence = ++identityOperation.current;
+    setIdentityPending(recordingPath);
+    setIdentityMessage(null);
+    setIdentities((current) => {
+      const next = { ...current };
+      delete next[recordingPath];
+      return next;
+    });
+    try {
+      const identity = await identifyBidsEegRecording(
+        projectPath,
+        relativeDir,
+        recordingPath,
+        { token },
+      );
+      if (sequence === identityOperation.current)
+        setIdentities((current) => ({ ...current, [recordingPath]: identity }));
+    } catch (error) {
+      if (sequence === identityOperation.current) {
+        setIdentityMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to create the BIDS EEG input identity.",
+        );
+      }
+    } finally {
+      if (sequence === identityOperation.current) setIdentityPending(null);
+    }
+  };
+
   return (
     <section aria-label="BIDS EEG discovery" className="project-panel">
       <h5>BIDS EEG discovery</h5>
       <p className="project-message">
-        Checks recording filenames and required BIDS metadata only. Signal bytes
-        are not opened, and source files are not changed.
+        Checks recording filenames and required BIDS metadata. Create an input
+        identity as a separate action; it reads source files in bounded chunks
+        to calculate hashes, without copying or changing them.
       </p>
       <div className="project-buttons">
         <button
@@ -133,6 +183,35 @@ export function BidsEegDiscovery({
                         {issue.message}
                       </div>
                     ))}
+                    {recording.status === "ready" && (
+                      <div className="project-buttons">
+                        <button
+                          data-testid={`bids-eeg-identify-${recording.path}`}
+                          disabled={identityPending !== null}
+                          onClick={() => void handleIdentify(recording.path)}
+                        >
+                          {identityPending === recording.path
+                            ? "Hashing source files…"
+                            : "Create input identity"}
+                        </button>
+                      </div>
+                    )}
+                    {identities[recording.path] && (
+                      <div data-testid={`bids-eeg-identity-${recording.path}`}>
+                        <p className="project-message" role="status">
+                          {identities[recording.path].status ===
+                          "resource_limit"
+                            ? identities[recording.path].message
+                            : `Input identity: ${identities[recording.path].content_identity}`}
+                        </p>
+                        {identities[recording.path].files.map((file) => (
+                          <div className="project-message" key={file.path}>
+                            {file.path} · {file.byte_size} bytes · SHA-256{" "}
+                            {file.sha256}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -146,6 +225,11 @@ export function BidsEegDiscovery({
               {issue.message}
             </div>
           ))}
+        </div>
+      )}
+      {identityMessage && (
+        <div className="project-message" role="alert">
+          {identityMessage}
         </div>
       )}
     </section>

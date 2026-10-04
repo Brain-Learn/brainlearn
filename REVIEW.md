@@ -360,3 +360,33 @@ required hosted checks passed on the reviewed head in Actions run
 Step 5A.11 is approved and checked. Step 5 remains open. The next bounded item
 is creating input content identities without copying the full dataset. The
 scan does not certify signal contents or complete BIDS-validator conformance.
+
+## Step 5A.12 final monitoring review
+
+Review date: 2026-10-04
+
+Scope: PR #19 repair head `35b5ace1719d6686a1aad0929031d95150ebe9e0`, compared
+with `5d179def83f8b3ef5ea777fafd6a794fb6f1b0ad`.
+
+Status: **approved**. The repair addresses both review findings. After all
+source files are hashed, the service now re-stats every included path and
+refuses an input if any stat identity differs from its pre-hash snapshot. The
+directory snapshot walk now validates and records only the recording directory
+through the selected dataset root, so unrelated ancestors are not inspected.
+The new cross-file mutation regression changes `channels.tsv` after its hash
+while later file hashes run and confirms that identity creation is refused.
+The previously reproduced stale identity no longer occurs.
+
+The clean managed worktree reproduced the focused race regression (1 passed,
+17 deselected) and the full Python 3.12 gate: locked all-package sync passed;
+Ruff passed; formatting passed (74 files); strict mypy passed (29 source
+files); pytest passed 749 tests, 2 opt-in skips, and 2 upstream deprecation
+warnings in 34.58 seconds. Frontend ESLint and Prettier passed; Vitest passed
+166 tests in 18 files; the production build passed with 1,845 modules; the
+production audit found 0 vulnerabilities; and `git diff --check` passed. Both
+required hosted checks passed on repair head `35b5ace` in Actions run
+`37191289608`.
+
+Step 5A.12 is approved and checked. Step 5 remains open. The next bounded item
+is a read-only signal-inspection node; input hashing remains an identity step
+and makes no claim about scientific validity or signal correctness.

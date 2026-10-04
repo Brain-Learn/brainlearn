@@ -25,7 +25,25 @@ channel names/count and event count/types. Channel tables are checked for
 `n/a` accepted for unknown onset or duration as specified by [BIDS events](https://bids-specification.readthedocs.io/en/stable/modality-agnostic-files/events.html).
 These optional summaries do not make the scan a complete BIDS validator.
 
-Only bounded JSON and TSV metadata files are opened. EEG signal bytes are not
-read, no input content identities are computed, and source files are not
-modified. Discovery reports whether the required metadata is present; it does
-not validate signal content or certify scientific compatibility.
+Metadata discovery opens only bounded JSON and TSV files. It does not read EEG
+signal bytes, compute input identities, or modify source files. Discovery
+reports whether the required metadata is present; it does not validate signal
+content or certify scientific compatibility.
+
+## Input content identity
+
+For a ready recording, the user can separately request an input content
+identity. BrainLearn hashes the recording, required BrainVision companions,
+an existing EEGLAB `.fdt` companion, and the effective inherited EEG JSON,
+channels TSV, and events TSV sidecars. Files are opened read-only and hashed in
+1 MiB chunks; no source bytes are copied or persisted. The identity uses the
+`brainlearn-v1:artifact:` contract over a versioned payload containing the
+recording-relative paths, byte sizes, and SHA-256 digests in path order. It
+does not depend on the local project path.
+
+Identity creation refuses symlinks, non-regular files, hard-linked files,
+files that change during identity creation, and BIDS directories that change
+during the operation. The total input is limited to 10 GiB. If the limit is exceeded,
+no identity is returned. These hashes identify current source bytes; they do
+not imply that the signal has been inspected or that an analysis is
+scientifically valid.
