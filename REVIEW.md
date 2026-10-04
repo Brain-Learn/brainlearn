@@ -484,3 +484,22 @@ Step 5A.14 is approved and checked. Step 5 remains unchecked because its
 scientific completion gate includes additional work. Preview settings and
 synthetic numerical agreement do not certify signal quality or experimental
 suitability.
+
+
+## Step 5A.15 next-assignment pointer review
+
+Review date: 2026-10-04
+
+Scope: docs-only PR #23 head `53c6833f8bd89fde851d462078e79df120881003`,
+compared with merged main `482b2163c5f5900a29fd0f3c0d617e27a3c77f57`.
+
+Status: **approved**. The first unchecked Step 5 checklist item is “Persist
+annotations and researcher inspection decisions separately from source data,”
+and the new `Next assignment` section describes that same work unit. The Step 5
+heading remains unchecked, and the completed Step 5A.14 preview item remains
+checked. The diff changes only `docs/implementation-plan.md`, appends one new
+completion-log row, and preserves all prior rows; it contains no implementation
+for the next assignment. `git diff --check` passed. Both required hosted jobs
+passed on PR #23 head `53c6833` in Actions run `37205649638`.
+
+This review changes no behavior checklist state and does not begin Step 5A.15.
