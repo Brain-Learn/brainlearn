@@ -16,6 +16,7 @@ import os
 import re
 import stat
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
 from typing import Literal, cast
 
@@ -915,10 +916,9 @@ class BidsEegDiscoveryService:
                 )
 
         try:
-            from mne_bids import (  # type: ignore[import-untyped]
-                get_bids_path_from_fname,
-                read_raw_bids,
-            )
+            mne_bids = import_module("mne_bids")
+            get_bids_path_from_fname = mne_bids.get_bids_path_from_fname
+            read_raw_bids = mne_bids.read_raw_bids
         except ImportError as exc:
             raise BidsSignalInspectionError(
                 "Signal inspection requires the pinned optional EEG dependencies. "
