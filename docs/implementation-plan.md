@@ -451,14 +451,16 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5A.13 — implement a read-only signal-inspection node
+### Step 5A.14 — downsampled signal previews
 
-Implement only the next unchecked checklist item: define a read-only EEG signal
-inspection node that opens recordings through the pinned MNE/MNE-BIDS stack,
-reports actual signal properties and clearly unsupported formats, and does not
-transform or persist signal data. Keep preview generation, researcher
-annotations, processing, and later Step 5 work out of this unit. Add direct
-library checks and focused tests for supported format metadata before marking
-the item verified. Run the full repository gate, append exact evidence, and
-deliver the change through one ready-for-review PR. Step 5 remains open until
-its full scientific completion gate and monitoring review are complete.
+Implement only the next unchecked Step 5 item: produce bounded, downsampled
+trace, channel, event, and spectrum previews for an inspected EEG recording.
+Keep the source read-only; previews must be derived views that cannot be mistaken
+for persisted or transformed signal data. Respect project authorization and
+resource limits, and bind each preview to the source content identity. Add
+focused backend/UI tests and an independently reproducible direct-MNE comparison
+for the preview values. Do not add persisted researcher annotations, filtering,
+or other processing in this work unit. Run the full repository gate, append
+exact evidence, and deliver the change through one ready-for-review PR. Step 5
+remains open until its full scientific completion gate and monitoring review are
+complete.
