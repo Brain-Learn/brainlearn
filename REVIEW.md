@@ -429,3 +429,23 @@ passed on `52e1df4` in Actions run `37196203680`.
 Step 5A.13 is approved and checked. Step 5 remains open. No processing,
 previews, or researcher annotations were added; reported properties describe
 MNE reader metadata and do not establish signal quality or scientific validity.
+
+## Step 5A.14 next-assignment pointer review
+
+Review date: 2026-10-04
+
+Scope: docs-only PR #21 head `7c7fe3a359aa595d08c3a1bce8c355e34eda07f1`,
+compared with `9eb6d962e047dead6b1793489fd3bdb17c13407b`.
+
+Status: **approved**. The change only updates the plan's `Next assignment`
+section. Its Step 5A.14 pointer matches the first unchecked Step 5 checklist
+item: “Produce downsampled trace, channel, event, and spectrum previews.” The
+handoff constrains that future unit to bounded previews derived from an
+inspected source identity, with read-only source handling, project/resource
+limits, focused tests, and a direct-MNE comparison. It explicitly defers
+annotation persistence and processing. No checklist item was checked, no
+preview implementation was started, and Step 5 remains unchecked.
+
+`git diff --check origin/main...HEAD` passed. Both hosted jobs passed on PR #21
+in Actions run `37196688271`. The following implementation assignment remains
+Step 5A.14; this review does not start it.
