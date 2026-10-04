@@ -503,3 +503,40 @@ for the next assignment. `git diff --check` passed. Both required hosted jobs
 passed on PR #23 head `53c6833` in Actions run `37205649638`.
 
 This review changes no behavior checklist state and does not begin Step 5A.15.
+
+
+## Step 5A.15 final monitoring review
+
+Review date: 2026-10-04
+
+Scope: PR #24 repaired head `6ecc13489cfcb72da194bf60d2f12b25ea141a24`,
+compared with merged main `fe4ac4af99aecadf49a87873fa9f9c7406d95b98`.
+
+Status: **approved**. The PR adds an authenticated, project-authorized,
+versioned append-only store for researcher annotations and explicit EEG
+inspection decisions. Records bind researcher, dataset and recording paths,
+note, optional time/channel locations, creation/update times, and the current
+source content identity. Atomic persistence stays under project annotations;
+the raw BIDS files are not modified. Reads and writes recompute the identity
+and refuse stale requests. The UI requires an explicit decision and action.
+
+The first review found that a delayed save response could be shown after the
+project or source context changed. The repair invalidates pending UI work on
+project changes, rediscovery, and re-identification, and guards success, error,
+and cleanup state updates with the captured context and generation. The
+delayed-response regression switches projects before resolving the old save
+and confirms the stale decision is not displayed. The inline finding was
+answered on the PR and the repaired behavior was independently verified.
+
+Clean-checkout focused backend tests passed (4); focused UI tests passed (8).
+The full Python gate with the optional EEG group passed 760 tests with 2
+optional skips and 2 upstream deprecation warnings. Vitest passed 171 tests in
+18 files. Ruff, formatting (77 files), strict mypy (30 source files), ESLint,
+Prettier, production build (1,846 modules), production audit (0
+vulnerabilities), and `git diff --check` passed. Both hosted jobs passed on
+head `6ecc134` in Actions run `37207868929`.
+
+Step 5A.15 is approved and checked. Step 5 remains unchecked because its
+scientific completion gate still includes unsupported-format errors and an
+independently reviewed direct-MNE reference script. No filtering or signal
+processing was introduced by this work unit.
