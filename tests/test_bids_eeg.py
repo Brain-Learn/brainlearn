@@ -41,7 +41,7 @@ def _isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 def _project(tmp_path: Path) -> tuple[Path, Path]:
     project = tmp_path / "project"
     project.mkdir()
-    (project / "project.json").write_text("{}", encoding="utf-8")
+    (project / "brainlearn.project.json").write_text("{}", encoding="utf-8")
     (project / "workflow.json").write_text("{}", encoding="utf-8")
     store.allowed_roots.add(project.resolve())
     return project, project / "raw-data" / "study"

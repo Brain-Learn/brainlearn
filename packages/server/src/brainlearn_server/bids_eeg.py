@@ -20,7 +20,12 @@ from importlib import import_module
 from pathlib import Path
 from typing import Literal, cast
 
-from brainlearn_core import content_identity, validate_relative_path
+from brainlearn_core import (
+    PROJECT_MANIFEST_FILENAME,
+    WORKFLOW_FILENAME,
+    content_identity,
+    validate_relative_path,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
@@ -841,7 +846,10 @@ class BidsEegDiscoveryService:
             raise BidsDatasetPathError(
                 "Open an authorized project and choose a project-relative dataset path."
             ) from exc
-        if not (project / "project.json").is_file() or not (project / "workflow.json").is_file():
+        if (
+            not (project / PROJECT_MANIFEST_FILENAME).is_file()
+            or not (project / WORKFLOW_FILENAME).is_file()
+        ):
             raise BidsDatasetPathError("The selected path is not an open BrainLearn project.")
         root = project
         for part in relative.split("/"):

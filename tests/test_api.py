@@ -60,7 +60,14 @@ def test_registry_lists_versioned_manifests() -> None:
         manifest["id"] for manifest in manifests
     }
     assert all(manifest["manifest_schema_version"] == "1.1" for manifest in manifests)
-    assert all(manifest["status"] == "example" for manifest in manifests)
+    statuses = {manifest["id"]: manifest["status"] for manifest in manifests}
+    assert {node_id for node_id, status in statuses.items() if status == "experimental"} == {
+        "input.bids_eeg",
+        "eeg.inspect",
+    }
+    assert all(
+        status == "example" for node_id, status in statuses.items() if node_id.startswith("demo.")
+    )
     assert all(manifest["license"]["spdx_id"] == "BSD-3-Clause" for manifest in manifests)
     bids_nodes = {
         item["id"]: {dep["package_name"]: dep for dep in item["software_dependencies"]}

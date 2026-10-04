@@ -1,11 +1,10 @@
-"""Node manifests for the editable graph prototype.
+"""Node manifests for the editable graph and its allowlisted worker.
 
-Two families share one registry contract. The EEG manifests below are
-non-executing scientific placeholders for the planned MVP. The ``demo.*``
-manifests are executable, explicitly non-scientific demonstration nodes whose
+The curated BIDS EEG input and read-only inspection node execute through
+explicit worker adapters. Later EEG operations remain illustrative. The
+``demo.*`` manifests are explicitly non-scientific demonstration nodes whose
 ports and versions derive from the authoritative worker contract in
-:mod:`brainlearn_server.demo_nodes`, so the registry can never describe a
-port the worker would refuse.
+:mod:`brainlearn_server.demo_nodes`.
 """
 
 from importlib.metadata import PackageNotFoundError
@@ -130,10 +129,11 @@ def _port(
 _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     NodeManifest(
         id="input.bids_eeg",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="BIDS EEG",
-        description="Choose a BIDS-compatible EEG dataset.",
+        description="Use a discovered project-local BIDS EEG dataset as a workflow input.",
         category="Input",
+        status="experimental",
         ports=[_port("dataset", "Dataset", PortDirection.OUTPUT, ScientificType.BIDS_DATASET)],
         parameters=[
             ParameterSchema(
@@ -142,7 +142,7 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
                 value_type="string",
                 default="synthetic/example-bids",
                 required=True,
-                description="A project-relative dataset path. File access is not implemented yet.",
+                description="Project-relative path to a discovered BIDS EEG dataset.",
             )
         ],
         license=EXAMPLE_LICENSE,
@@ -150,18 +150,29 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.inspect",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="Inspect Signal",
         description=(
             "Read measured signal and acquisition properties without transforming the "
             "recording or generating previews."
         ),
         category="Quality control",
+        status="experimental",
         ports=[
             _port("dataset", "Dataset", PortDirection.INPUT, ScientificType.BIDS_DATASET),
-            _port("raw", "Raw EEG", PortDirection.OUTPUT, ScientificType.RAW_EEG),
+            _port("raw", "Raw EEG reference", PortDirection.OUTPUT, ScientificType.RAW_EEG),
+            _port("report", "Inspection report", PortDirection.OUTPUT, ScientificType.REPORT),
         ],
-        review_behavior="required",
+        parameters=[
+            ParameterSchema(
+                id="recording_path",
+                label="Recording path",
+                value_type="string",
+                default="",
+                required=True,
+                description="Path to one discovered recording, relative to its dataset root.",
+            )
+        ],
         license=EXAMPLE_LICENSE,
         software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
     ),
