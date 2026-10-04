@@ -893,6 +893,176 @@ article[aria-label="Dataset details"] h4:focus {
   font-size: 10px;
   line-height: 1.4;
 }
+.eeg-preview {
+  max-width: 760px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #304057;
+  border-radius: 8px;
+  background: #0c1725;
+  color: #d7e2ef;
+}
+.eeg-preview h6 {
+  margin: 12px 0 6px;
+  color: #e3edf8;
+  font-size: 12px;
+}
+.eeg-preview-controls {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.eeg-preview-controls > label {
+  display: grid;
+  gap: 4px;
+  color: #bac9da;
+  font-size: 11px;
+}
+.eeg-preview-controls input[type="number"] {
+  width: 110px;
+  border: 1px solid #40536b;
+  border-radius: 5px;
+  padding: 6px;
+  color: #e3edf8;
+  background: #101e2e;
+}
+.eeg-preview-controls fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-width: 100%;
+  border: 1px solid #304057;
+  border-radius: 5px;
+}
+.eeg-preview-controls fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+.eeg-preview button,
+.eeg-preview-controls button {
+  min-height: 32px;
+  border: 1px solid #40536b;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #d7e2ef;
+  background: #14243a;
+}
+.eeg-preview :focus-visible {
+  outline: 2px solid #8dc8ff;
+  outline-offset: 2px;
+}
+.eeg-preview-traces figure {
+  margin: 8px 0;
+  padding: 6px;
+  border: 1px solid #26374b;
+  border-radius: 5px;
+}
+.eeg-preview-traces figcaption {
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.eeg-preview-traces svg,
+.eeg-preview-spectrum {
+  display: block;
+  width: 100%;
+  max-width: 620px;
+  height: auto;
+  overflow: visible;
+}
+.eeg-preview-traces small {
+  color: #9aabc0;
+  font-size: 10px;
+}
+.eeg-preview-zero {
+  fill: none;
+  stroke: #425269;
+  stroke-dasharray: 3 4;
+  stroke-width: 1;
+}
+.eeg-preview-line {
+  fill: none;
+  stroke: #71c7ff;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.eeg-preview-spectrum-1 {
+  stroke: #ffcc66;
+}
+.eeg-preview-spectrum-2 {
+  stroke: #a9e17a;
+}
+.eeg-preview-spectrum-3 {
+  stroke: #e5a0ff;
+}
+.eeg-preview-spectrum-4 {
+  stroke: #ff927e;
+}
+.eeg-preview-spectrum-5 {
+  stroke: #67dfd1;
+}
+.eeg-preview-spectrum-6 {
+  stroke: #f58bc2;
+}
+.eeg-preview-spectrum-7 {
+  stroke: #bdc6ff;
+}
+.eeg-preview-spectrum-labels {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #bac9da;
+  font-size: 10px;
+}
+.eeg-preview-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 10px;
+}
+.eeg-preview-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.eeg-preview-legend-swatch {
+  width: 16px;
+  border-top: 2px solid #71c7ff;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-1 {
+  border-color: #ffcc66;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-2 {
+  border-color: #a9e17a;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-3 {
+  border-color: #e5a0ff;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-4 {
+  border-color: #ff927e;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-5 {
+  border-color: #67dfd1;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-6 {
+  border-color: #f58bc2;
+}
+.eeg-preview-legend-swatch.eeg-preview-spectrum-7 {
+  border-color: #bdc6ff;
+}
+.eeg-preview-events {
+  max-height: 180px;
+  overflow: auto;
+  padding-left: 20px;
+  font-size: 11px;
+}
 .recent-list {
   margin: 0;
   padding: 0;

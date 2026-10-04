@@ -9,6 +9,7 @@ import {
   getDownload,
   listDatasets,
   listDownloads,
+  previewBidsEegSignal,
   resolveDataset,
   resumeDownload,
   startDownload,
@@ -91,6 +92,88 @@ test("listDatasets builds a bounded query and validates the page shape", async (
   expect(url).toContain("modality=EEG");
   expect(url).toContain("first=5");
   expect(url).toContain(`path=${encodeURIComponent("/tmp/project")}`);
+});
+
+test("previewBidsEegSignal sends bounded options and validates preview contract", async () => {
+  const preview = {
+    schema_version: "1.0",
+    recording_path: "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+    source_content_identity: `brainlearn-v1:artifact:${"b".repeat(64)}`,
+    time_start_seconds: 1,
+    duration_seconds: 3,
+    sampling_frequency_hz: 500,
+    sample_count: 1_500,
+    channels: [{ name: "Cz", channel_type: "eeg", marked_bad: false }],
+    traces: [
+      {
+        channel_name: "Cz",
+        unit: "µV",
+        bins: [{ time_seconds: 1.1, minimum_uv: -4, maximum_uv: 5 }],
+      },
+    ],
+    events: [],
+    event_count: 0,
+    events_truncated: false,
+    spectrum: {
+      method: "welch",
+      window: "hamming",
+      n_fft: 1024,
+      n_per_seg: 1024,
+      n_overlap: 512,
+      reject_by_annotation: false,
+      frequencies_hz: [0, 0.5],
+      traces: [{ channel_name: "Cz", power_uv2_per_hz: [0.5, 1] }],
+      unit: "µV²/Hz",
+    },
+    preview_scope: "bounded_read_only_signal_preview",
+  };
+  let request: RequestInit | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      request = init;
+      return { ok: true, json: async () => preview };
+    }),
+  );
+  const result = await previewBidsEegSignal(
+    "/tmp/project",
+    "raw-data/study",
+    preview.recording_path,
+    {
+      token: "session-token",
+      timeStartSeconds: 1,
+      durationSeconds: 3,
+      channelNames: ["Cz"],
+      maxBuckets: 128,
+    },
+  );
+  expect(result.source_content_identity).toBe(preview.source_content_identity);
+  expect(request?.headers).toMatchObject({
+    Authorization: "Bearer session-token",
+  });
+  expect(JSON.parse(String(request?.body))).toMatchObject({
+    time_start_seconds: 1,
+    duration_seconds: 3,
+    channel_names: ["Cz"],
+    max_buckets: 128,
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ...preview, preview_scope: "persisted_signal" }),
+    })),
+  );
+  await expect(
+    previewBidsEegSignal(
+      "/tmp/project",
+      "raw-data/study",
+      preview.recording_path,
+      {
+        token: "session-token",
+      },
+    ),
+  ).rejects.toThrow("does not match version 1.0");
 });
 
 test("listDatasets requires project context and maps backend detail", async () => {

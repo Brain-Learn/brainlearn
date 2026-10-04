@@ -449,3 +449,38 @@ preview implementation was started, and Step 5 remains unchecked.
 `git diff --check origin/main...HEAD` passed. Both hosted jobs passed on PR #21
 in Actions run `37196688271`. The following implementation assignment remains
 Step 5A.14; this review does not start it.
+
+
+## Step 5A.14 final monitoring review
+
+Review date: 2026-10-04
+
+Scope: PR #22 head `93050a6871c4823c892a39d91bc136d3bb4611af`, compared with
+`6c41315d2146038bf65dd6dbe185abc07c8efcc8`.
+
+Status: **approved**. The implementation provides an authenticated BIDS EEG
+preview action with bounded channel count, duration, sample work, envelope bins,
+annotation output, and Welch frequencies. Preview output carries the verified
+source content identity, uses explicitly reported Hamming Welch settings, and
+remains transient; it does not persist signal samples, create artifacts, or
+modify the source. MNE reads only the requested EEG channels and time range.
+The direct-MNE synthetic reference independently checks envelope minima, PSD
+frequencies and power, in-window annotations, and unchanged source bytes. The
+review first requested a deterministic race regression: code had a pre/post
+identity guard, but coverage did not mutate the input during a read. The final
+head adds a same-size source mutation in the raw-reader close callback and
+confirms that preview generation raises `BidsSignalInspectionError` instead of
+returning stale data.
+
+The clean managed checkout passed Ruff, format (75 files), strict mypy (29
+source files), and `git diff --check`. `uv run --locked pytest -q` passed 756
+tests with 2 optional skips and 2 upstream deprecation warnings (34.38s). The
+pinned optional EEG direct-MNE test passed (1 test). ESLint and Prettier passed;
+Vitest passed 169 tests in 18 files; production build passed with 1,846 modules;
+production audit found 0 vulnerabilities. Both required hosted jobs passed on
+implementation head `93050a6` in Actions run `37205077644`.
+
+Step 5A.14 is approved and checked. Step 5 remains unchecked because its
+scientific completion gate includes additional work. Preview settings and
+synthetic numerical agreement do not certify signal quality or experimental
+suitability.

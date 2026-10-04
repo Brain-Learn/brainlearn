@@ -415,6 +415,83 @@ def test_signal_inspection_endpoint_requires_auth_and_returns_schema(
     assert body["inspection_scope"] == "read_only_signal_metadata"
 
 
+def test_signal_preview_endpoint_requires_auth_and_bounds_parameters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root)
+    from brainlearn_server import app as app_module
+
+    def preview(path: str, relative_dir: str, recording_path: str, **kwargs: Any):
+        assert path == str(project)
+        assert relative_dir == "raw-data/study"
+        assert kwargs["time_start_seconds"] == 1.25
+        assert kwargs["duration_seconds"] == 5
+        assert kwargs["channel_names"] == ("Cz",)
+        assert kwargs["max_buckets"] == 128
+        return bids_eeg_module.BidsEegSignalPreview(
+            recording_path=recording_path,
+            source_content_identity=f"brainlearn-v1:artifact:{'a' * 64}",
+            time_start_seconds=1.25,
+            duration_seconds=5,
+            sampling_frequency_hz=500,
+            sample_count=2_500,
+            channels=(
+                bids_eeg_module.BidsEegPreviewChannel(
+                    name="Cz", channel_type="eeg", marked_bad=False
+                ),
+            ),
+            traces=(
+                bids_eeg_module.BidsEegTracePreview(
+                    channel_name="Cz",
+                    bins=(
+                        bids_eeg_module.BidsEegTraceBin(
+                            time_seconds=1.25, minimum_uv=-2, maximum_uv=2
+                        ),
+                    ),
+                ),
+            ),
+            events=(),
+            event_count=0,
+            events_truncated=False,
+            spectrum=bids_eeg_module.BidsEegSpectrumPreview(
+                n_fft=1024,
+                n_per_seg=1024,
+                n_overlap=512,
+                frequencies_hz=(0, 1),
+                traces=(
+                    bids_eeg_module.BidsEegSpectrumTrace(
+                        channel_name="Cz", power_uv2_per_hz=(1, 2)
+                    ),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(app_module.bids_eeg, "preview_signal", preview)
+    payload = {
+        "path": str(project),
+        "relative_dir": "raw-data/study",
+        "recording_path": recording.relative_to(root).as_posix(),
+        "time_start_seconds": 1.25,
+        "duration_seconds": 5,
+        "channel_names": ["Cz"],
+        "max_buckets": 128,
+    }
+    client = TestClient(app)
+    assert client.post("/api/datasets/bids-eeg/preview", json=payload).status_code == 401
+    response = client.post("/api/datasets/bids-eeg/preview", headers=AUTH_HEADERS, json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["source_content_identity"] == f"brainlearn-v1:artifact:{'a' * 64}"
+    assert body["traces"][0]["bins"][0]["minimum_uv"] == -2
+    assert body["spectrum"]["reject_by_annotation"] is False
+    assert body["preview_scope"] == "bounded_read_only_signal_preview"
+
+    invalid = {**payload, "duration_seconds": 20.1}
+    response = client.post("/api/datasets/bids-eeg/preview", headers=AUTH_HEADERS, json=invalid)
+    assert response.status_code == 422
+
+
 def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
     tmp_path: Path,
 ):

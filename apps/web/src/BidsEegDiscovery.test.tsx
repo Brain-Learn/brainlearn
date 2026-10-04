@@ -13,17 +13,20 @@ import {
   discoverBidsEeg,
   identifyBidsEegRecording,
   inspectBidsEegSignal,
+  previewBidsEegSignal,
 } from "./datasets";
 import type {
   BidsEegDiscovery as BidsEegDiscoveryResult,
   BidsEegInputIdentity,
   BidsEegSignalInspection,
+  BidsEegSignalPreview,
 } from "./types";
 
 vi.mock("./datasets", () => ({
   discoverBidsEeg: vi.fn(),
   identifyBidsEegRecording: vi.fn(),
   inspectBidsEegSignal: vi.fn(),
+  previewBidsEegSignal: vi.fn(),
 }));
 
 const result: BidsEegDiscoveryResult = {
@@ -56,6 +59,7 @@ const result: BidsEegDiscoveryResult = {
 const discoverMock = vi.mocked(discoverBidsEeg);
 const identifyMock = vi.mocked(identifyBidsEegRecording);
 const inspectMock = vi.mocked(inspectBidsEegSignal);
+const previewMock = vi.mocked(previewBidsEegSignal);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -183,6 +187,111 @@ test("inspects a ready signal only after an explicit action and displays measure
     "datasets/OpenNeuro/ds002181/1.0.0",
     result.recordings[0].path,
     { token: "session-token" },
+  );
+});
+
+test("creates a bounded read-only preview on request and supports window/channel updates", async () => {
+  discoverMock.mockResolvedValue(result);
+  inspectMock.mockResolvedValue({
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    format: "edf",
+    sampling_frequency_hz: 500,
+    sample_count: 2_000,
+    duration_seconds: 4,
+    channel_count: 2,
+    channel_types: { eeg: 2 },
+    bad_channel_count: 0,
+    annotation_count: 1,
+    annotation_descriptions: ["stimulus"],
+    highpass_hz: 0,
+    lowpass_hz: 250,
+    inspection_scope: "read_only_signal_metadata",
+  });
+  const preview: BidsEegSignalPreview = {
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    source_content_identity: `brainlearn-v1:artifact:${"a".repeat(64)}`,
+    time_start_seconds: 0,
+    duration_seconds: 2,
+    sampling_frequency_hz: 500,
+    sample_count: 1_000,
+    channels: [
+      { name: "Cz", channel_type: "eeg", marked_bad: false },
+      { name: "Pz", channel_type: "eeg", marked_bad: true },
+    ],
+    traces: [
+      {
+        channel_name: "Cz",
+        unit: "µV",
+        bins: [{ time_seconds: 0.1, minimum_uv: -4, maximum_uv: 5 }],
+      },
+    ],
+    events: [
+      { onset_seconds: 0.5, duration_seconds: 0.1, description: "stimulus" },
+    ],
+    event_count: 1,
+    events_truncated: false,
+    spectrum: {
+      method: "welch",
+      window: "hamming",
+      n_fft: 1024,
+      n_per_seg: 1000,
+      n_overlap: 500,
+      reject_by_annotation: false,
+      frequencies_hz: [0, 0.5, 1],
+      traces: [{ channel_name: "Cz", power_uv2_per_hz: [0.1, 1, 0.1] }],
+      unit: "µV²/Hz",
+    },
+    preview_scope: "bounded_read_only_signal_preview",
+  };
+  previewMock.mockResolvedValue(preview);
+  render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  expect(previewMock).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Inspect before preview" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Inspect signal with MNE" }),
+  );
+  await screen.findByText(/MNE read-only inspection/);
+  fireEvent.click(screen.getByRole("button", { name: "Preview signal" }));
+  expect(
+    await screen.findByRole("img", { name: /Cz downsampled signal envelope/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/not a signal-quality assessment/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/Annotations in selected window/),
+  ).toBeInTheDocument();
+  expect(previewMock).toHaveBeenNthCalledWith(
+    1,
+    "/tmp/brainlearn-project",
+    "datasets/OpenNeuro/ds002181/1.0.0",
+    result.recordings[0].path,
+    { token: "session-token" },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Update preview" }));
+  await waitFor(() => expect(previewMock).toHaveBeenCalledTimes(2));
+  expect(previewMock).toHaveBeenLastCalledWith(
+    "/tmp/brainlearn-project",
+    "datasets/OpenNeuro/ds002181/1.0.0",
+    result.recordings[0].path,
+    {
+      token: "session-token",
+      timeStartSeconds: 0,
+      durationSeconds: 2,
+      channelNames: ["Cz"],
+    },
   );
 });
 

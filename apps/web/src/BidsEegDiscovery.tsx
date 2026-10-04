@@ -4,11 +4,14 @@ import {
   discoverBidsEeg,
   identifyBidsEegRecording,
   inspectBidsEegSignal,
+  previewBidsEegSignal,
 } from "./datasets";
+import { BidsEegSignalPreviewPanel } from "./BidsEegSignalPreviewPanel";
 import type {
   BidsEegDiscovery as BidsEegDiscoveryResult,
   BidsEegInputIdentity,
   BidsEegSignalInspection,
+  BidsEegSignalPreview,
 } from "./types";
 
 interface BidsEegDiscoveryProps {
@@ -51,9 +54,15 @@ export function BidsEegDiscovery({
   const [inspectionMessage, setInspectionMessage] = useState<string | null>(
     null,
   );
+  const [signalPreviews, setSignalPreviews] = useState<
+    Record<string, BidsEegSignalPreview>
+  >({});
+  const [previewPending, setPreviewPending] = useState<string | null>(null);
+  const [previewMessage, setPreviewMessage] = useState<string | null>(null);
   const operation = useRef(0);
   const identityOperation = useRef(0);
   const inspectionOperation = useRef(0);
+  const previewOperation = useRef(0);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -69,11 +78,16 @@ export function BidsEegDiscovery({
     setSignalInspections({});
     setInspectionPending(null);
     setInspectionMessage(null);
+    setSignalPreviews({});
+    setPreviewPending(null);
+    setPreviewMessage(null);
     identityOperation.current += 1;
     inspectionOperation.current += 1;
+    previewOperation.current += 1;
     return () => {
       operation.current += 1;
       inspectionOperation.current += 1;
+      previewOperation.current += 1;
       controller.current?.abort();
       controller.current = null;
     };
@@ -95,6 +109,10 @@ export function BidsEegDiscovery({
     setSignalInspections({});
     setInspectionPending(null);
     setInspectionMessage(null);
+    previewOperation.current += 1;
+    setSignalPreviews({});
+    setPreviewPending(null);
+    setPreviewMessage(null);
     try {
       const discovered = await discoverBidsEeg(projectPath, relativeDir, {
         token,
@@ -185,6 +203,43 @@ export function BidsEegDiscovery({
     }
   };
 
+  const handlePreviewSignal = async (
+    recordingPath: string,
+    options: {
+      timeStartSeconds?: number;
+      durationSeconds?: number;
+      channelNames?: string[];
+    } = {},
+  ) => {
+    if (previewPending || !projectPath || !relativeDir || !token) return;
+    const sequence = ++previewOperation.current;
+    setPreviewPending(recordingPath);
+    setPreviewMessage(null);
+    try {
+      const preview = await previewBidsEegSignal(
+        projectPath,
+        relativeDir,
+        recordingPath,
+        { token, ...options },
+      );
+      if (sequence === previewOperation.current)
+        setSignalPreviews((current) => ({
+          ...current,
+          [recordingPath]: preview,
+        }));
+    } catch (error) {
+      if (sequence === previewOperation.current) {
+        setPreviewMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to create the EEG signal preview.",
+        );
+      }
+    } finally {
+      if (sequence === previewOperation.current) setPreviewPending(null);
+    }
+  };
+
   return (
     <section aria-label="BIDS EEG discovery" className="project-panel">
       <h5>BIDS EEG discovery</h5>
@@ -257,6 +312,23 @@ export function BidsEegDiscovery({
                             : "Create input identity"}
                         </button>
                         <button
+                          data-testid={`bids-eeg-preview-${recording.path}`}
+                          disabled={
+                            previewPending !== null ||
+                            !signalInspections[recording.path]
+                          }
+                          aria-busy={previewPending === recording.path}
+                          onClick={() =>
+                            void handlePreviewSignal(recording.path)
+                          }
+                        >
+                          {previewPending === recording.path
+                            ? "Creating preview…"
+                            : signalInspections[recording.path]
+                              ? "Preview signal"
+                              : "Inspect before preview"}
+                        </button>
+                        <button
                           data-testid={`bids-eeg-inspect-${recording.path}`}
                           disabled={inspectionPending !== null}
                           aria-busy={inspectionPending === recording.path}
@@ -303,6 +375,15 @@ export function BidsEegDiscovery({
                         annotations
                       </div>
                     )}
+                    {signalPreviews[recording.path] && (
+                      <BidsEegSignalPreviewPanel
+                        preview={signalPreviews[recording.path]}
+                        pending={previewPending === recording.path}
+                        onUpdate={(options) =>
+                          void handlePreviewSignal(recording.path, options)
+                        }
+                      />
+                    )}
                     {identities[recording.path] && (
                       <div data-testid={`bids-eeg-identity-${recording.path}`}>
                         <p className="project-message" role="status">
@@ -342,6 +423,11 @@ export function BidsEegDiscovery({
       {inspectionMessage && (
         <div className="project-message" role="alert">
           {inspectionMessage}
+        </div>
+      )}
+      {previewMessage && (
+        <div className="project-message" role="alert">
+          {previewMessage}
         </div>
       )}
     </section>

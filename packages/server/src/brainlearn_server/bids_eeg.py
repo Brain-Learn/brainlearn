@@ -18,7 +18,7 @@ import stat
 from dataclasses import dataclass, field
 from importlib import import_module
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from brainlearn_core import (
     PROJECT_MANIFEST_FILENAME,
@@ -144,6 +144,133 @@ class BidsEegSignalInspection(BaseModel):
     highpass_hz: float | None = Field(default=None, ge=0)
     lowpass_hz: float | None = Field(default=None, gt=0)
     inspection_scope: Literal["read_only_signal_metadata"] = "read_only_signal_metadata"
+
+
+class BidsEegPreviewChannel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    name: str = Field(min_length=1, max_length=MAX_CHANNEL_NAMES)
+    channel_type: str = Field(min_length=1, max_length=32)
+    marked_bad: bool
+
+
+class BidsEegTraceBin(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    time_seconds: float = Field(allow_inf_nan=False)
+    minimum_uv: float = Field(allow_inf_nan=False)
+    maximum_uv: float = Field(allow_inf_nan=False)
+
+
+class BidsEegTracePreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    channel_name: str = Field(min_length=1, max_length=MAX_CHANNEL_NAMES)
+    bins: tuple[BidsEegTraceBin, ...] = Field(min_length=1, max_length=1_000)
+    unit: Literal["µV"] = "µV"
+
+
+class BidsEegEventPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    onset_seconds: float = Field(allow_inf_nan=False)
+    duration_seconds: float = Field(allow_inf_nan=False, ge=0)
+    description: str = Field(max_length=256)
+
+
+class BidsEegSpectrumTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    channel_name: str = Field(min_length=1, max_length=MAX_CHANNEL_NAMES)
+    power_uv2_per_hz: tuple[float, ...] = Field(min_length=2, max_length=513)
+
+
+class BidsEegSpectrumPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    method: Literal["welch"] = "welch"
+    window: Literal["hamming"] = "hamming"
+    n_fft: int = Field(gt=0, le=1_024)
+    n_per_seg: int = Field(gt=0, le=1_024)
+    n_overlap: int = Field(ge=0, le=512)
+    reject_by_annotation: Literal[False] = False
+    frequencies_hz: tuple[float, ...] = Field(min_length=2, max_length=513)
+    traces: tuple[BidsEegSpectrumTrace, ...] = Field(min_length=1, max_length=8)
+    unit: Literal["µV²/Hz"] = "µV²/Hz"
+
+    @model_validator(mode="after")
+    def validate_spectrum(self) -> BidsEegSpectrumPreview:
+        if any(
+            len(trace.power_uv2_per_hz) != len(self.frequencies_hz)
+            or any(power < 0 for power in trace.power_uv2_per_hz)
+            for trace in self.traces
+        ):
+            raise ValueError("Spectrum traces must align with non-negative frequency bins.")
+        if any(
+            right <= left
+            for left, right in zip(self.frequencies_hz, self.frequencies_hz[1:], strict=False)
+        ):
+            raise ValueError("Spectrum frequencies must be strictly increasing.")
+        if len({trace.channel_name for trace in self.traces}) != len(self.traces):
+            raise ValueError("Spectrum channel names must be unique.")
+        return self
+
+
+class BidsEegSignalPreview(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    recording_path: str
+    source_content_identity: str = Field(pattern=r"^brainlearn-v1:artifact:[0-9a-f]{64}$")
+    time_start_seconds: float = Field(ge=0, allow_inf_nan=False)
+    duration_seconds: float = Field(gt=0, allow_inf_nan=False)
+    sampling_frequency_hz: float = Field(gt=0, allow_inf_nan=False)
+    sample_count: int = Field(gt=0)
+    channels: tuple[BidsEegPreviewChannel, ...] = Field(min_length=1, max_length=MAX_CHANNEL_NAMES)
+    traces: tuple[BidsEegTracePreview, ...] = Field(min_length=1, max_length=8)
+    events: tuple[BidsEegEventPreview, ...] = Field(max_length=500)
+    event_count: int = Field(ge=0)
+    events_truncated: bool
+    spectrum: BidsEegSpectrumPreview
+    preview_scope: Literal["bounded_read_only_signal_preview"] = "bounded_read_only_signal_preview"
+
+    @model_validator(mode="after")
+    def validate_preview_contents(self) -> BidsEegSignalPreview:
+        channel_by_name = {channel.name: channel for channel in self.channels}
+        trace_names = [trace.channel_name for trace in self.traces]
+        if len(channel_by_name) != len(self.channels) or len(set(trace_names)) != len(trace_names):
+            raise ValueError("Preview channel names must be unique.")
+        if any(
+            name not in channel_by_name or channel_by_name[name].channel_type != "eeg"
+            for name in trace_names
+        ):
+            raise ValueError("Preview traces must reference selected EEG channels.")
+        if set(trace_names) != {trace.channel_name for trace in self.spectrum.traces}:
+            raise ValueError("Waveform and spectrum channels must match.")
+        if len(self.events) > self.event_count or self.events_truncated != (
+            self.event_count > len(self.events)
+        ):
+            raise ValueError("Preview event count and truncation state must agree.")
+        if any(
+            any(item.minimum_uv > item.maximum_uv for item in trace.bins)
+            or any(
+                right.time_seconds < left.time_seconds
+                for left, right in zip(trace.bins, trace.bins[1:], strict=False)
+            )
+            for trace in self.traces
+        ):
+            raise ValueError("Trace bins must have ordered finite bounds and times.")
+        return self
+
+
+MAX_PREVIEW_CHANNELS = 8
+DEFAULT_PREVIEW_CHANNELS = 4
+DEFAULT_PREVIEW_BUCKETS = 400
+MAX_PREVIEW_BUCKETS = 1_000
+MAX_PREVIEW_DURATION_SECONDS = 20.0
+MAX_PREVIEW_INPUT_SAMPLES = 2_000_000
+MAX_PREVIEW_EVENTS = 500
+PREVIEW_SPECTRUM_N_FFT = 1_024
 
 
 class BidsSignalInspectionError(ValueError):
@@ -874,14 +1001,12 @@ class BidsEegDiscoveryService:
         root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
         return discover_bids_eeg(root, relative)
 
-    def inspect_signal(
+    def _resolve_signal_recording(
         self,
         raw_project_path: str,
         relative_dataset_path: str,
         recording_path: str,
-    ) -> BidsEegSignalInspection:
-        """Measure raw signal metadata with MNE without preloading or writing data."""
-
+    ) -> tuple[Path, str, BidsEegRecording]:
         root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
         try:
             recording_relative = validate_relative_path(recording_path, "Recording path")
@@ -911,18 +1036,23 @@ class BidsEegDiscoveryService:
             fdt_path = signal_path.with_suffix(".fdt")
             if fdt_path.exists() or fdt_path.is_symlink():
                 source_paths.append(fdt_path)
-        for path in source_paths:
+        for source_path in source_paths:
             try:
-                info = os.lstat(path)
+                info = os.lstat(source_path)
             except OSError as exc:
                 raise BidsSignalInspectionError(
-                    f"Required {recording.format} signal file {path.name} is missing or unreadable."
+                    f"Required {recording.format} signal file {source_path.name} is missing "
+                    "or unreadable."
                 ) from exc
-            if path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+            if source_path.is_symlink() or not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
                 raise BidsSignalInspectionError(
-                    f"Required {recording.format} signal file {path.name} is not safe."
+                    f"Required {recording.format} signal file {source_path.name} is not safe."
                 )
+        return root, recording_relative, recording
 
+    @staticmethod
+    def _open_signal_raw(root: Path, recording_path: str, file_format: str) -> Any:
+        signal_path = root / recording_path
         try:
             mne_bids = import_module("mne_bids")
             get_bids_path_from_fname = mne_bids.get_bids_path_from_fname
@@ -932,44 +1062,307 @@ class BidsEegDiscoveryService:
                 "Signal inspection requires the pinned optional EEG dependencies. "
                 "Install BrainLearn with its eeg dependency group."
             ) from exc
-
-        raw = None
         try:
             bids_path = get_bids_path_from_fname(signal_path, check=False)
             bids_path.root = root
-            raw = read_raw_bids(bids_path, verbose="ERROR", extra_params={"preload": False})
+            return read_raw_bids(bids_path, verbose="ERROR", extra_params={"preload": False})
+        except Exception as exc:
+            raise BidsSignalInspectionError(
+                f"MNE could not read this {file_format} EEG recording. "
+                f"Check that its signal file and required companion files are complete: {exc}"
+            ) from exc
+
+    @staticmethod
+    def _inspection_from_raw(
+        raw: Any, recording_relative: str, file_format: str
+    ) -> BidsEegSignalInspection:
+        sampling_frequency = float(raw.info["sfreq"])
+        sample_count = int(raw.n_times)
+        channel_types: dict[str, int] = {}
+        for channel_type in raw.get_channel_types():
+            channel_types[channel_type] = channel_types.get(channel_type, 0) + 1
+        descriptions = tuple(dict.fromkeys(str(value) for value in raw.annotations.description))[
+            :100
+        ]
+        return BidsEegSignalInspection(
+            recording_path=recording_relative,
+            format=cast(Literal["edf", "bdf", "brainvision", "eeglab"], file_format),
+            sampling_frequency_hz=sampling_frequency,
+            sample_count=sample_count,
+            duration_seconds=sample_count / sampling_frequency,
+            channel_count=len(raw.ch_names),
+            channel_types=channel_types,
+            bad_channel_count=len(raw.info["bads"]),
+            annotation_count=len(raw.annotations),
+            annotation_descriptions=descriptions,
+            highpass_hz=float(raw.info["highpass"]),
+            lowpass_hz=float(raw.info["lowpass"]),
+        )
+
+    def inspect_signal(
+        self,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegSignalInspection:
+        """Measure raw signal metadata with MNE without preloading or writing data."""
+
+        root, recording_relative, recording = self._resolve_signal_recording(
+            raw_project_path, relative_dataset_path, recording_path
+        )
+        raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
+        try:
+            return self._inspection_from_raw(raw, recording_relative, recording.format or "EEG")
+        except BidsSignalInspectionError:
+            raise
+        except Exception as exc:
+            raise BidsSignalInspectionError(
+                f"MNE could not inspect this {recording.format} EEG recording: {exc}"
+            ) from exc
+        finally:
+            raw.close()
+
+    def preview_signal(
+        self,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+        *,
+        time_start_seconds: float = 0.0,
+        duration_seconds: float = 10.0,
+        channel_names: tuple[str, ...] = (),
+        max_buckets: int = DEFAULT_PREVIEW_BUCKETS,
+    ) -> BidsEegSignalPreview:
+        """Return a bounded, downsampled view without storing or changing samples."""
+
+        identity_before = self.identify(raw_project_path, relative_dataset_path, recording_path)
+        if identity_before.status != "ready" or identity_before.content_identity is None:
+            raise BidsIdentityResourceLimit(
+                identity_before.message or "The recording input identity is unavailable."
+            )
+        root, recording_relative, recording = self._resolve_signal_recording(
+            raw_project_path, relative_dataset_path, recording_path
+        )
+        raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
+        try:
+            np = import_module("numpy")
+
             sampling_frequency = float(raw.info["sfreq"])
-            sample_count = int(raw.n_times)
-            channel_types: dict[str, int] = {}
-            for channel_type in raw.get_channel_types():
-                channel_types[channel_type] = channel_types.get(channel_type, 0) + 1
-            descriptions = tuple(
-                dict.fromkeys(str(value) for value in raw.annotations.description)
-            )[:100]
-            return BidsEegSignalInspection(
-                recording_path=recording_relative,
-                format=cast(Literal["edf", "bdf", "brainvision", "eeglab"], recording.format),
-                sampling_frequency_hz=sampling_frequency,
-                sample_count=sample_count,
-                duration_seconds=sample_count / sampling_frequency,
-                channel_count=len(raw.ch_names),
-                channel_types=channel_types,
-                bad_channel_count=len(raw.info["bads"]),
-                annotation_count=len(raw.annotations),
-                annotation_descriptions=descriptions,
-                highpass_hz=float(raw.info["highpass"]),
-                lowpass_hz=float(raw.info["lowpass"]),
+            channel_types = list(raw.get_channel_types())
+            channel_names_all = list(raw.ch_names)
+            if (
+                len(channel_names_all) != len(channel_types)
+                or len(channel_names_all) > MAX_CHANNEL_NAMES
+            ):
+                raise BidsSignalInspectionError(
+                    f"This preview supports at most {MAX_CHANNEL_NAMES} recording channels."
+                )
+            eeg_channel_names = [
+                name
+                for name, channel_type in zip(channel_names_all, channel_types, strict=True)
+                if channel_type == "eeg"
+            ]
+            selected_names = channel_names or tuple(eeg_channel_names[:DEFAULT_PREVIEW_CHANNELS])
+            if not selected_names:
+                raise BidsSignalInspectionError(
+                    "The recording has no EEG channels available for a signal preview."
+                )
+            if len(selected_names) > MAX_PREVIEW_CHANNELS or len(set(selected_names)) != len(
+                selected_names
+            ):
+                raise BidsSignalInspectionError(
+                    f"Choose between 1 and {MAX_PREVIEW_CHANNELS} unique EEG channels."
+                )
+            non_eeg = [name for name in selected_names if name not in eeg_channel_names]
+            if non_eeg:
+                raise BidsSignalInspectionError(
+                    "Signal previews currently support EEG channels only; unknown or non-EEG "
+                    f"channel requested: {non_eeg[0]}"
+                )
+            if not math.isfinite(time_start_seconds) or time_start_seconds < 0:
+                raise BidsSignalInspectionError(
+                    "Preview start time must be finite and non-negative."
+                )
+            if (
+                not math.isfinite(duration_seconds)
+                or duration_seconds <= 0
+                or duration_seconds > MAX_PREVIEW_DURATION_SECONDS
+            ):
+                raise BidsSignalInspectionError(
+                    f"Preview duration must be greater than zero and at most "
+                    f"{MAX_PREVIEW_DURATION_SECONDS:g} seconds."
+                )
+            if max_buckets < 64 or max_buckets > MAX_PREVIEW_BUCKETS:
+                raise BidsSignalInspectionError(
+                    f"Preview resolution must be between 64 and {MAX_PREVIEW_BUCKETS} bins."
+                )
+            sample_count_total = int(raw.n_times)
+            start_sample = int(math.floor(time_start_seconds * sampling_frequency))
+            if start_sample >= sample_count_total:
+                raise BidsSignalInspectionError(
+                    "Preview start time is outside the recording duration."
+                )
+            requested_sample_count = max(1, int(round(duration_seconds * sampling_frequency)))
+            stop_sample = min(sample_count_total, start_sample + requested_sample_count)
+            selected_sample_count = stop_sample - start_sample
+            if selected_sample_count < 8:
+                raise BidsSignalInspectionError(
+                    "The selected preview interval is too short; choose a window containing "
+                    "at least 8 samples."
+                )
+            if selected_sample_count * len(selected_names) > MAX_PREVIEW_INPUT_SAMPLES:
+                raise BidsSignalInspectionError(
+                    "This preview window contains too many channel samples. Shorten the time "
+                    "window or select fewer channels."
+                )
+            bucket_count = min(max_buckets, selected_sample_count)
+            values = np.asarray(
+                raw.get_data(
+                    picks=list(selected_names),
+                    start=start_sample,
+                    stop=stop_sample,
+                    reject_by_annotation=None,
+                    units="uV",
+                    verbose="ERROR",
+                ),
+                dtype=float,
+            )
+            if values.shape != (len(selected_names), selected_sample_count):
+                raise BidsSignalInspectionError(
+                    "MNE returned an unexpected shape for the selected preview samples."
+                )
+            if not np.isfinite(values).all():
+                raise BidsSignalInspectionError(
+                    "MNE returned non-finite samples; this recording cannot be previewed safely."
+                )
+            actual_start_seconds = start_sample / sampling_frequency
+            actual_end_seconds = stop_sample / sampling_frequency
+            traces: list[BidsEegTracePreview] = []
+            for channel_index, channel_name in enumerate(selected_names):
+                bins: list[BidsEegTraceBin] = []
+                for bucket_index in range(bucket_count):
+                    first = bucket_index * selected_sample_count // bucket_count
+                    last = (bucket_index + 1) * selected_sample_count // bucket_count
+                    segment = values[channel_index, first:last]
+                    bins.append(
+                        BidsEegTraceBin(
+                            time_seconds=actual_start_seconds
+                            + ((first + last - 1) / 2) / sampling_frequency,
+                            minimum_uv=float(segment.min()),
+                            maximum_uv=float(segment.max()),
+                        )
+                    )
+                traces.append(BidsEegTracePreview(channel_name=channel_name, bins=tuple(bins)))
+
+            annotation_events: list[BidsEegEventPreview] = []
+            event_count = 0
+            preview_start = actual_start_seconds
+            preview_end = actual_end_seconds
+            raw_first_time = float(raw.first_time)
+            for onset, duration, description in zip(
+                raw.annotations.onset,
+                raw.annotations.duration,
+                raw.annotations.description,
+                strict=True,
+            ):
+                relative_onset = float(onset) - raw_first_time
+                event_duration = max(0.0, float(duration))
+                event_end = relative_onset + event_duration
+                if event_end < preview_start or relative_onset > preview_end:
+                    continue
+                event_count += 1
+                if len(annotation_events) < MAX_PREVIEW_EVENTS:
+                    annotation_events.append(
+                        BidsEegEventPreview(
+                            onset_seconds=relative_onset,
+                            duration_seconds=event_duration,
+                            description=str(description)[:256],
+                        )
+                    )
+            annotation_events.sort(key=lambda event: event.onset_seconds)
+
+            n_per_seg = min(PREVIEW_SPECTRUM_N_FFT, selected_sample_count)
+            n_overlap = min(n_per_seg // 2, PREVIEW_SPECTRUM_N_FFT // 2)
+            max_frequency = min(100.0, sampling_frequency / 2)
+            spectrum = raw.compute_psd(
+                method="welch",
+                fmin=0.0,
+                fmax=max_frequency,
+                tmin=actual_start_seconds,
+                tmax=(stop_sample - 1) / sampling_frequency,
+                picks=list(selected_names),
+                reject_by_annotation=False,
+                n_fft=PREVIEW_SPECTRUM_N_FFT,
+                n_per_seg=n_per_seg,
+                n_overlap=n_overlap,
+                window="hamming",
+                average="mean",
+                verbose="ERROR",
+            )
+            powers, frequencies = spectrum.get_data(return_freqs=True)
+            power_values = np.asarray(powers, dtype=float) * 1e12
+            frequencies = np.asarray(frequencies, dtype=float)
+            if (
+                power_values.shape != (len(selected_names), len(frequencies))
+                or not np.isfinite(power_values).all()
+                or not np.isfinite(frequencies).all()
+            ):
+                raise BidsSignalInspectionError(
+                    "MNE returned invalid spectral values for the selected preview interval."
+                )
+            spectrum_preview = BidsEegSpectrumPreview(
+                n_fft=PREVIEW_SPECTRUM_N_FFT,
+                n_per_seg=n_per_seg,
+                n_overlap=n_overlap,
+                frequencies_hz=tuple(float(value) for value in frequencies),
+                traces=tuple(
+                    BidsEegSpectrumTrace(
+                        channel_name=channel_name,
+                        power_uv2_per_hz=tuple(float(value) for value in power_values[index]),
+                    )
+                    for index, channel_name in enumerate(selected_names)
+                ),
+            )
+            channels = tuple(
+                BidsEegPreviewChannel(
+                    name=name,
+                    channel_type=channel_type,
+                    marked_bad=name in raw.info["bads"],
+                )
+                for name, channel_type in zip(channel_names_all, channel_types, strict=True)
             )
         except BidsSignalInspectionError:
             raise
         except Exception as exc:
             raise BidsSignalInspectionError(
-                f"MNE could not read this {recording.format} EEG recording. "
-                f"Check that its signal file and required companion files are complete: {exc}"
+                f"MNE could not create this bounded EEG signal preview: {exc}"
             ) from exc
         finally:
-            if raw is not None:
-                raw.close()
+            raw.close()
+
+        identity_after = self.identify(raw_project_path, relative_dataset_path, recording_path)
+        if (
+            identity_after.status != "ready"
+            or identity_after.content_identity != identity_before.content_identity
+        ):
+            raise BidsSignalInspectionError(
+                "The recording changed while the signal preview was being created; "
+                "refusing to return a stale preview."
+            )
+        return BidsEegSignalPreview(
+            recording_path=recording_relative,
+            source_content_identity=identity_before.content_identity,
+            time_start_seconds=actual_start_seconds,
+            duration_seconds=actual_end_seconds - actual_start_seconds,
+            sampling_frequency_hz=sampling_frequency,
+            sample_count=selected_sample_count,
+            channels=channels,
+            traces=tuple(traces),
+            events=tuple(annotation_events[:MAX_PREVIEW_EVENTS]),
+            event_count=event_count,
+            events_truncated=event_count > MAX_PREVIEW_EVENTS,
+            spectrum=spectrum_preview,
+        )
 
     def identify(
         self,
