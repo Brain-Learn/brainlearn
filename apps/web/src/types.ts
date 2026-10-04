@@ -524,3 +524,19 @@ export interface BidsEegSignalPreview {
   spectrum: BidsEegSpectrumPreview;
   preview_scope: "bounded_read_only_signal_preview";
 }
+
+export interface ResearcherDecision {
+  schema_version: "1.0";
+  id: string;
+  researcher: string;
+  dataset_path: string;
+  recording_path: string;
+  source_content_identity: string;
+  decision: "accepted" | "rejected" | "needs_review";
+  note: string;
+  time_start_seconds: number | null;
+  time_end_seconds: number | null;
+  channel_names: string[];
+  created_at: string;
+  updated_at: string;
+}

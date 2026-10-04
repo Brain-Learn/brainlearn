@@ -71,6 +71,12 @@ from brainlearn_server.local_import import (
 )
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
+from brainlearn_server.researcher_decisions import (
+    ResearcherDecision,
+    ResearcherDecisionCollection,
+    ResearcherDecisionCreate,
+    ResearcherDecisionStore,
+)
 from brainlearn_server.run_store import RunStore
 from brainlearn_server.security import HostOriginValidationMiddleware
 from brainlearn_server.worker import ReviewConflictError, WorkerService, build_run_record
@@ -223,6 +229,7 @@ workers = WorkerService(runs)
 downloads = DownloadService(store)
 local_imports = LocalImportService(store)
 bids_eeg = BidsEegDiscoveryService(store)
+researcher_decisions = ResearcherDecisionStore(store)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -420,6 +427,21 @@ class BidsEegSignalPreviewRequest(BaseModel):
         if len(self.channel_names) != len(set(self.channel_names)):
             raise ValueError("Preview channel names must be unique.")
         return self
+
+
+class ResearcherDecisionRequest(ResearcherDecisionCreate):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+
+
+class ResearcherDecisionListRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    dataset_path: str = Field(min_length=1)
+    recording_path: str = Field(min_length=1)
+    source_content_identity: str = Field(min_length=1)
 
 
 def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
@@ -646,6 +668,87 @@ def preview_bids_eeg_signal(
             status_code=403,
             detail="The requested project path cannot be accessed.",
         ) from None
+
+
+@app.post(
+    "/api/datasets/bids-eeg/decisions",
+    response_model=ResearcherDecisionCollection,
+)
+def list_bids_eeg_decisions(
+    payload: ResearcherDecisionListRequest,
+    _auth: None = Depends(require_session_token),
+) -> ResearcherDecisionCollection:
+    """Read decisions only when bound to the recording's current content identity."""
+
+    try:
+        identity = bids_eeg.identify(payload.path, payload.dataset_path, payload.recording_path)
+        if identity.status == "resource_limit":
+            raise HTTPException(status_code=413, detail=identity.message)
+        if (
+            identity.status != "ready"
+            or identity.content_identity != payload.source_content_identity
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The recording identity changed. Re-identify it before reading decisions.",
+            )
+        return researcher_decisions.list(
+            payload.path,
+            payload.dataset_path,
+            payload.recording_path,
+            payload.source_content_identity,
+        )
+    except BidsIdentityResourceLimit as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from None
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail="The requested project path cannot be accessed."
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except OSError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
+
+
+@app.post(
+    "/api/datasets/bids-eeg/decisions/create",
+    response_model=ResearcherDecision,
+    status_code=201,
+)
+def create_bids_eeg_decision(
+    payload: ResearcherDecisionRequest,
+    _auth: None = Depends(require_session_token),
+) -> ResearcherDecision:
+    """Persist one decision only after explicit submission and identity revalidation."""
+
+    try:
+        identity = bids_eeg.identify(payload.path, payload.dataset_path, payload.recording_path)
+        if identity.status == "resource_limit":
+            raise HTTPException(status_code=413, detail=identity.message)
+        if (
+            identity.status != "ready"
+            or identity.content_identity != payload.source_content_identity
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The recording identity changed. Re-identify it before saving a decision.",
+            )
+        data = ResearcherDecisionCreate.model_validate(payload.model_dump(exclude={"path"}))
+        return researcher_decisions.create(payload.path, data)
+    except BidsIdentityResourceLimit as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from None
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail="The requested project path cannot be accessed."
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except OSError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
 
 
 @app.get("/api/datasets/{provider}/{dataset_id}/{snapshot}", response_model=CatalogEntry)

@@ -99,6 +99,25 @@ EEG channels and window, then computes the spectrum through the raw object's
 `compute_psd` API; MNE documents these methods in its [Raw API
 reference](https://mne.tools/stable/generated/mne.io.Raw.html).
 
+## Researcher annotations and decisions
+
+After creating an input identity, a researcher can explicitly save an
+annotation and choose `accepted`, `rejected`, or `needs review`. A submission
+requires a researcher name and records the dataset and recording-relative
+paths, source content identity, note, optional time interval and channel names,
+and creation/update timestamps. The UI does not preselect a decision or infer
+one from signal content. Submissions are append-only; a new action creates a
+new provenance record.
+
+Records are stored atomically in the open project at
+`annotations/eeg-researcher-decisions.json`, in a versioned schema separate
+from raw BIDS files. The authenticated service checks project authorization
+and recomputes the recording's content identity before listing or saving. If
+the recording or its identity-defining sidecars change, the old decision is
+not displayed for the new identity and a stale save is rejected. These are
+researcher annotations and explicit inspection decisions; they do not certify
+signal quality, modify the source, or constitute a clinical judgment.
+
 The independent synthetic reference test can be reproduced with:
 
 ```bash
