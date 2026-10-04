@@ -466,3 +466,61 @@ export interface BidsEegSignalInspection {
   lowpass_hz: number | null;
   inspection_scope: "read_only_signal_metadata";
 }
+
+export interface BidsEegPreviewChannel {
+  name: string;
+  channel_type: string;
+  marked_bad: boolean;
+}
+
+export interface BidsEegTraceBin {
+  time_seconds: number;
+  minimum_uv: number;
+  maximum_uv: number;
+}
+
+export interface BidsEegTracePreview {
+  channel_name: string;
+  bins: BidsEegTraceBin[];
+  unit: "µV";
+}
+
+export interface BidsEegEventPreview {
+  onset_seconds: number;
+  duration_seconds: number;
+  description: string;
+}
+
+export interface BidsEegSpectrumTrace {
+  channel_name: string;
+  power_uv2_per_hz: number[];
+}
+
+export interface BidsEegSpectrumPreview {
+  method: "welch";
+  window: "hamming";
+  n_fft: number;
+  n_per_seg: number;
+  n_overlap: number;
+  reject_by_annotation: false;
+  frequencies_hz: number[];
+  traces: BidsEegSpectrumTrace[];
+  unit: "µV²/Hz";
+}
+
+export interface BidsEegSignalPreview {
+  schema_version: "1.0";
+  recording_path: string;
+  source_content_identity: string;
+  time_start_seconds: number;
+  duration_seconds: number;
+  sampling_frequency_hz: number;
+  sample_count: number;
+  channels: BidsEegPreviewChannel[];
+  traces: BidsEegTracePreview[];
+  events: BidsEegEventPreview[];
+  event_count: number;
+  events_truncated: boolean;
+  spectrum: BidsEegSpectrumPreview;
+  preview_scope: "bounded_read_only_signal_preview";
+}

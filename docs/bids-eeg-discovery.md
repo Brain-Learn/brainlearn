@@ -68,3 +68,46 @@ required BIDS metadata. MNE read failures, missing companion signal files, and
 missing optional EEG dependencies are returned as explicit errors. The result
 reports properties from the file reader and is not a scientific quality or
 validity assessment.
+
+## Bounded signal previews
+
+After signal inspection, **Preview signal** makes a temporary view of one raw
+recording. The service calculates the recording's content identity before it
+opens MNE-BIDS and verifies the identity again after closing the reader; it
+returns no preview if the inputs changed. The preview response carries that
+identity, selected time range, sample count, and explicit preview scope. The UI
+keeps it in memory for the open view only. It does not save signal samples,
+create artifacts, alter source files, filter or resample the recording, or
+claim to assess signal quality.
+
+Only EEG channels can be selected (one to eight; the initial view selects up
+to four). A window is at most 20 seconds and contributes at most two million
+selected channel samples. The returned time trace is a minimum-to-maximum
+envelope with at most 1,000 bins per channel. The selected-window annotation
+summary returns at most 500 descriptions of up to 256 characters and reports
+when the visible list is truncated. Annotation events are displayed alongside
+the traces and are not automatically accepted as researcher decisions.
+
+The companion spectrum is calculated by MNE-Python's Welch method with a
+Hamming window, 1,024-point FFT, segments of at most 1,024 samples, 50% overlap,
+and annotation rejection disabled. It is limited to 0–100 Hz (or the Nyquist
+frequency when lower), expressed as µV²/Hz, and displayed in dB re
+1 µV²/Hz. This is a descriptive preview with fixed estimator settings, not a
+validated analysis result. Different settings or annotation-rejection policies
+can yield different spectra. The reader uses `get_data` for only the selected
+EEG channels and window, then computes the spectrum through the raw object's
+`compute_psd` API; MNE documents these methods in its [Raw API
+reference](https://mne.tools/stable/generated/mne.io.Raw.html).
+
+The independent synthetic reference test can be reproduced with:
+
+```bash
+uv run --locked --group eeg pytest -q tests/test_bids_eeg_preview_reference.py
+```
+
+It constructs a controlled MNE `RawArray` independently from the service
+reader and compares the preview's channel envelope and Welch power values to
+direct MNE calls. The test also checks event selection and source-file
+immutability. This verifies numerical agreement for the declared settings; it
+does not certify the scientific suitability of a user's recording or a full
+experimental analysis.

@@ -2,6 +2,7 @@ import type {
   CatalogEntry,
   BidsEegDiscovery,
   BidsEegInputIdentity,
+  BidsEegSignalPreview,
   BidsEegSignalInspection,
   DatasetListItem,
   DatasetListResponse,
@@ -922,6 +923,108 @@ export async function inspectBidsEegSignal(
     );
   }
   return payload as unknown as BidsEegSignalInspection;
+}
+
+export async function previewBidsEegSignal(
+  path: string,
+  relativeDir: string,
+  recordingPath: string,
+  options: {
+    token: string;
+    timeStartSeconds?: number;
+    durationSeconds?: number;
+    channelNames?: string[];
+    maxBuckets?: number;
+    signal?: AbortSignal;
+  },
+): Promise<BidsEegSignalPreview> {
+  requireContext(path, options.token);
+  const response = await fetch("/api/datasets/bids-eeg/preview", {
+    method: "POST",
+    headers: authHeaders(options.token),
+    signal: options.signal,
+    body: JSON.stringify({
+      path,
+      relative_dir: relativeDir,
+      recording_path: recordingPath,
+      time_start_seconds: options.timeStartSeconds ?? 0,
+      duration_seconds: options.durationSeconds ?? 10,
+      channel_names: options.channelNames ?? [],
+      max_buckets: options.maxBuckets ?? 400,
+    }),
+  });
+  if (!response.ok)
+    throw await readError(response, "Unable to create the EEG signal preview");
+  const payload: unknown = await response.json();
+  const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+  if (
+    !isRecord(payload) ||
+    payload.schema_version !== "1.0" ||
+    typeof payload.recording_path !== "string" ||
+    typeof payload.source_content_identity !== "string" ||
+    !isFiniteNumber(payload.time_start_seconds) ||
+    !isFiniteNumber(payload.duration_seconds) ||
+    !isFiniteNumber(payload.sampling_frequency_hz) ||
+    !Number.isInteger(payload.sample_count) ||
+    !Array.isArray(payload.channels) ||
+    !payload.channels.every(
+      (channel) =>
+        isRecord(channel) &&
+        typeof channel.name === "string" &&
+        typeof channel.channel_type === "string" &&
+        typeof channel.marked_bad === "boolean",
+    ) ||
+    !Array.isArray(payload.traces) ||
+    !payload.traces.every(
+      (trace) =>
+        isRecord(trace) &&
+        typeof trace.channel_name === "string" &&
+        trace.unit === "µV" &&
+        Array.isArray(trace.bins) &&
+        trace.bins.every(
+          (bin) =>
+            isRecord(bin) &&
+            isFiniteNumber(bin.time_seconds) &&
+            isFiniteNumber(bin.minimum_uv) &&
+            isFiniteNumber(bin.maximum_uv),
+        ),
+    ) ||
+    !Array.isArray(payload.events) ||
+    !payload.events.every(
+      (event) =>
+        isRecord(event) &&
+        isFiniteNumber(event.onset_seconds) &&
+        isFiniteNumber(event.duration_seconds) &&
+        typeof event.description === "string",
+    ) ||
+    !Number.isInteger(payload.event_count) ||
+    typeof payload.events_truncated !== "boolean" ||
+    !isRecord(payload.spectrum) ||
+    payload.spectrum.method !== "welch" ||
+    payload.spectrum.window !== "hamming" ||
+    !Number.isInteger(payload.spectrum.n_fft) ||
+    !Number.isInteger(payload.spectrum.n_per_seg) ||
+    !Number.isInteger(payload.spectrum.n_overlap) ||
+    payload.spectrum.reject_by_annotation !== false ||
+    payload.spectrum.unit !== "µV²/Hz" ||
+    !Array.isArray(payload.spectrum.frequencies_hz) ||
+    !payload.spectrum.frequencies_hz.every(isFiniteNumber) ||
+    !Array.isArray(payload.spectrum.traces) ||
+    !payload.spectrum.traces.every(
+      (trace) =>
+        isRecord(trace) &&
+        typeof trace.channel_name === "string" &&
+        Array.isArray(trace.power_uv2_per_hz) &&
+        trace.power_uv2_per_hz.every(isFiniteNumber),
+    ) ||
+    payload.preview_scope !== "bounded_read_only_signal_preview"
+  ) {
+    throw new Error(
+      "The BIDS EEG signal preview response does not match version 1.0.",
+    );
+  }
+  return payload as unknown as BidsEegSignalPreview;
 }
 
 /** Reconcile local import records after a service restart. */

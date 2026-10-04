@@ -32,15 +32,20 @@ from brainlearn_core import (
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brainlearn_server.auth import get_session_token, require_session_token
 from brainlearn_server.bids_eeg import (
+    DEFAULT_PREVIEW_BUCKETS,
+    MAX_PREVIEW_BUCKETS,
+    MAX_PREVIEW_CHANNELS,
+    MAX_PREVIEW_DURATION_SECONDS,
     BidsDatasetPathError,
     BidsEegDiscovery,
     BidsEegDiscoveryService,
     BidsEegInputIdentity,
     BidsEegSignalInspection,
+    BidsEegSignalPreview,
     BidsIdentityResourceLimit,
     BidsSignalInspectionError,
 )
@@ -392,6 +397,31 @@ class BidsEegSignalInspectionRequest(BaseModel):
     recording_path: str = Field(min_length=1)
 
 
+class BidsEegSignalPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    relative_dir: str = Field(min_length=1)
+    recording_path: str = Field(min_length=1)
+    time_start_seconds: float = Field(default=0, ge=0, allow_inf_nan=False)
+    duration_seconds: float = Field(
+        default=10,
+        gt=0,
+        le=MAX_PREVIEW_DURATION_SECONDS,
+        allow_inf_nan=False,
+    )
+    channel_names: list[str] = Field(default_factory=list, max_length=MAX_PREVIEW_CHANNELS)
+    max_buckets: int = Field(default=DEFAULT_PREVIEW_BUCKETS, ge=64, le=MAX_PREVIEW_BUCKETS)
+
+    @model_validator(mode="after")
+    def validate_channel_names(self) -> "BidsEegSignalPreviewRequest":
+        if any(not name or len(name) > 512 for name in self.channel_names):
+            raise ValueError("Preview channel names must be non-empty and at most 512 characters.")
+        if len(self.channel_names) != len(set(self.channel_names)):
+            raise ValueError("Preview channel names must be unique.")
+        return self
+
+
 def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
     return HTTPException(status_code=404, detail=detail)
 
@@ -574,6 +604,39 @@ def inspect_bids_eeg_signal(
 
     try:
         return bids_eeg.inspect_signal(payload.path, payload.relative_dir, payload.recording_path)
+    except BidsSignalInspectionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="The requested project path cannot be accessed.",
+        ) from None
+
+
+@app.post(
+    "/api/datasets/bids-eeg/preview",
+    response_model=BidsEegSignalPreview,
+)
+def preview_bids_eeg_signal(
+    payload: BidsEegSignalPreviewRequest,
+    _auth: None = Depends(require_session_token),
+) -> BidsEegSignalPreview:
+    """Return bounded downsampled EEG traces, events, channels, and Welch preview."""
+
+    try:
+        return bids_eeg.preview_signal(
+            payload.path,
+            payload.relative_dir,
+            payload.recording_path,
+            time_start_seconds=payload.time_start_seconds,
+            duration_seconds=payload.duration_seconds,
+            channel_names=tuple(payload.channel_names),
+            max_buckets=payload.max_buckets,
+        )
+    except BidsIdentityResourceLimit as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from None
     except BidsSignalInspectionError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except BidsDatasetPathError as exc:
