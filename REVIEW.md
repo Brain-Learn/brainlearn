@@ -390,3 +390,42 @@ required hosted checks passed on repair head `35b5ace` in Actions run
 Step 5A.12 is approved and checked. Step 5 remains open. The next bounded item
 is a read-only signal-inspection node; input hashing remains an identity step
 and makes no claim about scientific validity or signal correctness.
+
+## Step 5A.13 final monitoring review
+
+Review date: 2026-10-04
+
+Scope: PR #20 repair head `52e1df4fb1a5f7eea30f2fae6637c5b067e8fd69`, compared
+with `a3f7464fb08b759c2326b6d301c3771b1f551efd`.
+
+Status: **approved**. The first review found that signal inspection was only
+available as a dataset-panel action and that `eeg.inspect` could not execute
+in a workflow. The repair adds allowlisted worker adapters for `input.bids_eeg`
+and `eeg.inspect`, plus a real worker regression for the connected path. The
+workflow stores a source identity-bound recording reference and a JSON metadata
+report; neither output stores signal samples. Both nodes bypass the cache. The
+inspector calculates source identity before and after MNE closes and refuses to
+publish when it changes. The deterministic mutation regression confirms the
+run fails with no inspection artifacts or cache. The prior review finding is
+resolved.
+
+The clean managed checkout passed the focused worker regression (2 passed, 42
+deselected) and the full Python 3.12 gate: locked all-package sync, Ruff,
+formatting (74 files), strict mypy (29 source files), and `git diff --check`
+passed; pytest passed 754 tests, 2 opt-in skips, and 2 upstream deprecation
+warnings in 31.83 seconds. Frontend ESLint and Prettier passed; Vitest passed
+167 tests in 18 files; the production build passed with 1,845 modules; and the
+production dependency audit found 0 vulnerabilities.
+
+The direct pinned MNE 1.13.2/MNE-BIDS 0.20.0 check on the published
+`ds002181:1.0.0` EEGLAB header plus a temporary sparse `.fdt` companion
+reported 500 Hz, 62,000 samples, 124 seconds, 125 channels (124 EEG, 1 misc),
+and 31 annotations. Input content identity matched before and after inspection;
+all six temporary source-file hashes and the source inventory were unchanged.
+The API requires its session token and the worker path resolves only an
+authorized project-relative dataset. Hosted Python and frontend jobs both
+passed on `52e1df4` in Actions run `37196203680`.
+
+Step 5A.13 is approved and checked. Step 5 remains open. No processing,
+previews, or researcher annotations were added; reported properties describe
+MNE reader metadata and do not establish signal quality or scientific validity.
