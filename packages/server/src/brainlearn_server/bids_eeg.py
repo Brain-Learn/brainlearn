@@ -14,7 +14,7 @@ import math
 import os
 import re
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -24,6 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
 
 MAX_DISCOVERY_ENTRIES = 50_000
+MAX_METADATA_ENTITY_KEYS = 12
+MAX_METADATA_QUERY_MULTIPLIER = 256
 MAX_JSON_BYTES = 1_048_576
 MAX_TSV_BYTES = 16_777_216
 MAX_TSV_ROWS = 200_000
@@ -86,22 +88,76 @@ class BidsMetadataError(ValueError):
     """A candidate metadata file cannot be read or parsed safely."""
 
 
-def _bounded_entries(directory: Path, *, metadata: bool = False) -> list[Path]:
-    entries: list[Path] = []
-    try:
-        with os.scandir(directory) as iterator:
-            for entry in iterator:
-                if len(entries) >= MAX_DISCOVERY_ENTRIES:
-                    message = "The directory has too many entries to scan safely."
-                    if metadata:
-                        raise BidsMetadataError(message)
-                    raise BidsDatasetPathError(message)
-                entries.append(Path(entry.path))
-    except OSError as exc:
-        if metadata:
-            raise BidsMetadataError("Dataset directory could not be read safely.") from exc
-        raise BidsDatasetPathError("The selected dataset directory cannot be read.") from exc
-    return sorted(entries, key=lambda item: item.name)
+@dataclass
+class _DirectoryEntryBudget:
+    limit: int = field(default_factory=lambda: MAX_DISCOVERY_ENTRIES)
+    entries_seen: int = 0
+    cache: dict[Path, tuple[Path, ...]] = field(default_factory=dict)
+    metadata_indexes: dict[
+        tuple[Path, str, str], dict[tuple[tuple[str, str], ...], tuple[Path, ...]]
+    ] = field(default_factory=dict)
+    metadata_queries: int = 0
+
+    def list(self, directory: Path, *, metadata: bool = False) -> tuple[Path, ...]:
+        if directory in self.cache:
+            return self.cache[directory]
+        entries: list[Path] = []
+        try:
+            with os.scandir(directory) as iterator:
+                for entry in iterator:
+                    if self.entries_seen >= self.limit:
+                        message = "The dataset has too many directory entries to scan safely."
+                        if metadata:
+                            raise BidsMetadataError(message)
+                        raise BidsDatasetPathError(message)
+                    entries.append(Path(entry.path))
+                    self.entries_seen += 1
+        except OSError as exc:
+            if metadata:
+                raise BidsMetadataError("Dataset directory could not be read safely.") from exc
+            raise BidsDatasetPathError("The selected dataset directory cannot be read.") from exc
+        ordered = tuple(sorted(entries, key=lambda item: item.name))
+        self.cache[directory] = ordered
+        return ordered
+
+    def matching_metadata(
+        self,
+        directory: Path,
+        entities: dict[str, str],
+        suffix: str,
+        extension: str,
+    ) -> tuple[Path, ...]:
+        cache_key = (directory, suffix, extension)
+        index = self.metadata_indexes.get(cache_key)
+        if index is None:
+            mutable_index: dict[tuple[tuple[str, str], ...], list[Path]] = {}
+            for item in self.list(directory, metadata=True):
+                if not item.name.endswith(f"_{suffix}{extension}"):
+                    continue
+                if item.is_symlink():
+                    raise BidsMetadataError("A matching metadata file is a symlink.")
+                candidate_entities = _parse_entities(item.name[: -len(extension)], f"_{suffix}")
+                if candidate_entities is None:
+                    continue
+                entity_key = tuple(sorted(candidate_entities.items()))
+                mutable_index.setdefault(entity_key, []).append(item)
+            index = {entity_key: tuple(paths) for entity_key, paths in mutable_index.items()}
+            self.metadata_indexes[cache_key] = index
+
+        entity_items = tuple(sorted(entities.items()))
+        if len(entity_items) > MAX_METADATA_ENTITY_KEYS:
+            raise BidsMetadataError("Recording filename has too many BIDS entities to scan safely.")
+        query_count = 1 << len(entity_items)
+        self.metadata_queries += query_count
+        if self.metadata_queries > self.limit * MAX_METADATA_QUERY_MULTIPLIER:
+            raise BidsMetadataError("Dataset exceeds the metadata matching scan limit.")
+        matches: list[Path] = []
+        for mask in range(query_count):
+            entity_key = tuple(
+                entity_items[index] for index in range(len(entity_items)) if mask & (1 << index)
+            )
+            matches.extend(index.get(entity_key, ()))
+        return tuple(matches)
 
 
 def _read_metadata(path: Path, limit: int) -> bytes:
@@ -179,21 +235,14 @@ def _metadata_candidates(
     entities: dict[str, str],
     suffix: str,
     extension: str,
+    budget: _DirectoryEntryBudget,
 ) -> list[Path]:
     candidates: list[tuple[int, int, str, Path]] = []
     current = recording_dir
     while True:
-        entries = _bounded_entries(current, metadata=True)
-        for item in entries:
-            if not item.name.endswith(f"_{suffix}{extension}"):
-                continue
-            if item.is_symlink():
-                raise BidsMetadataError("A matching metadata file is a symlink.")
+        for item in budget.matching_metadata(current, entities, suffix, extension):
             candidate_entities = _parse_entities(item.name[: -len(extension)], f"_{suffix}")
-            if candidate_entities is None:
-                continue
-            if any(entities.get(key) != value for key, value in candidate_entities.items()):
-                continue
+            assert candidate_entities is not None
             relative = item.relative_to(root).as_posix()
             depth = len(item.parent.relative_to(root).parts)
             candidates.append((depth, len(candidate_entities), relative, item))
@@ -247,9 +296,11 @@ def _finite_number(value: object) -> float | None:
     return numeric if math.isfinite(numeric) else None
 
 
-def _find_recording_dirs(root: Path) -> list[tuple[str, str | None, Path]]:
+def _find_recording_dirs(
+    root: Path, budget: _DirectoryEntryBudget
+) -> list[tuple[str, str | None, Path]]:
     found: list[tuple[str, str | None, Path]] = []
-    subjects = _bounded_entries(root)
+    subjects = budget.list(root)
     for subject_dir in subjects:
         if not subject_dir.name.startswith("sub-"):
             continue
@@ -260,7 +311,7 @@ def _find_recording_dirs(root: Path) -> list[tuple[str, str | None, Path]]:
         subject = subject_dir.name.removeprefix("sub-")
         if not subject or "_" in subject:
             continue
-        children = _bounded_entries(subject_dir)
+        children = budget.list(subject_dir)
         eeg_dir = subject_dir / "eeg"
         if eeg_dir.exists() or eeg_dir.is_symlink():
             if eeg_dir.is_symlink():
@@ -287,10 +338,14 @@ def _find_recording_dirs(root: Path) -> list[tuple[str, str | None, Path]]:
 
 
 def _recording_candidates(
-    root: Path, directory: Path, subject: str, session: str | None
+    root: Path,
+    directory: Path,
+    subject: str,
+    session: str | None,
+    budget: _DirectoryEntryBudget,
 ) -> list[tuple[Path, dict[str, str], str | None, list[BidsEegIssue]]]:
     result: list[tuple[Path, dict[str, str], str | None, list[BidsEegIssue]]] = []
-    entries = _bounded_entries(directory)
+    entries = budget.list(directory)
     for entry in entries:
         if entry.is_symlink():
             if entry.stem.endswith(_EEG_SUFFIX) and entry.suffix.lower() not in {
@@ -446,17 +501,21 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 )
             )
 
+    budget = _DirectoryEntryBudget()
     try:
-        eeg_dirs = _find_recording_dirs(root)
+        eeg_dirs = _find_recording_dirs(root, budget)
     except BidsDatasetPathError as exc:
         issues.append(BidsEegIssue(code="unsafe_dataset_tree", message=str(exc)))
         eeg_dirs = []
 
     recordings: list[BidsEegRecording] = []
     for subject, session, directory in eeg_dirs:
-        for raw_file, entities, file_format, file_issues in _recording_candidates(
-            root, directory, subject, session
-        ):
+        try:
+            candidates = _recording_candidates(root, directory, subject, session, budget)
+        except BidsDatasetPathError as exc:
+            issues.append(BidsEegIssue(code="unsafe_dataset_tree", message=str(exc)))
+            break
+        for raw_file, entities, file_format, file_issues in candidates:
             relative = raw_file.relative_to(root).as_posix()
             task = entities.get("task", "")
             if not task:
@@ -478,7 +537,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
             metadata: dict[str, object] = {}
             recording_issues = list(file_issues)
             try:
-                sidecars = _metadata_candidates(root, directory, entities, "eeg", ".json")
+                sidecars = _metadata_candidates(root, directory, entities, "eeg", ".json", budget)
                 if not sidecars:
                     recording_issues.append(
                         BidsEegIssue(
@@ -578,9 +637,11 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     channel_count = declared_channel_count
 
             channel_names: tuple[str, ...] = ()
-            channels_files = _metadata_candidates(root, directory, entities, "channels", ".tsv")
-            if channels_files:
-                try:
+            try:
+                channels_files = _metadata_candidates(
+                    root, directory, entities, "channels", ".tsv", budget
+                )
+                if channels_files:
                     channel_rows = _read_tsv(channels_files[-1], required=("name", "type", "units"))
                     names = [row["name"].strip() for row in channel_rows]
                     if any(not name for name in names) or len(names) != len(set(names)):
@@ -591,20 +652,22 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                         )
                         channel_count = eeg_rows
                     channel_names = tuple(names[:MAX_CHANNEL_NAMES])
-                except BidsMetadataError as exc:
-                    recording_issues.append(
-                        BidsEegIssue(
-                            code="invalid_channels_tsv",
-                            message=str(exc),
-                            path=relative,
-                        )
+            except BidsMetadataError as exc:
+                recording_issues.append(
+                    BidsEegIssue(
+                        code="invalid_channels_tsv",
+                        message=str(exc),
+                        path=relative,
                     )
+                )
 
             event_count: int | None = None
             event_types: tuple[str, ...] = ()
-            events_files = _metadata_candidates(root, directory, entities, "events", ".tsv")
-            if events_files:
-                try:
+            try:
+                events_files = _metadata_candidates(
+                    root, directory, entities, "events", ".tsv", budget
+                )
+                if events_files:
                     event_rows = _read_tsv(events_files[-1], required=("onset", "duration"))
                     for row in event_rows:
                         onset_text = row["onset"].strip()
@@ -638,14 +701,14 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                             }
                         )[:MAX_EVENT_TYPES]
                     )
-                except BidsMetadataError as exc:
-                    recording_issues.append(
-                        BidsEegIssue(
-                            code="invalid_events_tsv",
-                            message=str(exc),
-                            path=relative,
-                        )
+            except BidsMetadataError as exc:
+                recording_issues.append(
+                    BidsEegIssue(
+                        code="invalid_events_tsv",
+                        message=str(exc),
+                        path=relative,
                     )
+                )
 
             recording_status: Literal["ready", "incomplete_metadata", "unsupported"] = (
                 "incomplete_metadata" if recording_issues else "ready"

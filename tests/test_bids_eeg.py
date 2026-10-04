@@ -214,12 +214,31 @@ def test_directory_entry_limit_returns_clear_incomplete_status(
         '{"Name":"Bounded","BIDSVersion":"1.2.0"}', encoding="utf-8"
     )
     (root / "sub-01").mkdir()
-    monkeypatch.setattr(bids_eeg_module, "MAX_DISCOVERY_ENTRIES", 1)
+    (root / "sub-01" / "eeg").mkdir()
+    monkeypatch.setattr(bids_eeg_module, "MAX_DISCOVERY_ENTRIES", 2)
 
     result = discover_bids_eeg(root, "raw-data/study")
 
     assert result.status == "incomplete_metadata"
     assert "unsafe_dataset_tree" in {issue.code for issue in result.issues}
+
+
+def test_metadata_query_limit_is_reported_without_failing_the_api_shape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    monkeypatch.setattr(bids_eeg_module, "MAX_METADATA_QUERY_MULTIPLIER", 0)
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    assert result.status == "incomplete_metadata"
+    codes = {issue.code for issue in result.recordings[0].issues}
+    assert {
+        "invalid_eeg_sidecar",
+        "invalid_channels_tsv",
+        "invalid_events_tsv",
+    } <= codes
 
 
 def test_reports_unsupported_format_and_incomplete_brainvision_set(tmp_path: Path):
