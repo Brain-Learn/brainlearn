@@ -1,5 +1,6 @@
 import type {
   CatalogEntry,
+  BidsEegDiscovery,
   DatasetListItem,
   DatasetListResponse,
   DatasetLock,
@@ -10,6 +11,41 @@ import type {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isBidsEegIssue(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.code === "string" &&
+    typeof value.message === "string" &&
+    (value.path === null || typeof value.path === "string")
+  );
+}
+
+function isBidsEegRecording(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.subject === "string" &&
+    (value.session === null || typeof value.session === "string") &&
+    typeof value.task === "string" &&
+    (value.format === null || typeof value.format === "string") &&
+    ["ready", "incomplete_metadata", "unsupported"].includes(
+      String(value.status),
+    ) &&
+    (value.sampling_frequency_hz === null ||
+      typeof value.sampling_frequency_hz === "number") &&
+    (value.eeg_reference === null || typeof value.eeg_reference === "string") &&
+    (value.eeg_channel_count === null ||
+      typeof value.eeg_channel_count === "number") &&
+    Array.isArray(value.channel_names) &&
+    value.channel_names.every((name) => typeof name === "string") &&
+    (value.event_count === null || typeof value.event_count === "number") &&
+    Array.isArray(value.event_types) &&
+    value.event_types.every((eventType) => typeof eventType === "string") &&
+    Array.isArray(value.issues) &&
+    value.issues.every(isBidsEegIssue)
+  );
 }
 
 function authHeaders(token: string): Record<string, string> {
@@ -741,6 +777,45 @@ export async function cancelLocalImport(
   const payload: unknown = await response.json();
   assertLocalImportRecord(payload);
   return payload;
+}
+
+export async function discoverBidsEeg(
+  path: string,
+  relativeDir: string,
+  options: { token: string; signal?: AbortSignal },
+): Promise<BidsEegDiscovery> {
+  requireContext(path, options.token);
+  const response = await fetch("/api/datasets/bids-eeg/discover", {
+    method: "POST",
+    headers: authHeaders(options.token),
+    signal: options.signal,
+    body: JSON.stringify({ path, relative_dir: relativeDir }),
+  });
+  if (!response.ok)
+    throw await readError(response, "Unable to inspect BIDS EEG metadata");
+  const payload: unknown = await response.json();
+  if (
+    !isRecord(payload) ||
+    payload.schema_version !== "1.0" ||
+    typeof payload.dataset_path !== "string" ||
+    ![
+      "ready",
+      "incomplete_metadata",
+      "unsupported",
+      "not_bids",
+      "no_recordings",
+    ].includes(String(payload.status)) ||
+    !Array.isArray(payload.recordings) ||
+    !payload.recordings.every(isBidsEegRecording) ||
+    !Array.isArray(payload.issues) ||
+    !payload.issues.every(isBidsEegIssue) ||
+    payload.inspection_scope !== "metadata_only"
+  ) {
+    throw new Error(
+      "The BIDS EEG discovery response does not match version 1.0.",
+    );
+  }
+  return payload as unknown as BidsEegDiscovery;
 }
 
 /** Reconcile local import records after a service restart. */

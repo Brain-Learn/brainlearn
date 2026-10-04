@@ -395,3 +395,41 @@ export interface LocalImportRecord {
   created_at: string;
   updated_at: string;
 }
+
+export interface BidsEegIssue {
+  code: string;
+  message: string;
+  path: string | null;
+}
+
+export interface BidsEegRecording {
+  path: string;
+  subject: string;
+  session: string | null;
+  task: string;
+  format: string | null;
+  status: "ready" | "incomplete_metadata" | "unsupported";
+  sampling_frequency_hz: number | null;
+  eeg_reference: string | null;
+  eeg_channel_count: number | null;
+  channel_names: string[];
+  event_count: number | null;
+  event_types: string[];
+  issues: BidsEegIssue[];
+}
+
+export interface BidsEegDiscovery {
+  schema_version: "1.0";
+  dataset_path: string;
+  status:
+    | "ready"
+    | "incomplete_metadata"
+    | "unsupported"
+    | "not_bids"
+    | "no_recordings";
+  dataset_name: string | null;
+  bids_version: string | null;
+  recordings: BidsEegRecording[];
+  issues: BidsEegIssue[];
+  inspection_scope: "metadata_only";
+}

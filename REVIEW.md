@@ -320,3 +320,43 @@ required hosted checks passed on final head `93e9ab6` in run `37127604967`.
 Step 5A.10 is approved and checked. Step 5 remains open; the next bounded item
 is BIDS EEG discovery and essential metadata validation. The registry status
 does not certify imports, runtime compatibility, or scientific behavior.
+
+## Step 5A.11 final monitoring review
+
+Review date: 2026-10-04
+
+Scope: PR #18 head `a2b04675c77f6e5ffcf05f42332b11ca3d15f7fe`, compared with
+`1e2db6f`.
+
+Status: **approved**. The complete diff is confined to metadata-only raw BIDS
+EEG discovery, its API/UI entry points, tests, and documentation. The scanner
+checks BIDS 1.x dataset description fields; discovers the specified raw EEG
+formats in subject/session EEG directories; applies inherited JSON/TSV
+sidecars; validates the required EEG metadata; and returns explicit
+unsupported, incomplete, non-BIDS, and no-recording states. It uses bounded
+metadata reads, a shared directory-entry budget, and cached sidecar indexes.
+Project-root authorization, relative-path validation, symlink rejection, and
+the per-session API token are enforced. Recording files are not opened for
+signal data, copied, hashed, or changed. The user-facing documentation
+explicitly limits this to metadata readiness, not complete BIDS validation or
+signal validation.
+
+The pinned `ds002181:1.0.0` fixture was checked against all five manifest file
+sizes and SHA-256 values (697,051 bytes total). Discovery returned `ready` for
+BIDS 1.2 and one EEGLAB recording, with 124 EEG channels and 31 events. All five
+source SHA-256 values were identical after scanning. Focused discovery tests
+passed (12 Python, 3 Vitest).
+
+The independent Python 3.12 gate passed: `uv run --locked ruff check .`;
+`uv run --locked ruff format --check .` (74 files); `uv run --locked mypy
+packages/core/src packages/server/src` (29 source files); and `uv run --locked
+pytest -q` (743 passed, 2 opt-in skipped, 2 upstream deprecation warnings in
+33.98 seconds). Frontend ESLint and Prettier passed; Vitest passed 165 tests in
+18 files; the production build passed with 1,845 modules; `npm audit
+--omit=dev` found 0 vulnerabilities; and `git diff --check` passed. Both
+required hosted checks passed on the reviewed head in Actions run
+`37186231295`.
+
+Step 5A.11 is approved and checked. Step 5 remains open. The next bounded item
+is creating input content identities without copying the full dataset. The
+scan does not certify signal contents or complete BIDS-validator conformance.

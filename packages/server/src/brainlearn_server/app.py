@@ -35,6 +35,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from brainlearn_server.auth import get_session_token, require_session_token
+from brainlearn_server.bids_eeg import (
+    BidsDatasetPathError,
+    BidsEegDiscovery,
+    BidsEegDiscoveryService,
+)
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
 from brainlearn_server.datasets import (
     DatasetListResponse,
@@ -208,6 +213,7 @@ runs = RunStore(store)
 workers = WorkerService(runs)
 downloads = DownloadService(store)
 local_imports = LocalImportService(store)
+bids_eeg = BidsEegDiscoveryService(store)
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -359,6 +365,13 @@ class LocalImportPathRequest(BaseModel):
     path: str = Field(min_length=1)
 
 
+class BidsEegDiscoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    relative_dir: str = Field(min_length=1)
+
+
 def _local_import_not_found(detail: str = "Unknown local import.") -> HTTPException:
     return HTTPException(status_code=404, detail=detail)
 
@@ -488,6 +501,24 @@ def recover_local_imports(
     except ValueError:
         raise HTTPException(
             status_code=400, detail="Invalid project path for local import recovery."
+        ) from None
+
+
+@app.post("/api/datasets/bids-eeg/discover", response_model=BidsEegDiscovery)
+def discover_bids_eeg_dataset(
+    payload: BidsEegDiscoveryRequest,
+    _auth: None = Depends(require_session_token),
+) -> BidsEegDiscovery:
+    """Read-only discovery of raw EEG recordings and essential BIDS metadata."""
+
+    try:
+        return bids_eeg.discover(payload.path, payload.relative_dir)
+    except BidsDatasetPathError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    except PermissionError:
+        raise HTTPException(
+            status_code=403,
+            detail="The requested project path cannot be accessed.",
         ) from None
 
 

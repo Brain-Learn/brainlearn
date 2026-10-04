@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { BidsEegDiscovery } from "./BidsEegDiscovery";
 import {
   DOWNLOAD_POLL_MS,
   cancelDownload,
@@ -800,13 +801,20 @@ export function DatasetLibrary({ projectPath, token }: DatasetLibraryProps) {
                 </>
               )}
               {transfer && transfer.state === "succeeded" && (
-                <div className="project-message" role="status">
-                  Downloaded and verified:{" "}
-                  {formatBytes(transfer.bytes_completed)} in{" "}
-                  {transfer.files.length}{" "}
-                  {transfer.files.length === 1 ? "file" : "files"}. The dataset
-                  is ready for offline use.
-                </div>
+                <>
+                  <div className="project-message" role="status">
+                    Downloaded and verified:{" "}
+                    {formatBytes(transfer.bytes_completed)} in{" "}
+                    {transfer.files.length}{" "}
+                    {transfer.files.length === 1 ? "file" : "files"}. The
+                    dataset is ready for offline use.
+                  </div>
+                  <BidsEegDiscovery
+                    projectPath={projectPath}
+                    relativeDir={`datasets/${transfer.provider}/${transfer.dataset_id}/${transfer.snapshot}`}
+                    token={token}
+                  />
+                </>
               )}
             </>
           )}
