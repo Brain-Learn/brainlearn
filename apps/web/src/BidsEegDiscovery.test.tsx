@@ -14,12 +14,15 @@ import {
   identifyBidsEegRecording,
   inspectBidsEegSignal,
   previewBidsEegSignal,
+  listResearcherDecisions,
+  createResearcherDecision,
 } from "./datasets";
 import type {
   BidsEegDiscovery as BidsEegDiscoveryResult,
   BidsEegInputIdentity,
   BidsEegSignalInspection,
   BidsEegSignalPreview,
+  ResearcherDecision,
 } from "./types";
 
 vi.mock("./datasets", () => ({
@@ -27,6 +30,8 @@ vi.mock("./datasets", () => ({
   identifyBidsEegRecording: vi.fn(),
   inspectBidsEegSignal: vi.fn(),
   previewBidsEegSignal: vi.fn(),
+  listResearcherDecisions: vi.fn(),
+  createResearcherDecision: vi.fn(),
 }));
 
 const result: BidsEegDiscoveryResult = {
@@ -60,6 +65,8 @@ const discoverMock = vi.mocked(discoverBidsEeg);
 const identifyMock = vi.mocked(identifyBidsEegRecording);
 const inspectMock = vi.mocked(inspectBidsEegSignal);
 const previewMock = vi.mocked(previewBidsEegSignal);
+const decisionsMock = vi.mocked(listResearcherDecisions);
+const createDecisionMock = vi.mocked(createResearcherDecision);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -141,6 +148,160 @@ test("creates and displays an input identity only after the explicit hash action
     "datasets/OpenNeuro/ds002181/1.0.0",
     result.recordings[0].path,
     { token: "session-token" },
+  );
+});
+
+test("persists a researcher decision only after an explicit choice and submission", async () => {
+  discoverMock.mockResolvedValue(result);
+  identifyMock.mockResolvedValue({
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    status: "ready",
+    content_identity: `brainlearn-v1:artifact:${"0".repeat(64)}`,
+    files: [],
+    message: null,
+    inspection_scope: "bounded_source_hashes",
+  });
+  decisionsMock.mockResolvedValue([]);
+  createDecisionMock.mockResolvedValue({
+    schema_version: "1.0",
+    id: "decision-1",
+    researcher: "Dr. Example",
+    dataset_path: "datasets/OpenNeuro/ds002181/1.0.0",
+    recording_path: result.recordings[0].path,
+    source_content_identity: `brainlearn-v1:artifact:${"0".repeat(64)}`,
+    decision: "needs_review",
+    note: "Check blink",
+    time_start_seconds: 1,
+    time_end_seconds: 2,
+    channel_names: ["Cz"],
+    created_at: "2026-10-04T10:00:00Z",
+    updated_at: "2026-10-04T10:00:00Z",
+  });
+  render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  await screen.findByRole("heading", {
+    name: "Researcher annotation and inspection decision",
+  });
+  expect(createDecisionMock).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Researcher"), {
+    target: { value: "Dr. Example" },
+  });
+  fireEvent.change(screen.getByLabelText("Decision"), {
+    target: { value: "needs_review" },
+  });
+  fireEvent.change(screen.getByLabelText("Annotation note"), {
+    target: { value: "Check blink" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save explicit decision" }),
+  );
+  await screen.findByText(/needs review · Dr. Example/);
+  expect(createDecisionMock).toHaveBeenCalledWith(
+    "/tmp/brainlearn-project",
+    expect.objectContaining({
+      researcher: "Dr. Example",
+      decision: "needs_review",
+      note: "Check blink",
+      channel_names: [],
+    }),
+    "session-token",
+  );
+});
+
+test("ignores a delayed save response after the project context changes", async () => {
+  discoverMock.mockResolvedValue(result);
+  const identity = (digest: string): BidsEegInputIdentity => ({
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    status: "ready",
+    content_identity: `brainlearn-v1:artifact:${digest.repeat(64)}`,
+    files: [],
+    message: null,
+    inspection_scope: "bounded_source_hashes",
+  });
+  identifyMock
+    .mockResolvedValueOnce(identity("1"))
+    .mockResolvedValueOnce(identity("2"));
+  decisionsMock.mockResolvedValue([]);
+  let resolveSave: ((value: ResearcherDecision) => void) | undefined;
+  createDecisionMock.mockReturnValue(
+    new Promise((resolve) => {
+      resolveSave = resolve;
+    }),
+  );
+  const view = render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  await screen.findByRole("heading", {
+    name: "Researcher annotation and inspection decision",
+  });
+  fireEvent.change(screen.getByLabelText("Researcher"), {
+    target: { value: "Dr. Example" },
+  });
+  fireEvent.change(screen.getByLabelText("Decision"), {
+    target: { value: "needs_review" },
+  });
+  fireEvent.change(screen.getByLabelText("Annotation note"), {
+    target: { value: "stale response" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save explicit decision" }),
+  );
+  await waitFor(() => expect(createDecisionMock).toHaveBeenCalledTimes(1));
+
+  view.rerender(
+    <BidsEegDiscovery
+      projectPath="/tmp/other-brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(await screen.findByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  await waitFor(() => expect(decisionsMock).toHaveBeenCalledTimes(2));
+  resolveSave?.({
+    schema_version: "1.0",
+    id: "decision-stale",
+    researcher: "Dr. Example",
+    dataset_path: "datasets/OpenNeuro/ds002181/1.0.0",
+    recording_path: result.recordings[0].path,
+    source_content_identity: identity("1").content_identity!,
+    decision: "needs_review",
+    note: "stale response",
+    time_start_seconds: null,
+    time_end_seconds: null,
+    channel_names: [],
+    created_at: "2026-10-04T10:00:00Z",
+    updated_at: "2026-10-04T10:00:00Z",
+  });
+
+  await waitFor(() =>
+    expect(
+      screen.getByTestId(`researcher-decisions-${result.recordings[0].path}`),
+    ).not.toHaveTextContent("stale response"),
   );
 });
 

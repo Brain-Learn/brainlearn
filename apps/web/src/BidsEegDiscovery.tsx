@@ -5,6 +5,8 @@ import {
   identifyBidsEegRecording,
   inspectBidsEegSignal,
   previewBidsEegSignal,
+  listResearcherDecisions,
+  createResearcherDecision,
 } from "./datasets";
 import { BidsEegSignalPreviewPanel } from "./BidsEegSignalPreviewPanel";
 import type {
@@ -12,6 +14,7 @@ import type {
   BidsEegInputIdentity,
   BidsEegSignalInspection,
   BidsEegSignalPreview,
+  ResearcherDecision,
 } from "./types";
 
 interface BidsEegDiscoveryProps {
@@ -59,13 +62,28 @@ export function BidsEegDiscovery({
   >({});
   const [previewPending, setPreviewPending] = useState<string | null>(null);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const [decisions, setDecisions] = useState<
+    Record<string, ResearcherDecision[]>
+  >({});
+  const [decisionPending, setDecisionPending] = useState<string | null>(null);
+  const [decisionMessage, setDecisionMessage] = useState<string | null>(null);
+  const [researcher, setResearcher] = useState("");
+  const [decisionChoice, setDecisionChoice] = useState<
+    "" | ResearcherDecision["decision"]
+  >("");
+  const [decisionNote, setDecisionNote] = useState("");
+  const [decisionStart, setDecisionStart] = useState("");
+  const [decisionEnd, setDecisionEnd] = useState("");
+  const [decisionChannels, setDecisionChannels] = useState("");
   const operation = useRef(0);
   const identityOperation = useRef(0);
   const inspectionOperation = useRef(0);
   const previewOperation = useRef(0);
+  const decisionOperation = useRef(0);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    decisionOperation.current += 1;
     operation.current += 1;
     controller.current?.abort();
     controller.current = null;
@@ -81,6 +99,15 @@ export function BidsEegDiscovery({
     setSignalPreviews({});
     setPreviewPending(null);
     setPreviewMessage(null);
+    setDecisionPending(null);
+    setDecisions({});
+    setDecisionMessage(null);
+    setResearcher("");
+    setDecisionChoice("");
+    setDecisionNote("");
+    setDecisionStart("");
+    setDecisionEnd("");
+    setDecisionChannels("");
     identityOperation.current += 1;
     inspectionOperation.current += 1;
     previewOperation.current += 1;
@@ -88,6 +115,7 @@ export function BidsEegDiscovery({
       operation.current += 1;
       inspectionOperation.current += 1;
       previewOperation.current += 1;
+      decisionOperation.current += 1;
       controller.current?.abort();
       controller.current = null;
     };
@@ -101,6 +129,9 @@ export function BidsEegDiscovery({
     setPending(true);
     setMessage(null);
     setResult(null);
+    decisionOperation.current += 1;
+    setDecisionPending(null);
+    setDecisions({});
     identityOperation.current += 1;
     setIdentityPending(null);
     setIdentities({});
@@ -138,10 +169,17 @@ export function BidsEegDiscovery({
 
   const handleIdentify = async (recordingPath: string) => {
     if (identityPending || !projectPath || !relativeDir || !token) return;
+    decisionOperation.current += 1;
+    setDecisionPending(null);
     const sequence = ++identityOperation.current;
     setIdentityPending(recordingPath);
     setIdentityMessage(null);
     setIdentities((current) => {
+      const next = { ...current };
+      delete next[recordingPath];
+      return next;
+    });
+    setDecisions((current) => {
       const next = { ...current };
       delete next[recordingPath];
       return next;
@@ -153,8 +191,32 @@ export function BidsEegDiscovery({
         recordingPath,
         { token },
       );
-      if (sequence === identityOperation.current)
+      if (sequence === identityOperation.current) {
         setIdentities((current) => ({ ...current, [recordingPath]: identity }));
+        if (identity.content_identity) {
+          try {
+            const records = await listResearcherDecisions(
+              projectPath,
+              relativeDir,
+              recordingPath,
+              identity.content_identity,
+              token,
+            );
+            if (sequence === identityOperation.current)
+              setDecisions((current) => ({
+                ...current,
+                [recordingPath]: records,
+              }));
+          } catch (error) {
+            if (sequence === identityOperation.current)
+              setDecisionMessage(
+                error instanceof Error
+                  ? error.message
+                  : "Unable to load saved researcher decisions.",
+              );
+          }
+        }
+      }
     } catch (error) {
       if (sequence === identityOperation.current) {
         setIdentityMessage(
@@ -165,6 +227,70 @@ export function BidsEegDiscovery({
       }
     } finally {
       if (sequence === identityOperation.current) setIdentityPending(null);
+    }
+  };
+
+  const handleSaveDecision = async (recordingPath: string) => {
+    const identity = identities[recordingPath];
+    if (
+      !identity?.content_identity ||
+      !researcher.trim() ||
+      !decisionChoice ||
+      decisionPending
+    )
+      return;
+    const sequence = ++decisionOperation.current;
+    const capturedContext = {
+      projectPath,
+      relativeDir,
+      token,
+      contentIdentity: identity.content_identity,
+    };
+    const isCurrent = () =>
+      sequence === decisionOperation.current &&
+      projectPath === capturedContext.projectPath &&
+      relativeDir === capturedContext.relativeDir &&
+      token === capturedContext.token &&
+      identities[recordingPath]?.content_identity ===
+        capturedContext.contentIdentity;
+    setDecisionPending(recordingPath);
+    setDecisionMessage(null);
+    try {
+      const saved = await createResearcherDecision(
+        projectPath,
+        {
+          researcher: researcher.trim(),
+          dataset_path: relativeDir,
+          recording_path: recordingPath,
+          source_content_identity: identity.content_identity,
+          decision: decisionChoice,
+          note: decisionNote,
+          time_start_seconds: decisionStart ? Number(decisionStart) : null,
+          time_end_seconds: decisionEnd ? Number(decisionEnd) : null,
+          channel_names: decisionChannels
+            .split(",")
+            .map((name) => name.trim())
+            .filter(Boolean),
+        },
+        token,
+      );
+      if (isCurrent()) {
+        setDecisions((current) => ({
+          ...current,
+          [recordingPath]: [...(current[recordingPath] ?? []), saved],
+        }));
+        setDecisionChoice("");
+        setDecisionNote("");
+      }
+    } catch (error) {
+      if (isCurrent())
+        setDecisionMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to save researcher decision.",
+        );
+    } finally {
+      if (isCurrent()) setDecisionPending(null);
     }
   };
 
@@ -400,6 +526,124 @@ export function BidsEegDiscovery({
                         ))}
                       </div>
                     )}
+                    {identities[recording.path]?.content_identity && (
+                      <div
+                        className="researcher-decisions"
+                        data-testid={`researcher-decisions-${recording.path}`}
+                      >
+                        <h4>Researcher annotation and inspection decision</h4>
+                        <p className="project-message">
+                          Saved separately from source data and bound to this
+                          recording identity. Each submission records an
+                          explicit decision.
+                        </p>
+                        <label>
+                          Researcher
+                          <input
+                            value={researcher}
+                            onChange={(event) =>
+                              setResearcher(event.target.value)
+                            }
+                            maxLength={200}
+                          />
+                        </label>
+                        <label>
+                          Decision
+                          <select
+                            required
+                            value={decisionChoice}
+                            onChange={(event) =>
+                              setDecisionChoice(
+                                event.target.value as typeof decisionChoice,
+                              )
+                            }
+                          >
+                            <option value="">Choose a decision</option>
+                            <option value="accepted">Accepted</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="needs_review">Needs review</option>
+                          </select>
+                        </label>
+                        <label>
+                          Annotation note
+                          <textarea
+                            value={decisionNote}
+                            onChange={(event) =>
+                              setDecisionNote(event.target.value)
+                            }
+                            maxLength={4000}
+                          />
+                        </label>
+                        <div className="project-buttons">
+                          <label>
+                            Start time (s)
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={decisionStart}
+                              onChange={(event) =>
+                                setDecisionStart(event.target.value)
+                              }
+                            />
+                          </label>
+                          <label>
+                            End time (s)
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={decisionEnd}
+                              onChange={(event) =>
+                                setDecisionEnd(event.target.value)
+                              }
+                            />
+                          </label>
+                          <label>
+                            Channels (comma separated)
+                            <input
+                              value={decisionChannels}
+                              onChange={(event) =>
+                                setDecisionChannels(event.target.value)
+                              }
+                              placeholder="Cz, Pz"
+                            />
+                          </label>
+                          <button
+                            disabled={
+                              !researcher.trim() ||
+                              !decisionChoice ||
+                              decisionPending !== null
+                            }
+                            onClick={() =>
+                              void handleSaveDecision(recording.path)
+                            }
+                          >
+                            {decisionPending === recording.path
+                              ? "Saving…"
+                              : "Save explicit decision"}
+                          </button>
+                        </div>
+                        {(decisions[recording.path] ?? []).map((item) => (
+                          <div className="project-message" key={item.id}>
+                            {item.decision.replace("_", " ")} ·{" "}
+                            {item.researcher} ·{" "}
+                            {new Date(item.created_at).toLocaleString()}
+                            {item.note && <p>{item.note}</p>}
+                            {(item.time_start_seconds !== null ||
+                              item.time_end_seconds !== null) && (
+                              <p>
+                                {item.time_start_seconds ?? 0}–
+                                {item.time_end_seconds ?? "?"} s
+                              </p>
+                            )}
+                            {item.channel_names.length > 0 && (
+                              <p>Channels: {item.channel_names.join(", ")}</p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </li>
               ))}
@@ -428,6 +672,11 @@ export function BidsEegDiscovery({
       {previewMessage && (
         <div className="project-message" role="alert">
           {previewMessage}
+        </div>
+      )}
+      {decisionMessage && (
+        <div className="project-message" role="alert">
+          {decisionMessage}
         </div>
       )}
     </section>

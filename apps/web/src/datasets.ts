@@ -4,6 +4,7 @@ import type {
   BidsEegInputIdentity,
   BidsEegSignalPreview,
   BidsEegSignalInspection,
+  ResearcherDecision,
   DatasetListItem,
   DatasetListResponse,
   DatasetLock,
@@ -1025,6 +1026,88 @@ export async function previewBidsEegSignal(
     );
   }
   return payload as unknown as BidsEegSignalPreview;
+}
+
+function assertResearcherDecisions(value: unknown): asserts value is {
+  schema_version: "1.0";
+  records: ResearcherDecision[];
+} {
+  if (
+    !isRecord(value) ||
+    value.schema_version !== "1.0" ||
+    !Array.isArray(value.records) ||
+    !value.records.every(
+      (item) =>
+        isRecord(item) &&
+        item.schema_version === "1.0" &&
+        typeof item.id === "string" &&
+        typeof item.researcher === "string" &&
+        typeof item.dataset_path === "string" &&
+        typeof item.recording_path === "string" &&
+        typeof item.source_content_identity === "string" &&
+        ["accepted", "rejected", "needs_review"].includes(
+          String(item.decision),
+        ) &&
+        typeof item.note === "string" &&
+        Array.isArray(item.channel_names) &&
+        item.channel_names.every((name) => typeof name === "string") &&
+        (item.time_start_seconds === null ||
+          typeof item.time_start_seconds === "number") &&
+        (item.time_end_seconds === null ||
+          typeof item.time_end_seconds === "number") &&
+        typeof item.created_at === "string" &&
+        typeof item.updated_at === "string",
+    )
+  )
+    throw new Error(
+      "The researcher decision response does not match version 1.0.",
+    );
+}
+
+export async function listResearcherDecisions(
+  path: string,
+  datasetPath: string,
+  recordingPath: string,
+  sourceContentIdentity: string,
+  token: string,
+): Promise<ResearcherDecision[]> {
+  requireContext(path, token);
+  const response = await fetch("/api/datasets/bids-eeg/decisions", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      path,
+      dataset_path: datasetPath,
+      recording_path: recordingPath,
+      source_content_identity: sourceContentIdentity,
+    }),
+  });
+  if (!response.ok)
+    throw await readError(response, "Unable to load researcher decisions");
+  const payload: unknown = await response.json();
+  assertResearcherDecisions(payload);
+  return payload.records;
+}
+
+export async function createResearcherDecision(
+  path: string,
+  values: Omit<
+    ResearcherDecision,
+    "schema_version" | "id" | "created_at" | "updated_at"
+  >,
+  token: string,
+): Promise<ResearcherDecision> {
+  requireContext(path, token);
+  const response = await fetch("/api/datasets/bids-eeg/decisions/create", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ path, ...values }),
+  });
+  if (!response.ok)
+    throw await readError(response, "Unable to save researcher decision");
+  const payload: unknown = await response.json();
+  assertResearcherDecisions({ schema_version: "1.0", records: [payload] });
+  return payload as ResearcherDecision;
 }
 
 /** Reconcile local import records after a service restart. */

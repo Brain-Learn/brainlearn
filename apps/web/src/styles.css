@@ -893,6 +893,26 @@ article[aria-label="Dataset details"] h4:focus {
   font-size: 10px;
   line-height: 1.4;
 }
+.researcher-decisions {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #304057;
+  border-radius: 8px;
+  background: #0c1725;
+}
+.researcher-decisions h4 {
+  margin: 0;
+  color: #e3edf8;
+  font-size: 12px;
+}
+.researcher-decisions label {
+  display: grid;
+  gap: 4px;
+  color: #aebdd0;
+  font-size: 11px;
+}
 .eeg-preview {
   max-width: 760px;
   margin-top: 12px;
