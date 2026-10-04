@@ -454,23 +454,23 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-04 | Step 5A.15 next-assignment pointer review | Complete | Independent review of docs-only PR #23 head `53c6833f8bd89fde851d462078e79df120881003` against merged main `482b2163c5f5900a29fd0f3c0d617e27a3c77f57` confirmed the prior completion-log rows are preserved and exactly one Step 5A.15 handoff row is appended. The Step 5 heading remains unchecked; the completed Step 5A.14 preview checkbox remains checked; the first unchecked Step 5 item is “Persist annotations and researcher inspection decisions separately from source data,” matching the new `Next assignment` section. The diff is documentation-only; `git diff --check` passed. Both hosted CI jobs passed in Actions run `37205649638`. | Monitored review complete on PR #23 |
 | 2026-10-04 | Step 5A.15 researcher annotations and decisions | Verified; monitoring pending | Added authenticated list/create API routes and a versioned `1.0` project-local decision collection at `annotations/eeg-researcher-decisions.json`. Every persisted action names the researcher, explicitly chooses accepted/rejected/needs-review, captures a note and optional time/channel locations, binds dataset/recording paths to the source content identity, and records UTC creation/update timestamps. Records append atomically and raw BIDS files remain untouched. Listing and creation recompute the identity; stale identities are rejected and prior decisions are not shown against changed source. UI requires an explicit choice and save; no decision is preselected or inferred. Added a generation/context guard for delayed save success, error, and cleanup after project changes, rediscovery, or re-identification; regression resolves a delayed response only after switching projects and confirms it is not displayed. Focused backend tests: 4 passed for round-trip/append, authorization/symlink blocking, authenticated explicit save, stale source refusal/listing, and raw-file immutability. Focused UI suite: 8 passed, including explicit decision submission and delayed-response context change. Full gate: `uv run --locked ruff check .` passed; format check passed (77 files); strict mypy passed (30 source files); pytest passed 760, 2 skipped, 2 upstream deprecation warnings (33.93s); ESLint and Prettier passed; Vitest passed 171 tests in 18 files; production build passed (1,846 modules; existing chunk-size advisory); production audit found 0 vulnerabilities; `git diff --check` passed. Step 5A.15 implementation checkbox is checked; Step 5 remains unchecked pending monitoring re-review and the larger scientific completion gate. | PR #24 repair pending |
 | 2026-10-04 | Step 5A.15 final monitored gate | Complete | Independent review of PR #24 head `6ecc13489cfcb72da194bf60d2f12b25ea141a24` against `fe4ac4af99aecadf49a87873fa9f9c7406d95b98` approved the project-authorized, identity-bound researcher decision store and explicit UI. The requested delayed-save context race is fixed and the regression confirms a response from the old project is not shown after switching projects; success/error/finally updates are guarded against context/generation changes on project changes, rediscovery, and re-identification. Focused backend tests passed (4); focused UI tests passed (8). Clean-checkout Python with optional EEG group passed 760 tests, 2 skips, 2 upstream deprecation warnings; Vitest passed 171 tests in 18 files; Ruff, format (77 files), strict mypy (30 source files), ESLint, Prettier, build (1,846 modules), audit (0 vulnerabilities), and diff check passed. Both hosted CI jobs passed on the reviewed head in Actions run `37207868929`. The reviewer resolved its inline thread and posted final approval. Step 5A.15 is complete; Step 5 remains unchecked pending unsupported-format handling and an independently reviewed direct-MNE reference script. | Monitored review complete on PR #24 |
+| 2026-10-04 | Step 5A.16 next-assignment pointer | Verified; monitoring pending | After PR #24 was squash-merged at `3a7d913ceeeaac8e3a8cb8b98ec6935380569489`, confirmed the first unchecked Step 5 item is “Provide errors for unsupported formats and incomplete metadata.” Updated only this handoff pointer; the Step 5 heading remains unchecked and the Step 5A.15 annotation/decision item remains checked. No Step 5A.16 implementation is included. Full gate: Ruff passed; format check passed (77 files); strict mypy passed (30 source files); pytest passed 760, 2 skipped, 2 upstream deprecation warnings (33.70s); ESLint and Prettier passed; Vitest passed 171 tests in 18 files; production build passed (1,846 modules; existing chunk-size advisory); production audit found 0 vulnerabilities; `git diff --check` passed. | PR #25 pending |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5A.15 — persist researcher annotations and decisions
+### Step 5A.16 — report unsupported formats and incomplete metadata
 
-Implement only the next unchecked Step 5 item: persist researcher annotations
-and explicit inspection/QC decisions separately from source data. Bind each
-record to the inspected recording's content identity and preserve the raw BIDS
-files unchanged. Use project-authorized storage, versioned schemas, atomic
-writes, and clear provenance for the researcher, time/channel location,
-decision, and creation/update times. A QC decision must represent an explicit
-researcher action and must never approve itself. Add focused backend/UI tests
-for round-trips, authorization, identity changes, and source immutability. Do
-not add filtering or other signal processing in this work unit. Run the full
-repository gate, append exact evidence, and deliver the change through one
-ready-for-review PR. Step 5 remains open until its full scientific completion
-gate and monitoring review are complete.
+Implement only the next unchecked Step 5 item: provide clear, actionable
+errors when a discovered EEG recording uses an unsupported format or has
+incomplete required BIDS metadata. Trace the user-visible discovery, identity,
+inspection, preview, and workflow paths; keep unsupported inputs out of MNE and
+execution adapters. Preserve raw BIDS files and do not add signal processing.
+Add focused API/UI tests proving the unsupported and incomplete states explain
+the corrective action and cannot start an inspection or run. Do not begin the
+independent direct-MNE reference script in this work unit. Run the full
+repository gate, append exact evidence, and deliver one ready-for-review PR.
+Step 5 remains open until its full scientific completion gate and monitoring
+review are complete.
