@@ -2,6 +2,7 @@ import type {
   CatalogEntry,
   BidsEegDiscovery,
   BidsEegInputIdentity,
+  BidsEegSignalInspection,
   DatasetListItem,
   DatasetListResponse,
   DatasetLock,
@@ -869,6 +870,58 @@ export async function identifyBidsEegRecording(
     );
   }
   return payload as unknown as BidsEegInputIdentity;
+}
+
+export async function inspectBidsEegSignal(
+  path: string,
+  relativeDir: string,
+  recordingPath: string,
+  options: { token: string; signal?: AbortSignal },
+): Promise<BidsEegSignalInspection> {
+  requireContext(path, options.token);
+  const response = await fetch("/api/datasets/bids-eeg/inspect", {
+    method: "POST",
+    headers: authHeaders(options.token),
+    signal: options.signal,
+    body: JSON.stringify({
+      path,
+      relative_dir: relativeDir,
+      recording_path: recordingPath,
+    }),
+  });
+  if (!response.ok)
+    throw await readError(response, "Unable to inspect the EEG signal");
+  const payload: unknown = await response.json();
+  if (
+    !isRecord(payload) ||
+    payload.schema_version !== "1.0" ||
+    typeof payload.recording_path !== "string" ||
+    !["edf", "bdf", "brainvision", "eeglab"].includes(String(payload.format)) ||
+    typeof payload.sampling_frequency_hz !== "number" ||
+    typeof payload.sample_count !== "number" ||
+    typeof payload.duration_seconds !== "number" ||
+    typeof payload.channel_count !== "number" ||
+    !isRecord(payload.channel_types) ||
+    !Object.values(payload.channel_types).every(
+      (count) => typeof count === "number",
+    ) ||
+    typeof payload.bad_channel_count !== "number" ||
+    typeof payload.annotation_count !== "number" ||
+    !Array.isArray(payload.annotation_descriptions) ||
+    !payload.annotation_descriptions.every(
+      (item) => typeof item === "string",
+    ) ||
+    !(
+      payload.highpass_hz === null || typeof payload.highpass_hz === "number"
+    ) ||
+    !(payload.lowpass_hz === null || typeof payload.lowpass_hz === "number") ||
+    payload.inspection_scope !== "read_only_signal_metadata"
+  ) {
+    throw new Error(
+      "The BIDS EEG signal inspection response does not match version 1.0.",
+    );
+  }
+  return payload as unknown as BidsEegSignalInspection;
 }
 
 /** Reconcile local import records after a service restart. */

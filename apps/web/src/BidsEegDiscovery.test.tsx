@@ -9,15 +9,21 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { BidsEegDiscovery } from "./BidsEegDiscovery";
-import { discoverBidsEeg, identifyBidsEegRecording } from "./datasets";
+import {
+  discoverBidsEeg,
+  identifyBidsEegRecording,
+  inspectBidsEegSignal,
+} from "./datasets";
 import type {
   BidsEegDiscovery as BidsEegDiscoveryResult,
   BidsEegInputIdentity,
+  BidsEegSignalInspection,
 } from "./types";
 
 vi.mock("./datasets", () => ({
   discoverBidsEeg: vi.fn(),
   identifyBidsEegRecording: vi.fn(),
+  inspectBidsEegSignal: vi.fn(),
 }));
 
 const result: BidsEegDiscoveryResult = {
@@ -49,6 +55,7 @@ const result: BidsEegDiscoveryResult = {
 
 const discoverMock = vi.mocked(discoverBidsEeg);
 const identifyMock = vi.mocked(identifyBidsEegRecording);
+const inspectMock = vi.mocked(inspectBidsEegSignal);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -126,6 +133,52 @@ test("creates and displays an input identity only after the explicit hash action
   ).toBeInTheDocument();
   expect(screen.getByText(/123 bytes · SHA-256/)).toBeInTheDocument();
   expect(identifyMock).toHaveBeenCalledWith(
+    "/tmp/brainlearn-project",
+    "datasets/OpenNeuro/ds002181/1.0.0",
+    result.recordings[0].path,
+    { token: "session-token" },
+  );
+});
+
+test("inspects a ready signal only after an explicit action and displays measurements", async () => {
+  discoverMock.mockResolvedValue(result);
+  const inspection: BidsEegSignalInspection = {
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    format: "edf",
+    sampling_frequency_hz: 500,
+    sample_count: 2_000,
+    duration_seconds: 4,
+    channel_count: 2,
+    channel_types: { eeg: 2 },
+    bad_channel_count: 0,
+    annotation_count: 2,
+    annotation_descriptions: ["standard", "deviant"],
+    highpass_hz: 0,
+    lowpass_hz: 250,
+    inspection_scope: "read_only_signal_metadata",
+  };
+  inspectMock.mockResolvedValue(inspection);
+  render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  expect(inspectMock).not.toHaveBeenCalled();
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Inspect signal with MNE" }),
+  );
+  expect(
+    await screen.findByText(
+      /MNE read-only inspection: 500 Hz · 2,000 samples · 4.00 s/,
+    ),
+  ).toBeInTheDocument();
+  expect(inspectMock).toHaveBeenCalledWith(
     "/tmp/brainlearn-project",
     "datasets/OpenNeuro/ds002181/1.0.0",
     result.recordings[0].path,

@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 
-import { discoverBidsEeg, identifyBidsEegRecording } from "./datasets";
+import {
+  discoverBidsEeg,
+  identifyBidsEegRecording,
+  inspectBidsEegSignal,
+} from "./datasets";
 import type {
   BidsEegDiscovery as BidsEegDiscoveryResult,
   BidsEegInputIdentity,
+  BidsEegSignalInspection,
 } from "./types";
 
 interface BidsEegDiscoveryProps {
@@ -37,8 +42,18 @@ export function BidsEegDiscovery({
   >({});
   const [identityPending, setIdentityPending] = useState<string | null>(null);
   const [identityMessage, setIdentityMessage] = useState<string | null>(null);
+  const [signalInspections, setSignalInspections] = useState<
+    Record<string, BidsEegSignalInspection>
+  >({});
+  const [inspectionPending, setInspectionPending] = useState<string | null>(
+    null,
+  );
+  const [inspectionMessage, setInspectionMessage] = useState<string | null>(
+    null,
+  );
   const operation = useRef(0);
   const identityOperation = useRef(0);
+  const inspectionOperation = useRef(0);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -51,9 +66,14 @@ export function BidsEegDiscovery({
     setIdentities({});
     setIdentityPending(null);
     setIdentityMessage(null);
+    setSignalInspections({});
+    setInspectionPending(null);
+    setInspectionMessage(null);
     identityOperation.current += 1;
+    inspectionOperation.current += 1;
     return () => {
       operation.current += 1;
+      inspectionOperation.current += 1;
       controller.current?.abort();
       controller.current = null;
     };
@@ -71,6 +91,10 @@ export function BidsEegDiscovery({
     setIdentityPending(null);
     setIdentities({});
     setIdentityMessage(null);
+    inspectionOperation.current += 1;
+    setSignalInspections({});
+    setInspectionPending(null);
+    setInspectionMessage(null);
     try {
       const discovered = await discoverBidsEeg(projectPath, relativeDir, {
         token,
@@ -126,18 +150,55 @@ export function BidsEegDiscovery({
     }
   };
 
+  const handleInspectSignal = async (recordingPath: string) => {
+    if (inspectionPending || !projectPath || !relativeDir || !token) return;
+    const sequence = ++inspectionOperation.current;
+    setInspectionPending(recordingPath);
+    setInspectionMessage(null);
+    setSignalInspections((current) => {
+      const next = { ...current };
+      delete next[recordingPath];
+      return next;
+    });
+    try {
+      const inspection = await inspectBidsEegSignal(
+        projectPath,
+        relativeDir,
+        recordingPath,
+        { token },
+      );
+      if (sequence === inspectionOperation.current)
+        setSignalInspections((current) => ({
+          ...current,
+          [recordingPath]: inspection,
+        }));
+    } catch (error) {
+      if (sequence === inspectionOperation.current) {
+        setInspectionMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to inspect the EEG signal.",
+        );
+      }
+    } finally {
+      if (sequence === inspectionOperation.current) setInspectionPending(null);
+    }
+  };
+
   return (
     <section aria-label="BIDS EEG discovery" className="project-panel">
       <h5>BIDS EEG discovery</h5>
       <p className="project-message">
-        Checks recording filenames and required BIDS metadata. Create an input
-        identity as a separate action; it reads source files in bounded chunks
-        to calculate hashes, without copying or changing them.
+        Check BIDS metadata, inspect raw signal properties with MNE, or create
+        an input identity as separate actions. Signal inspection reads without
+        preloading or changing the source recording; identity creation reads
+        source files in bounded chunks to calculate hashes.
       </p>
       <div className="project-buttons">
         <button
           data-testid="bids-eeg-discover"
           disabled={pending || !projectPath || !relativeDir || !token}
+          aria-busy={pending}
           onClick={() => void handleDiscover()}
         >
           {pending ? "Checking BIDS metadata…" : "Check BIDS EEG metadata"}
@@ -188,12 +249,58 @@ export function BidsEegDiscovery({
                         <button
                           data-testid={`bids-eeg-identify-${recording.path}`}
                           disabled={identityPending !== null}
+                          aria-busy={identityPending === recording.path}
                           onClick={() => void handleIdentify(recording.path)}
                         >
                           {identityPending === recording.path
                             ? "Hashing source files…"
                             : "Create input identity"}
                         </button>
+                        <button
+                          data-testid={`bids-eeg-inspect-${recording.path}`}
+                          disabled={inspectionPending !== null}
+                          aria-busy={inspectionPending === recording.path}
+                          onClick={() =>
+                            void handleInspectSignal(recording.path)
+                          }
+                        >
+                          {inspectionPending === recording.path
+                            ? "Inspecting signal…"
+                            : "Inspect signal with MNE"}
+                        </button>
+                      </div>
+                    )}
+                    {signalInspections[recording.path] && (
+                      <div
+                        data-testid={`bids-eeg-inspection-${recording.path}`}
+                        className="project-message"
+                        role="status"
+                      >
+                        MNE read-only inspection:{" "}
+                        {
+                          signalInspections[recording.path]
+                            .sampling_frequency_hz
+                        }{" "}
+                        Hz ·{" "}
+                        {signalInspections[
+                          recording.path
+                        ].sample_count.toLocaleString()}{" "}
+                        samples ·{" "}
+                        {signalInspections[
+                          recording.path
+                        ].duration_seconds.toFixed(2)}{" "}
+                        s · {signalInspections[recording.path].channel_count}{" "}
+                        channels (
+                        {Object.entries(
+                          signalInspections[recording.path].channel_types,
+                        )
+                          .map(([type, count]) => `${count} ${type}`)
+                          .join(", ")}
+                        ) ·{" "}
+                        {signalInspections[recording.path].bad_channel_count}{" "}
+                        marked bad ·{" "}
+                        {signalInspections[recording.path].annotation_count}{" "}
+                        annotations
                       </div>
                     )}
                     {identities[recording.path] && (
@@ -230,6 +337,11 @@ export function BidsEegDiscovery({
       {identityMessage && (
         <div className="project-message" role="alert">
           {identityMessage}
+        </div>
+      )}
+      {inspectionMessage && (
+        <div className="project-message" role="alert">
+          {inspectionMessage}
         </div>
       )}
     </section>

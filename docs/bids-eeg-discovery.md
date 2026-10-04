@@ -47,3 +47,19 @@ during the operation. The total input is limited to 10 GiB. If the limit is exce
 no identity is returned. These hashes identify current source bytes; they do
 not imply that the signal has been inspected or that an analysis is
 scientifically valid.
+
+## Read-only signal inspection
+
+After discovery reports a recording as ready, **Inspect signal with MNE** opens
+it through the pinned MNE-BIDS and MNE-Python versions. The service reports
+measured sampling frequency, sample count and duration, channel count and MNE
+channel types, marked-bad channel count, annotation count and up to 100
+annotation descriptions, and the reader's high-pass and low-pass metadata.
+MNE opens recordings with `preload=False`; the raw object is closed after the
+summary is read. This action does not filter, resample, create previews, save
+signal data, or persist an inspection record. It is available only for EDF,
+BDF, complete BrainVision, and EEGLAB recordings discovered with complete
+required BIDS metadata. MNE read failures, missing companion signal files, and
+missing optional EEG dependencies are returned as explicit errors. The result
+reports properties from the file reader and is not a scientific quality or
+validity assessment.

@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -16,6 +18,7 @@ from brainlearn_server.auth import reset_session_token_for_tests
 from brainlearn_server.bids_eeg import (
     BidsDatasetPathError,
     BidsEegDiscoveryService,
+    BidsSignalInspectionError,
     discover_bids_eeg,
 )
 from fastapi.testclient import TestClient
@@ -311,6 +314,125 @@ def test_api_requires_session_token_and_returns_bounded_discovery(tmp_path: Path
     assert payload["status"] == "ready"
     assert payload["inspection_scope"] == "metadata_only"
     assert payload["recordings"][0]["path"] == "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+
+
+def test_signal_inspection_uses_lazy_mne_read_and_reports_measured_properties(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root, extension=".set")
+    calls: dict[str, Any] = {}
+
+    class FakeAnnotations:
+        description = ["stimulus/a", "stimulus/b"]
+
+        def __len__(self) -> int:
+            return len(self.description)
+
+    class FakeRaw:
+        info = {"sfreq": 500.0, "bads": ["Pz"], "highpass": 1.0, "lowpass": 100.0}
+        n_times = 2_000
+        ch_names = ["Cz", "Pz"]
+        annotations = FakeAnnotations()
+
+        def get_channel_types(self) -> list[str]:
+            return ["eeg", "eeg"]
+
+        def close(self) -> None:
+            calls["closed"] = True
+
+    bids_path = SimpleNamespace(root=None)
+
+    def get_bids_path_from_fname(path: Path, *, check: bool) -> SimpleNamespace:
+        calls["bids_path"] = path
+        assert check is False
+        return bids_path
+
+    def read_raw_bids(path: SimpleNamespace, **kwargs: Any) -> FakeRaw:
+        calls["read_path"] = path
+        calls["kwargs"] = kwargs
+        return FakeRaw()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "mne_bids",
+        SimpleNamespace(
+            get_bids_path_from_fname=get_bids_path_from_fname,
+            read_raw_bids=read_raw_bids,
+        ),
+    )
+    inspection = BidsEegDiscoveryService(store).inspect_signal(
+        str(project), "raw-data/study", recording.relative_to(root).as_posix()
+    )
+
+    assert bids_path.root == root.resolve()
+    assert calls["kwargs"] == {"verbose": "ERROR", "extra_params": {"preload": False}}
+    assert calls["closed"] is True
+    assert inspection.sampling_frequency_hz == 500
+    assert inspection.sample_count == 2_000
+    assert inspection.duration_seconds == 4
+    assert inspection.channel_count == 2
+    assert inspection.channel_types == {"eeg": 2}
+    assert inspection.bad_channel_count == 1
+    assert inspection.annotation_count == 2
+    assert inspection.inspection_scope == "read_only_signal_metadata"
+
+
+def test_signal_inspection_endpoint_requires_auth_and_returns_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root)
+    from brainlearn_server import app as app_module
+
+    monkeypatch.setattr(
+        app_module.bids_eeg,
+        "inspect_signal",
+        lambda path, relative_dir, recording_path: bids_eeg_module.BidsEegSignalInspection(
+            recording_path=recording_path,
+            format="edf",
+            sampling_frequency_hz=500,
+            sample_count=1_000,
+            duration_seconds=2,
+            channel_count=2,
+            channel_types={"eeg": 2},
+            bad_channel_count=0,
+            annotation_count=0,
+        ),
+    )
+    payload = {
+        "path": str(project),
+        "relative_dir": "raw-data/study",
+        "recording_path": recording.relative_to(root).as_posix(),
+    }
+    client = TestClient(app)
+    assert client.post("/api/datasets/bids-eeg/inspect", json=payload).status_code == 401
+    response = client.post("/api/datasets/bids-eeg/inspect", headers=AUTH_HEADERS, json=payload)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["sample_count"] == 1_000
+    assert body["channel_types"] == {"eeg": 2}
+    assert body["inspection_scope"] == "read_only_signal_metadata"
+
+
+def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
+    tmp_path: Path,
+):
+    project, root = _project(tmp_path)
+    unsupported = _write_valid_dataset(root, extension=".xyz")
+    service = BidsEegDiscoveryService(store)
+    with pytest.raises(BidsSignalInspectionError, match="supports EDF, BDF"):
+        service.inspect_signal(
+            str(project), "raw-data/study", unsupported.relative_to(root).as_posix()
+        )
+
+    unsupported.unlink()
+    incomplete = _write_valid_dataset(root)
+    (incomplete.parent / "sub-01_task-Rest_eeg.json").unlink()
+    with pytest.raises(BidsDatasetPathError, match="complete supported BIDS EEG metadata"):
+        service.inspect_signal(
+            str(project), "raw-data/study", incomplete.relative_to(root).as_posix()
+        )
 
 
 def test_input_identity_hashes_signal_and_effective_sidecars_without_copying(tmp_path: Path):

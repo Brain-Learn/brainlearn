@@ -152,7 +152,10 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
         id="eeg.inspect",
         node_version="0.1.0",
         label="Inspect Signal",
-        description="Review raw traces and acquisition metadata.",
+        description=(
+            "Read measured signal and acquisition properties without transforming the "
+            "recording or generating previews."
+        ),
         category="Quality control",
         ports=[
             _port("dataset", "Dataset", PortDirection.INPUT, ScientificType.BIDS_DATASET),
