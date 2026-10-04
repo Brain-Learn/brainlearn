@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 from brainlearn_server.app import store
-from brainlearn_server.bids_eeg import BidsEegDiscoveryService
+from brainlearn_server.bids_eeg import BidsEegDiscoveryService, BidsSignalInspectionError
 
 
 def test_preview_values_match_independent_mne_reference(
@@ -31,7 +31,8 @@ def test_preview_values_match_independent_mne_reference(
     )
     name = "sub-01_task-Rest_eeg.edf"
     source = eeg / name
-    source.write_bytes(b"controlled synthetic source identity")
+    original_source_bytes = b"controlled synthetic source identity"
+    source.write_bytes(original_source_bytes)
     sidecar = {
         "TaskName": "Rest",
         "SamplingFrequency": 256,
@@ -117,8 +118,32 @@ def test_preview_values_match_independent_mne_reference(
     assert [event.description for event in preview.events] == ["stimulus"]
     assert (
         hashlib.sha256(source.read_bytes()).hexdigest()
-        == hashlib.sha256(b"controlled synthetic source identity").hexdigest()
+        == hashlib.sha256(original_source_bytes).hexdigest()
     )
     assert not list(project.rglob("*.fif"))
     reference.close()
+
+    def read_raw_then_mutate_on_close(*_args, **_kwargs):
+        raw = make_raw()
+        original_close = raw.close
+
+        def close_and_mutate():
+            original_close()
+            source.write_bytes(b"x" * len(original_source_bytes))
+
+        raw.close = close_and_mutate
+        return raw
+
+    monkeypatch.setattr(mne_bids, "read_raw_bids", read_raw_then_mutate_on_close)
+    with pytest.raises(BidsSignalInspectionError, match="changed while the signal preview"):
+        service.preview_signal(
+            str(project),
+            "raw-data/study",
+            "sub-01/eeg/" + name,
+            time_start_seconds=0.5,
+            duration_seconds=3.0,
+            channel_names=("Cz", "Pz"),
+            max_buckets=64,
+        )
+    assert source.read_bytes() == b"x" * len(original_source_bytes)
     store.allowed_roots.clear()
