@@ -79,9 +79,11 @@ export function BidsEegDiscovery({
   const identityOperation = useRef(0);
   const inspectionOperation = useRef(0);
   const previewOperation = useRef(0);
+  const decisionOperation = useRef(0);
   const controller = useRef<AbortController | null>(null);
 
   useEffect(() => {
+    decisionOperation.current += 1;
     operation.current += 1;
     controller.current?.abort();
     controller.current = null;
@@ -97,6 +99,7 @@ export function BidsEegDiscovery({
     setSignalPreviews({});
     setPreviewPending(null);
     setPreviewMessage(null);
+    setDecisionPending(null);
     setDecisions({});
     setDecisionMessage(null);
     setResearcher("");
@@ -112,6 +115,7 @@ export function BidsEegDiscovery({
       operation.current += 1;
       inspectionOperation.current += 1;
       previewOperation.current += 1;
+      decisionOperation.current += 1;
       controller.current?.abort();
       controller.current = null;
     };
@@ -125,6 +129,9 @@ export function BidsEegDiscovery({
     setPending(true);
     setMessage(null);
     setResult(null);
+    decisionOperation.current += 1;
+    setDecisionPending(null);
+    setDecisions({});
     identityOperation.current += 1;
     setIdentityPending(null);
     setIdentities({});
@@ -162,6 +169,8 @@ export function BidsEegDiscovery({
 
   const handleIdentify = async (recordingPath: string) => {
     if (identityPending || !projectPath || !relativeDir || !token) return;
+    decisionOperation.current += 1;
+    setDecisionPending(null);
     const sequence = ++identityOperation.current;
     setIdentityPending(recordingPath);
     setIdentityMessage(null);
@@ -230,6 +239,20 @@ export function BidsEegDiscovery({
       decisionPending
     )
       return;
+    const sequence = ++decisionOperation.current;
+    const capturedContext = {
+      projectPath,
+      relativeDir,
+      token,
+      contentIdentity: identity.content_identity,
+    };
+    const isCurrent = () =>
+      sequence === decisionOperation.current &&
+      projectPath === capturedContext.projectPath &&
+      relativeDir === capturedContext.relativeDir &&
+      token === capturedContext.token &&
+      identities[recordingPath]?.content_identity ===
+        capturedContext.contentIdentity;
     setDecisionPending(recordingPath);
     setDecisionMessage(null);
     try {
@@ -251,20 +274,23 @@ export function BidsEegDiscovery({
         },
         token,
       );
-      setDecisions((current) => ({
-        ...current,
-        [recordingPath]: [...(current[recordingPath] ?? []), saved],
-      }));
-      setDecisionChoice("");
-      setDecisionNote("");
+      if (isCurrent()) {
+        setDecisions((current) => ({
+          ...current,
+          [recordingPath]: [...(current[recordingPath] ?? []), saved],
+        }));
+        setDecisionChoice("");
+        setDecisionNote("");
+      }
     } catch (error) {
-      setDecisionMessage(
-        error instanceof Error
-          ? error.message
-          : "Unable to save researcher decision.",
-      );
+      if (isCurrent())
+        setDecisionMessage(
+          error instanceof Error
+            ? error.message
+            : "Unable to save researcher decision.",
+        );
     } finally {
-      setDecisionPending(null);
+      if (isCurrent()) setDecisionPending(null);
     }
   };
 

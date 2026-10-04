@@ -22,6 +22,7 @@ import type {
   BidsEegInputIdentity,
   BidsEegSignalInspection,
   BidsEegSignalPreview,
+  ResearcherDecision,
 } from "./types";
 
 vi.mock("./datasets", () => ({
@@ -215,6 +216,92 @@ test("persists a researcher decision only after an explicit choice and submissio
       channel_names: [],
     }),
     "session-token",
+  );
+});
+
+test("ignores a delayed save response after the project context changes", async () => {
+  discoverMock.mockResolvedValue(result);
+  const identity = (digest: string): BidsEegInputIdentity => ({
+    schema_version: "1.0",
+    recording_path: result.recordings[0].path,
+    status: "ready",
+    content_identity: `brainlearn-v1:artifact:${digest.repeat(64)}`,
+    files: [],
+    message: null,
+    inspection_scope: "bounded_source_hashes",
+  });
+  identifyMock
+    .mockResolvedValueOnce(identity("1"))
+    .mockResolvedValueOnce(identity("2"));
+  decisionsMock.mockResolvedValue([]);
+  let resolveSave: ((value: ResearcherDecision) => void) | undefined;
+  createDecisionMock.mockReturnValue(
+    new Promise((resolve) => {
+      resolveSave = resolve;
+    }),
+  );
+  const view = render(
+    <BidsEegDiscovery
+      projectPath="/tmp/brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(screen.getByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  await screen.findByRole("heading", {
+    name: "Researcher annotation and inspection decision",
+  });
+  fireEvent.change(screen.getByLabelText("Researcher"), {
+    target: { value: "Dr. Example" },
+  });
+  fireEvent.change(screen.getByLabelText("Decision"), {
+    target: { value: "needs_review" },
+  });
+  fireEvent.change(screen.getByLabelText("Annotation note"), {
+    target: { value: "stale response" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save explicit decision" }),
+  );
+  await waitFor(() => expect(createDecisionMock).toHaveBeenCalledTimes(1));
+
+  view.rerender(
+    <BidsEegDiscovery
+      projectPath="/tmp/other-brainlearn-project"
+      relativeDir="datasets/OpenNeuro/ds002181/1.0.0"
+      token="session-token"
+    />,
+  );
+  fireEvent.click(await screen.findByTestId("bids-eeg-discover"));
+  await screen.findByText(/BIDS EEG metadata is ready/);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create input identity" }),
+  );
+  await waitFor(() => expect(decisionsMock).toHaveBeenCalledTimes(2));
+  resolveSave?.({
+    schema_version: "1.0",
+    id: "decision-stale",
+    researcher: "Dr. Example",
+    dataset_path: "datasets/OpenNeuro/ds002181/1.0.0",
+    recording_path: result.recordings[0].path,
+    source_content_identity: identity("1").content_identity!,
+    decision: "needs_review",
+    note: "stale response",
+    time_start_seconds: null,
+    time_end_seconds: null,
+    channel_names: [],
+    created_at: "2026-10-04T10:00:00Z",
+    updated_at: "2026-10-04T10:00:00Z",
+  });
+
+  await waitFor(() =>
+    expect(
+      screen.getByTestId(`researcher-decisions-${result.recordings[0].path}`),
+    ).not.toHaveTextContent("stale response"),
   );
 });
 
