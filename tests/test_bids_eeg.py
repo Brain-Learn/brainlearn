@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -310,3 +311,168 @@ def test_api_requires_session_token_and_returns_bounded_discovery(tmp_path: Path
     assert payload["status"] == "ready"
     assert payload["inspection_scope"] == "metadata_only"
     assert payload["recordings"][0]["path"] == "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+
+
+def test_input_identity_hashes_signal_and_effective_sidecars_without_copying(tmp_path: Path):
+    project, root = _project(tmp_path)
+    recording_path = _write_valid_dataset(root)
+    before_files = sorted(
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    )
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/datasets/bids-eeg/identity",
+        headers=AUTH_HEADERS,
+        json={
+            "path": str(project),
+            "relative_dir": "raw-data/study",
+            "recording_path": "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload: dict[str, Any] = response.json()
+    expected_paths = [
+        "sub-01/eeg/sub-01_task-Rest_channels.tsv",
+        "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+        "sub-01/eeg/sub-01_task-Rest_eeg.json",
+        "sub-01/eeg/sub-01_task-Rest_events.tsv",
+    ]
+    assert payload["status"] == "ready"
+    assert payload["inspection_scope"] == "bounded_source_hashes"
+    assert [item["path"] for item in payload["files"]] == expected_paths
+    for item in payload["files"]:
+        source = root / item["path"]
+        assert item["byte_size"] == source.stat().st_size
+        assert item["sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert payload["content_identity"].startswith("brainlearn-v1:artifact:")
+    assert (
+        sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
+        == before_files
+    )
+
+    again = client.post(
+        "/api/datasets/bids-eeg/identity",
+        headers=AUTH_HEADERS,
+        json={
+            "path": str(project),
+            "relative_dir": "raw-data/study",
+            "recording_path": "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+        },
+    )
+    assert again.json()["content_identity"] == payload["content_identity"]
+    recording_path.write_bytes(recording_path.read_bytes() + b"changed")
+    changed = client.post(
+        "/api/datasets/bids-eeg/identity",
+        headers=AUTH_HEADERS,
+        json={
+            "path": str(project),
+            "relative_dir": "raw-data/study",
+            "recording_path": "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+        },
+    )
+    assert changed.status_code == 200
+    assert changed.json()["content_identity"] != payload["content_identity"]
+
+
+def test_input_identity_requires_auth_and_reports_resource_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    client = TestClient(app)
+    request = {
+        "path": str(project),
+        "relative_dir": "raw-data/study",
+        "recording_path": "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+    }
+    assert client.post("/api/datasets/bids-eeg/identity", json=request).status_code == 401
+
+    monkeypatch.setattr(bids_eeg_module, "MAX_INPUT_IDENTITY_BYTES", 1)
+    response = client.post("/api/datasets/bids-eeg/identity", headers=AUTH_HEADERS, json=request)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "resource_limit"
+    assert response.json()["content_identity"] is None
+    assert "10 GiB" in response.json()["message"]
+
+
+def test_input_identity_refuses_symlink_source(tmp_path: Path):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root)
+    target = recording.with_suffix(".target")
+    recording.rename(target)
+    recording.symlink_to(target)
+    service = BidsEegDiscoveryService(store)
+    with pytest.raises(BidsDatasetPathError, match="symlink"):
+        service.identify(str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.edf")
+
+
+def test_brainvision_identity_includes_required_companions_and_inherited_sidecars(
+    tmp_path: Path,
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root, extension=".vhdr")
+    (recording.with_suffix(".vmrk")).write_text("marker", encoding="utf-8")
+    (recording.with_suffix(".eeg")).write_bytes(b"binary signal")
+    eeg_dir = recording.parent
+    for sidecar in (
+        eeg_dir / "sub-01_task-Rest_eeg.json",
+        eeg_dir / "sub-01_task-Rest_channels.tsv",
+        eeg_dir / "sub-01_task-Rest_events.tsv",
+    ):
+        sidecar.unlink()
+    (root / "task-Rest_eeg.json").write_text(
+        json.dumps(
+            {
+                "TaskName": "Rest",
+                "SamplingFrequency": 500,
+                "EEGReference": "average",
+                "PowerLineFrequency": 50,
+                "SoftwareFilters": "n/a",
+                "EEGChannelCount": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "sub-01_channels.tsv").write_text(
+        "name\ttype\tunits\nCz\tEEG\tuV\nPz\tEEG\tuV\n", encoding="utf-8"
+    )
+    (root / "sub-01_events.tsv").write_text(
+        "onset\tduration\ttrial_type\n0\t0.5\tstandard\n", encoding="utf-8"
+    )
+
+    identity = BidsEegDiscoveryService(store).identify(
+        str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.vhdr"
+    )
+    assert identity.status == "ready"
+    assert {item.path for item in identity.files} == {
+        "sub-01/eeg/sub-01_task-Rest_eeg.vhdr",
+        "sub-01/eeg/sub-01_task-Rest_eeg.vmrk",
+        "sub-01/eeg/sub-01_task-Rest_eeg.eeg",
+        "task-Rest_eeg.json",
+        "sub-01_channels.tsv",
+        "sub-01_events.tsv",
+    }
+
+
+def test_identity_hash_refuses_a_file_changed_during_streaming(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "recording.edf"
+    source.write_bytes(b"a sufficiently long source payload")
+    expected = os.lstat(source)
+    monkeypatch.setattr(bids_eeg_module, "INPUT_IDENTITY_CHUNK_BYTES", 4)
+    original_read = os.read
+    mutated = False
+
+    def read_then_mutate(descriptor: int, amount: int) -> bytes:
+        nonlocal mutated
+        chunk = original_read(descriptor, amount)
+        if chunk and not mutated:
+            mutated = True
+            source.write_bytes(b"replacement payload with same length")
+        return chunk
+
+    monkeypatch.setattr(os, "read", read_then_mutate)
+    with pytest.raises(BidsDatasetPathError, match="changed during hashing"):
+        bids_eeg_module._hash_identity_file(source, expected, "recording.edf")

@@ -8,6 +8,7 @@ essential metadata readiness rather than claiming full BIDS-validator coverage.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import math
@@ -18,8 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-from brainlearn_core import validate_relative_path
-from pydantic import BaseModel, ConfigDict, Field
+from brainlearn_core import content_identity, validate_relative_path
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
 
@@ -31,6 +32,8 @@ MAX_TSV_BYTES = 16_777_216
 MAX_TSV_ROWS = 200_000
 MAX_CHANNEL_NAMES = 512
 MAX_EVENT_TYPES = 1_000
+MAX_INPUT_IDENTITY_BYTES = 10 * 1024 * 1024 * 1024
+INPUT_IDENTITY_CHUNK_BYTES = 1024 * 1024
 _BIDS_VERSION = re.compile(r"^(\d+)\.(\d+)(?:\.(\d+))?$")
 _SUPPORTED_EEG_EXTENSIONS = {
     ".edf": "edf",
@@ -80,12 +83,52 @@ class BidsEegDiscovery(BaseModel):
     inspection_scope: Literal["metadata_only"] = "metadata_only"
 
 
+class BidsEegIdentityFile(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    path: str = Field(min_length=1)
+    byte_size: int = Field(ge=0)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BidsEegInputIdentity(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    recording_path: str
+    status: Literal["ready", "resource_limit"]
+    content_identity: str | None = Field(
+        default=None, pattern=r"^brainlearn-v1:artifact:[0-9a-f]{64}$"
+    )
+    files: tuple[BidsEegIdentityFile, ...] = ()
+    message: str | None = None
+    inspection_scope: Literal["bounded_source_hashes"] = "bounded_source_hashes"
+
+    @model_validator(mode="after")
+    def validate_identity_state(self) -> BidsEegInputIdentity:
+        paths = [item.path for item in self.files]
+        for path in paths:
+            validate_relative_path(path, "Identity file path")
+        if paths != sorted(set(paths)):
+            raise ValueError("Input identity files must be unique and sorted by relative path.")
+        if self.status == "ready":
+            if self.content_identity is None or not self.files or self.message is not None:
+                raise ValueError("A ready input identity requires hashes and no error message.")
+        elif self.content_identity is not None or self.files or not self.message:
+            raise ValueError("A resource-limited input identity must contain no hashes.")
+        return self
+
+
 class BidsDatasetPathError(ValueError):
     """The selected project-relative dataset directory cannot be scanned safely."""
 
 
 class BidsMetadataError(ValueError):
     """A candidate metadata file cannot be read or parsed safely."""
+
+
+class BidsIdentityResourceLimit(ValueError):
+    """Input identity work exceeded its explicit file or byte budget."""
 
 
 @dataclass
@@ -762,7 +805,9 @@ class BidsEegDiscoveryService:
 
     projects: ProjectStore
 
-    def discover(self, raw_project_path: str, relative_dataset_path: str) -> BidsEegDiscovery:
+    def _resolve_dataset(
+        self, raw_project_path: str, relative_dataset_path: str
+    ) -> tuple[Path, str]:
         try:
             project = self.projects.require_allowed(canonicalize_project_path(raw_project_path))
             relative = validate_relative_path(relative_dataset_path, "Dataset path")
@@ -787,4 +832,207 @@ class BidsEegDiscoveryService:
             )
         if not resolved.is_dir():
             raise BidsDatasetPathError("The selected dataset path is not a directory.")
-        return discover_bids_eeg(resolved, relative)
+        return resolved, relative
+
+    def discover(self, raw_project_path: str, relative_dataset_path: str) -> BidsEegDiscovery:
+        """Read-only discovery of raw EEG recordings and essential metadata."""
+
+        root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
+        return discover_bids_eeg(root, relative)
+
+    def identify(
+        self,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegInputIdentity:
+        """Hash the source files that define one ready recording without copying them."""
+
+        root, relative = self._resolve_dataset(raw_project_path, relative_dataset_path)
+        try:
+            recording_relative = validate_relative_path(recording_path, "Recording path")
+        except ValueError as exc:
+            raise BidsDatasetPathError(
+                "Choose a discovered recording inside this dataset."
+            ) from exc
+        signal_path = root / recording_relative
+        entities = _parse_entities(signal_path.stem, _EEG_SUFFIX)
+        file_format = _SUPPORTED_EEG_EXTENSIONS.get(signal_path.suffix)
+        if entities is None or file_format is None:
+            raise BidsDatasetPathError("The selected recording has an invalid BIDS filename.")
+        directory = signal_path.parent
+        budget = _DirectoryEntryBudget()
+        source_paths = [signal_path]
+        if file_format == "brainvision":
+            source_paths.extend((signal_path.with_suffix(".vmrk"), signal_path.with_suffix(".eeg")))
+        elif file_format == "eeglab":
+            fdt_path = signal_path.with_suffix(".fdt")
+            if fdt_path.exists() or fdt_path.is_symlink():
+                source_paths.append(fdt_path)
+
+        try:
+            source_paths.extend(
+                _metadata_candidates(root, directory, entities, "eeg", ".json", budget)
+            )
+            for suffix, extension in (("channels", ".tsv"), ("events", ".tsv")):
+                candidates = _metadata_candidates(
+                    root, directory, entities, suffix, extension, budget
+                )
+                if candidates:
+                    # These table sidecars replace broader inherited tables; this is the
+                    # same effective sidecar selection used during metadata inspection.
+                    source_paths.append(candidates[-1])
+        except BidsMetadataError as exc:
+            raise BidsDatasetPathError(str(exc)) from None
+
+        source_paths = sorted(set(source_paths), key=lambda path: path.relative_to(root).as_posix())
+        if len(source_paths) > MAX_DISCOVERY_ENTRIES:
+            raise BidsIdentityResourceLimit(
+                "This recording has too many source files to identify safely."
+            )
+        directory_snapshots = _snapshot_directories(root, directory)
+        source_records: list[tuple[Path, os.stat_result]] = []
+        total_bytes = 0
+        for path in source_paths:
+            relpath = path.relative_to(root).as_posix()
+            if path.is_symlink():
+                raise BidsDatasetPathError(
+                    f"Source file {relpath} is a symlink and cannot be hashed safely."
+                )
+            try:
+                info = os.lstat(path)
+            except OSError:
+                raise BidsDatasetPathError(
+                    f"Source file {relpath} is missing or unreadable."
+                ) from None
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink > 1:
+                raise BidsDatasetPathError(f"Source file {relpath} is not a safe regular file.")
+            source_records.append((path, info))
+            total_bytes += info.st_size
+            if total_bytes > MAX_INPUT_IDENTITY_BYTES:
+                return BidsEegInputIdentity(
+                    recording_path=recording_relative,
+                    status="resource_limit",
+                    message=(
+                        "Recording source files exceed the 10 GiB identity limit. "
+                        "No identity was created."
+                    ),
+                )
+
+        discovery = discover_bids_eeg(root, relative)
+        recording = next(
+            (item for item in discovery.recordings if item.path == recording_relative), None
+        )
+        if recording is None or recording.status != "ready" or recording.format != file_format:
+            raise BidsDatasetPathError(
+                "Only a recording with complete, supported BIDS EEG metadata can be identified."
+            )
+        if directory_snapshots != _snapshot_directories(root, directory):
+            raise BidsDatasetPathError(
+                "The BIDS directory changed while its metadata was being checked."
+            )
+        files: list[BidsEegIdentityFile] = []
+        for path, info in source_records:
+            relpath = path.relative_to(root).as_posix()
+            digest = _hash_identity_file(path, info, relpath)
+            files.append(BidsEegIdentityFile(path=relpath, byte_size=info.st_size, sha256=digest))
+        if directory_snapshots != _snapshot_directories(root, directory):
+            raise BidsDatasetPathError(
+                "The BIDS directory changed while source files were being hashed."
+            )
+        identity = content_identity(
+            "artifact",
+            {
+                "schema_version": "bids-eeg-input-1.0",
+                "recording_path": recording_relative,
+                "files": [item.model_dump(mode="json") for item in files],
+            },
+        )
+        return BidsEegInputIdentity(
+            recording_path=recording_relative,
+            status="ready",
+            content_identity=identity,
+            files=tuple(files),
+        )
+
+
+def _stat_identity(info: os.stat_result) -> tuple[int, int, int, int, int, int]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _snapshot_directories(
+    root: Path, recording_dir: Path
+) -> tuple[tuple[str, tuple[int, ...]], ...]:
+    directories: list[Path] = []
+    current = recording_dir
+    while True:
+        directories.append(current)
+        if current == current.parent:
+            break
+        current = current.parent
+        if root not in current.parents and current != root and root not in directories:
+            raise BidsDatasetPathError("The recording directory escaped the selected dataset.")
+    snapshots: list[tuple[str, tuple[int, ...]]] = []
+    for directory in directories:
+        try:
+            info = os.lstat(directory)
+        except OSError:
+            raise BidsDatasetPathError("A BIDS directory changed during source hashing.") from None
+        if not stat.S_ISDIR(info.st_mode):
+            raise BidsDatasetPathError("A BIDS directory is unsafe during source hashing.")
+        snapshots.append((directory.as_posix(), _stat_identity(info)))
+    return tuple(snapshots)
+
+
+def _hash_identity_file(path: Path, expected: os.stat_result, relative_path: str) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+    except OSError:
+        raise BidsDatasetPathError(f"Source file {relative_path} is missing or blocked.") from None
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink > 1:
+            raise BidsDatasetPathError(f"Source file {relative_path} is not a safe regular file.")
+        if _stat_identity(before) != _stat_identity(expected):
+            raise BidsDatasetPathError(f"Source file {relative_path} changed before hashing.")
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            try:
+                chunk = os.read(descriptor, INPUT_IDENTITY_CHUNK_BYTES)
+            except OSError:
+                raise BidsDatasetPathError(
+                    f"Source file {relative_path} could not be read."
+                ) from None
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > MAX_INPUT_IDENTITY_BYTES:
+                raise BidsIdentityResourceLimit(
+                    "A source file exceeds the 10 GiB identity limit. No identity was created."
+                )
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        try:
+            current_path = os.lstat(path)
+        except OSError:
+            raise BidsDatasetPathError(
+                f"Source file {relative_path} changed during hashing."
+            ) from None
+        if (
+            total != before.st_size
+            or _stat_identity(before) != _stat_identity(after)
+            or (_stat_identity(before) != _stat_identity(current_path))
+        ):
+            raise BidsDatasetPathError(f"Source file {relative_path} changed during hashing.")
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)

@@ -433,3 +433,19 @@ export interface BidsEegDiscovery {
   issues: BidsEegIssue[];
   inspection_scope: "metadata_only";
 }
+
+export interface BidsEegIdentityFile {
+  path: string;
+  byte_size: number;
+  sha256: string;
+}
+
+export interface BidsEegInputIdentity {
+  schema_version: "1.0";
+  recording_path: string;
+  status: "ready" | "resource_limit";
+  content_identity: string | null;
+  files: BidsEegIdentityFile[];
+  message: string | null;
+  inspection_scope: "bounded_source_hashes";
+}

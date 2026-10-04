@@ -1,6 +1,7 @@
 import type {
   CatalogEntry,
   BidsEegDiscovery,
+  BidsEegInputIdentity,
   DatasetListItem,
   DatasetListResponse,
   DatasetLock,
@@ -816,6 +817,58 @@ export async function discoverBidsEeg(
     );
   }
   return payload as unknown as BidsEegDiscovery;
+}
+
+export async function identifyBidsEegRecording(
+  path: string,
+  relativeDir: string,
+  recordingPath: string,
+  options: { token: string },
+): Promise<BidsEegInputIdentity> {
+  requireContext(path, options.token);
+  const response = await fetch("/api/datasets/bids-eeg/identity", {
+    method: "POST",
+    headers: authHeaders(options.token),
+    body: JSON.stringify({
+      path,
+      relative_dir: relativeDir,
+      recording_path: recordingPath,
+    }),
+  });
+  if (!response.ok)
+    throw await readError(
+      response,
+      "Unable to create the BIDS EEG input identity",
+    );
+  const payload: unknown = await response.json();
+  if (
+    !isRecord(payload) ||
+    payload.schema_version !== "1.0" ||
+    typeof payload.recording_path !== "string" ||
+    !["ready", "resource_limit"].includes(String(payload.status)) ||
+    !(
+      payload.content_identity === null ||
+      typeof payload.content_identity === "string"
+    ) ||
+    !Array.isArray(payload.files) ||
+    !payload.files.every(
+      (file) =>
+        isRecord(file) &&
+        typeof file.path === "string" &&
+        typeof file.byte_size === "number" &&
+        Number.isInteger(file.byte_size) &&
+        file.byte_size >= 0 &&
+        typeof file.sha256 === "string" &&
+        /^[0-9a-f]{64}$/.test(file.sha256),
+    ) ||
+    !(payload.message === null || typeof payload.message === "string") ||
+    payload.inspection_scope !== "bounded_source_hashes"
+  ) {
+    throw new Error(
+      "The BIDS EEG input identity response does not match version 1.0.",
+    );
+  }
+  return payload as unknown as BidsEegInputIdentity;
 }
 
 /** Reconcile local import records after a service restart. */
