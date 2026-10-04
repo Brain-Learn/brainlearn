@@ -190,8 +190,9 @@ def test_start_runs_chain_to_success(client: TestClient, tmp_path: Path) -> None
     assert list((project / "runs" / run_id / "staging").rglob("*")) == []
 
 
+@pytest.mark.parametrize("mutate_source", [False, True])
 def test_bids_input_and_signal_inspection_run_as_noncacheable_workflow_nodes(
-    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate_source: bool
 ) -> None:
     project = _make_project(client, tmp_path)
     dataset = project / "raw-data" / "study"
@@ -225,26 +226,31 @@ def test_bids_input_and_signal_inspection_run_as_noncacheable_workflow_nodes(
         for path in dataset.rglob("*")
         if path.is_file()
     }
-    monkeypatch.setattr(
-        BidsEegDiscoveryService,
-        "inspect_signal",
-        lambda self, raw_project_path, relative_dataset_path, recording_path: (
-            BidsEegSignalInspection(
-                recording_path=recording_path,
-                format="edf",
-                sampling_frequency_hz=500,
-                sample_count=2_000,
-                duration_seconds=4,
-                channel_count=1,
-                channel_types={"eeg": 1},
-                bad_channel_count=0,
-                annotation_count=1,
-                annotation_descriptions=("standard",),
-                highpass_hz=0,
-                lowpass_hz=250,
-            )
-        ),
-    )
+
+    def inspect_signal(
+        self: BidsEegDiscoveryService,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegSignalInspection:
+        if mutate_source:
+            recording.write_bytes(b"changed during inspection")
+        return BidsEegSignalInspection(
+            recording_path=recording_path,
+            format="edf",
+            sampling_frequency_hz=500,
+            sample_count=2_000,
+            duration_seconds=4,
+            channel_count=1,
+            channel_types={"eeg": 1},
+            bad_channel_count=0,
+            annotation_count=1,
+            annotation_descriptions=("standard",),
+            highpass_hz=0,
+            lowpass_hz=250,
+        )
+
+    monkeypatch.setattr(BidsEegDiscoveryService, "inspect_signal", inspect_signal)
     bids = instantiate_registered_node("input.bids_eeg", "bids", CanvasPosition(x=0, y=0))
     bids.parameters[0].value = "raw-data/study"
     inspect = instantiate_registered_node("eeg.inspect", "inspect", CanvasPosition(x=200, y=0))
@@ -273,6 +279,14 @@ def test_bids_input_and_signal_inspection_run_as_noncacheable_workflow_nodes(
 
     started = _start(client, project, workflow)
     finished = _wait_for_state(client, project, started["run_id"], {"succeeded", "failed"})
+    if mutate_source:
+        inspection_node = next(node for node in finished["node_runs"] if node["id"] == "inspect")
+        assert finished["state"] == "failed"
+        assert "changed during signal inspection" in inspection_node["failure"]["message"]
+        assert inspection_node["artifacts"] == []
+        assert not (project / "cache").exists()
+        return
+
     assert finished["state"] == "succeeded", finished
     inspection_node = next(node for node in finished["node_runs"] if node["id"] == "inspect")
     artifacts = {

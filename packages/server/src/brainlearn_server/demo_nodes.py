@@ -194,8 +194,16 @@ def eeg_inspection_adapter(ctx: NodeContext) -> list[StagedOutput]:
                 identity.message or "The recording could not be identified within limits."
             )
         inspection = service.inspect_signal(ctx.project_path, dataset_path, recording_path)
+        identity_after_inspection = service.identify(ctx.project_path, dataset_path, recording_path)
     except (BidsDatasetPathError, BidsSignalInspectionError) as exc:
         raise ControlledFailure(str(exc)) from exc
+    if (
+        identity_after_inspection.status != "ready"
+        or identity_after_inspection.content_identity != identity.content_identity
+    ):
+        raise ControlledFailure(
+            "The recording changed during signal inspection; refusing to publish a stale report."
+        )
     _require_cancel(ctx)
     ctx.staging_dir.mkdir(parents=True, exist_ok=True)
     _write_json(
