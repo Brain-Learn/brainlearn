@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-import numpy as np
 import pytest
 from brainlearn_server.app import store
 from brainlearn_server.bids_eeg import BidsEegDiscoveryService
@@ -18,6 +17,7 @@ def test_preview_values_match_independent_mne_reference(
 ) -> None:
     mne = pytest.importorskip("mne")
     mne_bids = pytest.importorskip("mne_bids")
+    np = pytest.importorskip("numpy")
     project = tmp_path / "project"
     project.mkdir()
     (project / "brainlearn.project.json").write_text("{}", encoding="utf-8")
