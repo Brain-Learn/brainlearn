@@ -1145,7 +1145,7 @@ class BidsEegDiscoveryService:
         )
         raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
         try:
-            import numpy as np
+            np = import_module("numpy")
 
             sampling_frequency = float(raw.info["sfreq"])
             channel_types = list(raw.get_channel_types())
