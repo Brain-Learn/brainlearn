@@ -42,8 +42,8 @@ recording-relative paths, byte sizes, and SHA-256 digests in path order. It
 does not depend on the local project path.
 
 Identity creation refuses symlinks, non-regular files, hard-linked files,
-files that change while being hashed, and BIDS directories that change during
-the operation. The total input is limited to 10 GiB. If the limit is exceeded,
+files that change during identity creation, and BIDS directories that change
+during the operation. The total input is limited to 10 GiB. If the limit is exceeded,
 no identity is returned. These hashes identify current source bytes; they do
 not imply that the signal has been inspected or that an analysis is
 scientifically valid.

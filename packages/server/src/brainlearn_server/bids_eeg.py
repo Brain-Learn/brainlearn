@@ -936,6 +936,17 @@ class BidsEegDiscoveryService:
             relpath = path.relative_to(root).as_posix()
             digest = _hash_identity_file(path, info, relpath)
             files.append(BidsEegIdentityFile(path=relpath, byte_size=info.st_size, sha256=digest))
+        for path, info in source_records:
+            try:
+                current = os.lstat(path)
+            except OSError:
+                raise BidsDatasetPathError(
+                    "A source file changed while the input identity was being created."
+                ) from None
+            if _stat_identity(current) != _stat_identity(info):
+                raise BidsDatasetPathError(
+                    "A source file changed while the input identity was being created."
+                )
         if directory_snapshots != _snapshot_directories(root, directory):
             raise BidsDatasetPathError(
                 "The BIDS directory changed while source files were being hashed."
@@ -973,12 +984,12 @@ def _snapshot_directories(
     directories: list[Path] = []
     current = recording_dir
     while True:
+        if current != root and root not in current.parents:
+            raise BidsDatasetPathError("The recording directory escaped the selected dataset.")
         directories.append(current)
-        if current == current.parent:
+        if current == root:
             break
         current = current.parent
-        if root not in current.parents and current != root and root not in directories:
-            raise BidsDatasetPathError("The recording directory escaped the selected dataset.")
     snapshots: list[tuple[str, tuple[int, ...]]] = []
     for directory in directories:
         try:

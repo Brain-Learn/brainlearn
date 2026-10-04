@@ -476,3 +476,27 @@ def test_identity_hash_refuses_a_file_changed_during_streaming(
     monkeypatch.setattr(os, "read", read_then_mutate)
     with pytest.raises(BidsDatasetPathError, match="changed during hashing"):
         bids_eeg_module._hash_identity_file(source, expected, "recording.edf")
+
+
+def test_identity_refuses_an_earlier_file_changed_after_its_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    project, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    channels = root / "sub-01/eeg/sub-01_task-Rest_channels.tsv"
+    original_hash = bids_eeg_module._hash_identity_file
+    changed = False
+
+    def hash_then_mutate(path: Path, expected: os.stat_result, relative_path: str) -> str:
+        nonlocal changed
+        digest = original_hash(path, expected, relative_path)
+        if path == channels and not changed:
+            changed = True
+            channels.write_text("name\ttype\tunits\nCz\tEEG\tmV\n", encoding="utf-8")
+        return digest
+
+    monkeypatch.setattr(bids_eeg_module, "_hash_identity_file", hash_then_mutate)
+    with pytest.raises(BidsDatasetPathError, match="changed while the input identity"):
+        BidsEegDiscoveryService(store).identify(
+            str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+        )
