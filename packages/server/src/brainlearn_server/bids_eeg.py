@@ -531,7 +531,13 @@ def _read_tsv(path: Path, *, required: tuple[str, ...]) -> list[dict[str, str]]:
     reader = csv.DictReader(io.StringIO(text), delimiter="\t")
     fields = reader.fieldnames or []
     missing = sorted(set(required) - set(fields))
-    duplicates = sorted({field for field in fields if fields.count(field) > 1})
+    seen_fields: set[str] = set()
+    duplicate_fields: set[str] = set()
+    for column_name in fields:
+        if column_name in seen_fields:
+            duplicate_fields.add(column_name)
+        seen_fields.add(column_name)
+    duplicates = sorted(duplicate_fields)
     if missing or duplicates:
         problems = []
         if missing:

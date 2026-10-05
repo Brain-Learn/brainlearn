@@ -261,6 +261,20 @@ def test_invalid_channels_tsv_names_file_and_missing_columns(tmp_path: Path):
     assert "missing required column(s): units" in issue.message
 
 
+def test_invalid_channels_tsv_reports_duplicate_columns(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    channels = root / "sub-01" / "eeg" / "sub-01_task-Rest_channels.tsv"
+    channels.write_text("name\ttype\tunits\tname\nCz\tEEG\tV\tCz\n", encoding="utf-8")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    issue = next(
+        issue for issue in result.recordings[0].issues if issue.code == "invalid_channels_tsv"
+    )
+    assert "duplicate column name(s): name" in issue.message
+
+
 def test_reports_unsupported_format_and_incomplete_brainvision_set(tmp_path: Path):
     _, root = _project(tmp_path)
     unsupported = _write_valid_dataset(root, extension=".fif")
