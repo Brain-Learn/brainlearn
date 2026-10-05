@@ -415,6 +415,7 @@ export interface BidsEegRecording {
   channel_names: string[];
   event_count: number | null;
   event_types: string[];
+  events_timing_sha256: string | null;
   issues: BidsEegIssue[];
 }
 

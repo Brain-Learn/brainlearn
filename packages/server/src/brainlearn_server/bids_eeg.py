@@ -77,6 +77,7 @@ class BidsEegRecording(BaseModel):
     channel_names: tuple[str, ...] = ()
     event_count: int | None = Field(default=None, ge=0)
     event_types: tuple[str, ...] = ()
+    events_timing_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     issues: tuple[BidsEegIssue, ...] = ()
 
 
@@ -558,6 +559,36 @@ def _read_tsv(path: Path, *, required: tuple[str, ...]) -> list[dict[str, str]]:
     return rows
 
 
+def _events_timing_sha256(rows: list[dict[str, str]], type_field: str) -> str:
+    """Hash normalized BIDS event timing and descriptions without returning all rows."""
+
+    def rounded_time(value: str) -> float | None:
+        if value.casefold() == "n/a":
+            return None
+        rounded = round(float(value), 9)
+        return 0.0 if rounded == 0.0 else rounded
+
+    events: list[tuple[float | None, float | None, str]] = []
+    for row in rows:
+        onset_text = row["onset"].strip()
+        duration_text = row["duration"].strip()
+        onset = rounded_time(onset_text)
+        duration = rounded_time(duration_text)
+        description = row.get(type_field, "").strip()
+        if description.casefold() == "n/a":
+            description = ""
+        events.append((onset, duration, description))
+    events.sort(
+        key=lambda item: (item[0] is None, item[0] or 0.0, item[1] is None, item[1] or 0.0, item[2])
+    )
+    payload = json.dumps(
+        {"contract": "brainlearn-bids-events-v1", "events": events},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _finite_number(value: object) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
@@ -993,6 +1024,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
 
             event_count: int | None = None
             event_types: tuple[str, ...] = ()
+            events_timing_sha256: str | None = None
             events_file: Path | None = None
             try:
                 events_files = _metadata_candidates(
@@ -1033,6 +1065,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                             }
                         )[:MAX_EVENT_TYPES]
                     )
+                    events_timing_sha256 = _events_timing_sha256(event_rows, type_field)
             except BidsMetadataError as exc:
                 recording_issues.append(
                     BidsEegIssue(
@@ -1063,6 +1096,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     channel_names=channel_names,
                     event_count=event_count,
                     event_types=event_types,
+                    events_timing_sha256=events_timing_sha256,
                     issues=tuple(recording_issues),
                 )
             )

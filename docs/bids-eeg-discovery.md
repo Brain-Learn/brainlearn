@@ -32,6 +32,11 @@ When matching `channels.tsv` and `events.tsv` files exist, the scan summarizes
 channel names/count and event count/types. Channel tables are checked for
 `name`, `type`, and `units`; event timing columns and values are checked, with
 `n/a` accepted for unknown onset or duration as specified by [BIDS events](https://bids-specification.readthedocs.io/en/stable/modality-agnostic-files/events.html).
+For event parity without returning a potentially large row array, discovery
+also returns `events_timing_sha256`: SHA-256 of sorted event descriptions,
+onsets, and durations, with numeric times rounded to 1 ns, signed zero
+canonicalized, and `n/a` encoded as unknown. This identifies event timing
+metadata; it does not read signal data.
 These optional summaries do not make the scan a complete BIDS validator.
 
 Metadata discovery opens only bounded JSON and TSV files. It does not read EEG
@@ -163,9 +168,11 @@ The parity test uses exact equality for the selected relative recording path,
 channel labels, channel-type counts, sampling frequency, sample count, duration,
 bad-channel count, annotation count/descriptions, and MNE high/low-pass
 metadata. It compares the discovery event count and event-type set with the
-annotations MNE-BIDS loads from the pinned `events.tsv`. The EEG-channel count
-is compared with MNE's `eeg` channel count. These checks intentionally do not
-compare amplitudes, filtering, or other signal-derived values.
+annotations MNE-BIDS loads from the pinned `events.tsv`. It also compares
+`events_timing_sha256`, which covers every annotation onset and duration plus
+the event label, at 1 ns precision. The EEG-channel count is compared with
+MNE's `eeg` channel count. These checks intentionally do not compare
+amplitudes, filtering, or other signal-derived values.
 
 Run the actual pinned-fixture parity check with:
 
