@@ -475,6 +475,8 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-05 | Step 5 timing-digest zero canonicalization | Verified; monitoring pending | The monitor found that Python's rounded `-0.0` and `0.0` serialize differently despite both representing the same 1 ns bucket. Both independent implementations now normalize rounded signed zero to `0.0`. A regression uses a negative sub-nanosecond BIDS onset, permutes event row order, and changes its sign within the same 1 ns bucket; the digest remains stable. Focused discovery/reference checks passed 31 with 2 upstream warnings. Full fixture-enabled suite passed 771, 2 skipped, 2 upstream warnings (36.98s); Ruff, format (79 files), strict mypy (30 source files), ESLint, Prettier, Vitest (172 tests/18 files), build (1,846 modules; existing chunk-size advisory), production audit (0 vulnerabilities), and `git diff --check` passed. Step 5 remains unchecked pending final independent review and current-head hosted verification. | Same review PR pending |
 
+| 2026-10-05 | Step 5 timing parity final hosted verification | Verified; monitoring pending | On code head `664d5baa37ce314ced482ee8aa05a4651cdd4aed`, both required PR checks passed in run `37350407423`; scheduled dataset-smoke run `37350611830` also passed every step, including pinned download/offline reopen, EEG fixture retrieval, and direct-MNE event-timing parity. The complete fixture-enabled local gate is recorded in the preceding row. The Step 5 checkbox remains unchecked until the monitor records the final full-gate disposition. | Same review PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
