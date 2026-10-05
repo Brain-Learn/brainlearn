@@ -245,6 +245,27 @@ def test_metadata_query_limit_is_reported_without_failing_the_api_shape(
     } <= codes
 
 
+def test_malformed_eeg_sidecar_points_to_json_without_missing_field_noise(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    sidecar = root / "sub-01" / "eeg" / "sub-01_task-Rest_eeg.json"
+    sidecar.write_text('{"TaskName":', encoding="utf-8")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    issues = result.recordings[0].issues
+    sidecar_issue = next(issue for issue in issues if issue.code == "invalid_eeg_sidecar")
+    assert sidecar_issue.path == "sub-01/eeg/sub-01_task-Rest_eeg.json"
+    assert sidecar_issue.message == "Metadata JSON is malformed or not UTF-8."
+    assert not {
+        "invalid_sampling_frequency",
+        "missing_eeg_reference",
+        "missing_task_name",
+        "invalid_power_line_frequency",
+        "invalid_software_filters",
+    } & {issue.code for issue in issues}
+
+
 def test_invalid_channels_tsv_names_file_and_missing_columns(tmp_path: Path):
     _, root = _project(tmp_path)
     _write_valid_dataset(root)

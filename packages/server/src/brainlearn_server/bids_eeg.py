@@ -828,6 +828,8 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
 
             metadata: dict[str, object] = {}
             recording_issues = list(file_issues)
+            sidecar_parse_failed = False
+            sidecar_path: Path | None = None
             try:
                 sidecars = _metadata_candidates(root, directory, entities, "eeg", ".json", budget)
                 if not sidecars:
@@ -843,18 +845,25 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                         )
                     )
                 for sidecar in sidecars:
+                    sidecar_path = sidecar
                     metadata.update(_read_json_object(sidecar))
             except BidsMetadataError as exc:
+                sidecar_parse_failed = True
+                metadata = {}
                 recording_issues.append(
                     BidsEegIssue(
                         code="invalid_eeg_sidecar",
                         message=str(exc),
-                        path=relative,
+                        path=(
+                            sidecar_path.relative_to(root).as_posix()
+                            if sidecar_path is not None
+                            else relative
+                        ),
                     )
                 )
 
             sampling_frequency = _finite_number(metadata.get("SamplingFrequency"))
-            if sampling_frequency is None or sampling_frequency <= 0:
+            if not sidecar_parse_failed and (sampling_frequency is None or sampling_frequency <= 0):
                 recording_issues.append(
                     BidsEegIssue(
                         code="invalid_sampling_frequency",
@@ -872,7 +881,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 if isinstance(eeg_reference_raw, str) and eeg_reference_raw.strip()
                 else None
             )
-            if eeg_reference is None:
+            if not sidecar_parse_failed and eeg_reference is None:
                 recording_issues.append(
                     BidsEegIssue(
                         code="missing_eeg_reference",
@@ -884,7 +893,9 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     )
                 )
             task_name = metadata.get("TaskName")
-            if not isinstance(task_name, str) or not task_name.strip():
+            if not sidecar_parse_failed and (
+                not isinstance(task_name, str) or not task_name.strip()
+            ):
                 recording_issues.append(
                     BidsEegIssue(
                         code="missing_task_name",
@@ -896,7 +907,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     )
                 )
             power_line_frequency = metadata.get("PowerLineFrequency")
-            if power_line_frequency != "n/a":
+            if not sidecar_parse_failed and power_line_frequency != "n/a":
                 numeric_power_line = _finite_number(power_line_frequency)
                 if numeric_power_line is None or numeric_power_line <= 0:
                     recording_issues.append(
@@ -910,11 +921,15 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                         )
                     )
             software_filters = metadata.get("SoftwareFilters")
-            if software_filters != "n/a" and (
-                not isinstance(software_filters, dict)
-                or any(
-                    not isinstance(name, str) or not isinstance(parameters, dict)
-                    for name, parameters in software_filters.items()
+            if (
+                not sidecar_parse_failed
+                and software_filters != "n/a"
+                and (
+                    not isinstance(software_filters, dict)
+                    or any(
+                        not isinstance(name, str) or not isinstance(parameters, dict)
+                        for name, parameters in software_filters.items()
+                    )
                 )
             ):
                 recording_issues.append(
