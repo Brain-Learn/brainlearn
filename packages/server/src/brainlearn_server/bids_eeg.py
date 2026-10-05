@@ -530,8 +530,15 @@ def _read_tsv(path: Path, *, required: tuple[str, ...]) -> list[dict[str, str]]:
         raise BidsMetadataError("Metadata TSV is not UTF-8.") from exc
     reader = csv.DictReader(io.StringIO(text), delimiter="\t")
     fields = reader.fieldnames or []
-    if not set(required).issubset(fields) or len(fields) != len(set(fields)):
-        raise BidsMetadataError("Metadata TSV is missing required or unique column names.")
+    missing = sorted(set(required) - set(fields))
+    duplicates = sorted({field for field in fields if fields.count(field) > 1})
+    if missing or duplicates:
+        problems = []
+        if missing:
+            problems.append(f"missing required column(s): {', '.join(missing)}")
+        if duplicates:
+            problems.append(f"duplicate column name(s): {', '.join(duplicates)}")
+        raise BidsMetadataError(f"Metadata TSV has {'; '.join(problems)}.")
     rows: list[dict[str, str]] = []
     try:
         for row in reader:
@@ -933,12 +940,14 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     channel_count = declared_channel_count
 
             channel_names: tuple[str, ...] = ()
+            channels_file: Path | None = None
             try:
                 channels_files = _metadata_candidates(
                     root, directory, entities, "channels", ".tsv", budget
                 )
                 if channels_files:
-                    channel_rows = _read_tsv(channels_files[-1], required=("name", "type", "units"))
+                    channels_file = channels_files[-1]
+                    channel_rows = _read_tsv(channels_file, required=("name", "type", "units"))
                     names = [row["name"].strip() for row in channel_rows]
                     if any(not name for name in names) or len(names) != len(set(names)):
                         raise BidsMetadataError("Channel names must be non-empty and unique.")
@@ -953,18 +962,24 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     BidsEegIssue(
                         code="invalid_channels_tsv",
                         message=str(exc),
-                        path=relative,
+                        path=(
+                            channels_file.relative_to(root).as_posix()
+                            if channels_file is not None
+                            else relative
+                        ),
                     )
                 )
 
             event_count: int | None = None
             event_types: tuple[str, ...] = ()
+            events_file: Path | None = None
             try:
                 events_files = _metadata_candidates(
                     root, directory, entities, "events", ".tsv", budget
                 )
                 if events_files:
-                    event_rows = _read_tsv(events_files[-1], required=("onset", "duration"))
+                    events_file = events_files[-1]
+                    event_rows = _read_tsv(events_file, required=("onset", "duration"))
                     for row in event_rows:
                         onset_text = row["onset"].strip()
                         duration_text = row["duration"].strip()
@@ -1002,7 +1017,11 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     BidsEegIssue(
                         code="invalid_events_tsv",
                         message=str(exc),
-                        path=relative,
+                        path=(
+                            events_file.relative_to(root).as_posix()
+                            if events_file is not None
+                            else relative
+                        ),
                     )
                 )
 
