@@ -659,3 +659,25 @@ The independent review supports checking the Step 5A.17 reference-script
 item only for the stated metadata and event-structure scope. Step 5 remains
 unchecked because the broader completion gate is not met; this reference is
 not evidence of signal-value agreement.
+
+
+## Step 5 full completion-gate handoff review
+
+Review date: 2026-10-05
+
+Scope: docs-only PR #29 head `75495ee1a1a3c642fb338cd37080eb11fdef3f86`,
+compared with main `3cbc145189db24d41ad9f578bf5f01d43da3289e`.
+
+Status: **approved**. Step 5 remains unchecked after its Step 5A.17 leaf was
+checked; the full dataset-access and EEG-inspection completion gate still
+requires independent review. The new handoff correctly assigns review of that
+full gate, including GUI discovery/download/offline reopen, BIDS EEG
+discovery/identity/inspection/previews/QC, and the bounded direct-MNE reference.
+It explicitly keeps Step 6 out of scope and does not claim signal-value
+agreement. The complete diff changes only `docs/implementation-plan.md`,
+preserves all prior completion-log rows, appends the pointer evidence row, and
+contains no implementation changes. `git diff --check` passed. Both required
+hosted jobs passed on PR #29 head `75495ee` in Actions run `37318352835`.
+
+This approval covers the handoff only; it does not approve the Step 5
+completion gate or check the Step 5 parent item.
