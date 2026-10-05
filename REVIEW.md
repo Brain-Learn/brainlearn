@@ -681,3 +681,51 @@ hosted jobs passed on PR #29 head `75495ee` in Actions run `37318352835`.
 
 This approval covers the handoff only; it does not approve the Step 5
 completion gate or check the Step 5 parent item.
+
+## Step 5 full completion-gate final monitoring review
+
+Review date: 2026-10-05
+
+Scope: PR #30 code head `664d5baa37ce314ced482ee8aa05a4651cdd4aed`, with the
+hosted-evidence update on head `0ab6bb142b83667002026a96405e5bc8ae8a5433`,
+against merged main `4da3abb44a6e5684c7f1a2f9acf293dd33e58137`.
+
+Status: **approved**. The previously identified event-timing gap is resolved:
+the pinned fixture comparison now checks a digest over each event's label,
+onset, and duration at 1 ns precision. I found and requested a repair for a
+signed-zero canonicalization edge; both independent digest implementations
+now normalize rounded zero, and a regression confirms row-order invariance and
+equivalence of opposite-sign sub-nanosecond onsets in the same rounded bucket.
+The focused discovery and direct-MNE fixture tests passed 31 tests with 2
+upstream deprecation warnings.
+
+The pinned five-file fixture matched all manifest hashes. Direct MNE-BIDS
+selected the same recording as BrainLearn and matched its channels, types,
+sampling frequency, event labels/count/timing, and selected metadata summaries.
+The `.set` references an `.fdt` absent from the pinned subset; the reference
+creates an empty companion only in a temporary copy to read metadata and BIDS
+events. The test does not read signal samples, validate payload-based sample
+count/duration, or claim signal-value agreement. Independent instrumentation
+previously confirmed both direct MNE and BrainLearn metadata inspection avoid
+MNE's sample-read path. Preview trace envelopes and Welch PSD calculations are
+independently compared with direct MNE on controlled synthetic data, and the
+source-preservation and mutation-during-preview regressions pass.
+
+Dataset-library UI tests cover metadata display and search; download UI tests
+cover lifecycle controls using API doubles. Backend service/API tests exercise
+download safety, cancellation/resume, BIDS discovery and identity, inspection,
+preview, and persisted researcher decisions. The pinned integration smoke
+verified checksum-based download and offline reopen. These complementary tests
+support the GUI/API gate; no browser-to-live-service end-to-end run is claimed.
+
+In this clean checkout, fixture-enabled `uv run --locked --group eeg pytest
+-q` passed 771, 2 skipped, and 2 upstream deprecation warnings. Ruff, format
+(79 files), strict mypy (30 source files), ESLint, Prettier, Vitest (172 tests
+in 18 files), production build (1,846 modules; existing chunk-size advisory),
+production audit (0 vulnerabilities), and `git diff --check` passed. Required
+hosted checks passed on evidence head `0ab6bb1` in Actions run `37351050885`.
+Scheduled run `37350611830` passed the pinned download/offline smoke, fixture
+retrieval, and direct-MNE event-timing parity on code head `664d5ba`.
+
+The Step 5 completion gate is approved and checked. Step 6 remains unchecked;
+this review makes no signal-processing or clinical claims.
