@@ -47,6 +47,9 @@ function isBidsEegRecording(value: unknown): boolean {
     (value.event_count === null || typeof value.event_count === "number") &&
     Array.isArray(value.event_types) &&
     value.event_types.every((eventType) => typeof eventType === "string") &&
+    (value.events_timing_sha256 === null ||
+      (typeof value.events_timing_sha256 === "string" &&
+        /^[0-9a-f]{64}$/.test(value.events_timing_sha256))) &&
     Array.isArray(value.issues) &&
     value.issues.every(isBidsEegIssue)
   );

@@ -49,6 +49,26 @@ def _verified_files(dataset_root: Path, manifest: dict[str, Any]) -> list[dict[s
     return files
 
 
+def _annotation_timing_sha256(annotations: list[dict[str, Any]]) -> str:
+    """Digest event timing and labels at 1 ns precision in canonical event order."""
+
+    events = [
+        (
+            round(float(item["onset_seconds"]), 9),
+            round(float(item["duration_seconds"]), 9),
+            str(item["description"]),
+        )
+        for item in annotations
+    ]
+    events.sort(key=lambda item: (item[0], item[1], item[2]))
+    payload = json.dumps(
+        {"contract": "brainlearn-bids-events-v1", "events": events},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _stage_metadata_fixture(
     dataset_root: Path, staging_root: Path, manifest: dict[str, Any]
 ) -> str:
@@ -184,6 +204,7 @@ def build_reference(dataset_root: Path) -> dict[str, Any]:
                 "bad_channel_count": len(raw.info["bads"]),
                 "annotation_count": len(annotations),
                 "annotations": annotations,
+                "events_timing_sha256": _annotation_timing_sha256(annotations),
                 "highpass_hz": float(raw.info["highpass"]),
                 "lowpass_hz": float(raw.info["lowpass"]),
             }

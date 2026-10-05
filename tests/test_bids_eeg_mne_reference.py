@@ -95,6 +95,7 @@ def test_direct_mne_reference_matches_brainlearn_without_reading_samples(tmp_pat
     assert list(recording.event_types) == sorted(
         {event["description"] for event in reference["annotations"]}
     )
+    assert recording.events_timing_sha256 == reference["events_timing_sha256"]
     assert recording.task == reference["bids_sidecar_values"]["TaskName"]
     assert recording.eeg_reference == reference["bids_sidecar_values"]["EEGReference"]
     assert recording.sampling_frequency_hz == reference["bids_sidecar_values"]["SamplingFrequency"]
