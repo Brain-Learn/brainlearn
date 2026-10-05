@@ -465,21 +465,23 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-05 | Step 5A.17 final monitored gate | Complete | Independent review of PR #28 final head `f4cb1ccf033f37b548b46f2ab12446bda1074ab3` against main `9f67986a21ea06340f3e8646e37d048f019b4743` approved the reference only for metadata and event-structure parity. The five fixture files matched manifest SHA-256 values; direct MNE-BIDS selected the pinned `.set`, read event annotations from `events.tsv`, and matched BrainLearn on path, channel labels/types, frequency, event counts/type labels, and selected metadata summaries. Event onset/duration values are recorded but not compared to BrainLearn; the empty temporary `.fdt` means header sample count/duration are not verified against sample payload. Instrumenting MNE `RawEEGLAB._read_segment_file` to fail confirmed neither the direct path nor BrainLearn inspection read samples. Fixture test passed (1); full fixture-configured Python suite passed 769, 2 skipped, 2 upstream warnings; Ruff, format (79 files), mypy (30 files), ESLint, Prettier, Vitest (171/18 files), build (1,846 modules), production audit (0 vulnerabilities), and diff check passed. Both required PR jobs passed in run `37313314345`; manual scheduled-workflow run `37313828413` passed integration smoke, fixture retrieval, and parity. Step 5A.17 is checked for this limited metadata/event reference; Step 5 remains unchecked. | Monitored review complete on PR #28 |
 
+| 2026-10-05 | Step 5 full completion-gate next-assignment pointer | Verified; monitoring pending | After PR #28 merged as `3cbc145189db24d41ad9f578bf5f01d43da3289e`, confirmed all Step 5 leaf items are checked while the top-level Step 5 remains unchecked because its broader completion gate still requires independent review. Updated only this handoff pointer; Step 6 remains out of scope. Full required local gate: Ruff passed; format check passed (79 files); strict mypy passed (30 source files); pytest passed 768, 3 skipped, 2 upstream deprecation warnings (35.26s); ESLint and Prettier passed; Vitest passed 171 tests in 18 files; production build passed (1,846 modules; existing chunk-size advisory); production audit found 0 vulnerabilities; `git diff --check` passed. | PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5A.17 — independently reviewed direct-MNE reference script
+### Step 5 — full dataset access and EEG inspection completion gate
 
-Implement only an independent reference script for the pinned BIDS EEG fixture
-using direct MNE-Python and MNE-BIDS calls, without importing BrainLearn
-discovery or inspection adapters. Compare recording selection, channel names,
-sampling frequency, events, and the declared summary values with BrainLearn's
-results. Keep the script reproducible and record tool versions, fixture
-identity, and the method used for every comparison. Preserve raw source files;
-do not add signal processing or start Step 6. Add focused tests or checks that
-execute the script against the pinned fixture, obtain independent scientific
-review, run the full repository gate, record exact evidence, and deliver one
-ready-for-review PR. Step 5 remains open until its full scientific completion
-gate and monitoring review are complete.
+Independently review the complete Step 5 implementation against its acceptance
+gate: verify the GUI dataset discovery/details and safe download lifecycle,
+offline reopen, BrainLearn BIDS discovery/identity/inspection/previews/QC
+behavior, and the direct-MNE reference on the pinned fixture. Reproduce the
+required repository gate and inspect hosted evidence. Confirm that the
+documented limits of the metadata/event reference are compatible with the Step
+5 scientific claims; do not infer signal-value agreement. Record any missing
+behavior as a concrete blocker and leave Step 5 unchecked until every gate
+criterion is supported. If the whole gate is satisfied, record exact evidence
+in `REVIEW.md` and this plan and check Step 5. Do not begin Step 6 in this work
+unit.
