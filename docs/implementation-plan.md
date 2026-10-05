@@ -458,22 +458,25 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-05 | Step 5A.16 unsupported formats and incomplete metadata | Verified; monitoring pending | Discovery messages now identify the affected path and corrective format, companion file, or metadata field; accepted raw EEG formats are listed. Dataset and recording readiness are both required for UI identity/inspection actions. Identity, inspection, preview, and workflow-input adapters repeat readiness checks; workflow errors retain recording-level issue details, so unsupported/incomplete input cannot reach MNE or downstream inspection execution. Added API regressions for unsupported extension, missing EEG sidecar, and missing dataset description; identity/inspect/preview return actionable HTTP 422 errors, MNE is not called, and source bytes remain unchanged. Added workflow regressions showing invalid inputs fail before inspection and the inspection node is dependency-skipped without artifacts. UI regressions confirm actions stay unavailable if the dataset is globally invalid despite a ready recording entry. A malformed `channels.tsv` reports its actual path and missing/duplicate header columns with a linear-time duplicate scan. A monitor-discovered malformed EEG JSON sidecar case now reports the actual JSON path and suppresses misleading follow-on required-field errors; regressions cover both malformed and missing/duplicate headers. Updated `docs/bids-eeg-discovery.md`. Focused backend gate: 10 passed, 61 deselected; channels/invalidation-state follow-up: 7 passed, 19 deselected; duplicate-header follow-up: 2 passed, 25 deselected; sidecar/TSV follow-up: 7 passed, 21 deselected; focused UI gate: 8 passed. Full gate: `uv run --locked ruff check .` passed; format check passed (77 files); strict mypy passed (30 source files); `uv run --locked pytest -q` passed 768, 2 skipped, 2 upstream deprecation warnings (35.34s); ESLint and Prettier passed; Vitest passed 171 tests in 18 files; production build passed (1,846 modules; existing chunk-size advisory); `npm --prefix apps/web audit --omit=dev` found 0 vulnerabilities; `git diff --check` passed. Step 5 remains unchecked pending independent monitoring and the direct-MNE reference script. | PR #26 repair pending |
 
 | 2026-10-05 | Step 5A.16 final monitored gate | Complete | Independent review of PR #26 final head `d0c15bf4958e08d1e41131f8512a893e6ca95cad` against main `58a94c48f9242cd4d5c35cadd3d56e4cb6bbe335` confirmed actionable unsupported-format and incomplete-metadata errors, readiness gates across discovery/identity/inspection/preview/workflow execution, rejection before MNE/downstream inspection, and unchanged raw source bytes. Review findings for TSV path/header details, quadratic duplicate detection, and malformed EEG JSON path/cascaded errors were repaired; focused regressions cover them. In a clean managed checkout, focused metadata/API tests passed 7 (21 deselected); optional EEG full suite passed 768, 2 skipped, and 2 upstream deprecation warnings; Ruff, format (77 files), strict mypy (30 files), ESLint, Prettier, Vitest (171 tests/18 files), production build (1,846 modules; existing chunk-size advisory), production audit (0 vulnerabilities), and `git diff --check` passed. Both hosted checks passed in Actions run `37303304533`. Step 5A.16 is approved and checked; Step 5 remains unchecked pending the scientific completion gate and independent direct-MNE reference script. | Monitored review complete on PR #26 |
+| 2026-10-05 | Step 5A.17 next-assignment pointer | Verified; monitoring pending | After PR #26 was squash-merged at `9f67986a21ea06340f3e8646e37d048f019b4743`, confirmed the first unchecked Step 5 item is “Add an independently reviewed direct-MNE reference script.” Updated only the handoff pointer; Step 5 remains unchecked and Step 5A.16 remains checked. No reference-script implementation is included. Full gate: Ruff passed; format check passed (77 files); strict mypy passed (30 source files); pytest passed 768, 2 skipped, 2 upstream deprecation warnings (36.19s); ESLint and Prettier passed; Vitest passed 171 tests in 18 files; production build passed (1,846 modules; existing chunk-size advisory); production audit found 0 vulnerabilities; `git diff --check` passed. | PR pending |
+
+| 2026-10-05 | Step 5A.17 next-assignment pointer review | Complete | Independent review of docs-only PR #27 head `de38486ab37e713300a9b99f4d48ccf7d1be994f` against main `9f67986a21ea06340f3e8646e37d048f019b4743` confirmed the first unchecked Step 5 checklist item is “Add an independently reviewed direct-MNE reference script,” matching the new handoff. Step 5A.16 remains checked and Step 5 remains unchecked. The full diff changes only `docs/implementation-plan.md`, preserves existing completion rows, and includes no reference-script implementation. `git diff --check` passed. Both required hosted jobs passed in Actions run `37305761700`. | Monitored review complete on PR #27 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5A.16 — report unsupported formats and incomplete metadata
+### Step 5A.17 — independently reviewed direct-MNE reference script
 
-Implement only the next unchecked Step 5 item: provide clear, actionable
-errors when a discovered EEG recording uses an unsupported format or has
-incomplete required BIDS metadata. Trace the user-visible discovery, identity,
-inspection, preview, and workflow paths; keep unsupported inputs out of MNE and
-execution adapters. Preserve raw BIDS files and do not add signal processing.
-Add focused API/UI tests proving the unsupported and incomplete states explain
-the corrective action and cannot start an inspection or run. Do not begin the
-independent direct-MNE reference script in this work unit. Run the full
-repository gate, append exact evidence, and deliver one ready-for-review PR.
-Step 5 remains open until its full scientific completion gate and monitoring
-review are complete.
+Implement only an independent reference script for the pinned BIDS EEG fixture
+using direct MNE-Python and MNE-BIDS calls, without importing BrainLearn
+discovery or inspection adapters. Compare recording selection, channel names,
+sampling frequency, events, and the declared summary values with BrainLearn's
+results. Keep the script reproducible and record tool versions, fixture
+identity, and the method used for every comparison. Preserve raw source files;
+do not add signal processing or start Step 6. Add focused tests or checks that
+execute the script against the pinned fixture, obtain independent scientific
+review, run the full repository gate, record exact evidence, and deliver one
+ready-for-review PR. Step 5 remains open until its full scientific completion
+gate and monitoring review are complete.
