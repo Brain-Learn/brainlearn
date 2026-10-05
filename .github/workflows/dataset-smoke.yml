@@ -36,12 +36,20 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Install locked Python environment
-        run: uv sync --locked --all-packages
+        run: uv sync --locked --all-packages --group eeg
 
       - name: Run pinned integration smoke
         run: uv run python -m brainlearn_server.integration_smoke --log-file diagnostic-drift.json
         env:
           BRAINLEARN_INTEGRATION_SMOKE: "1"
+
+      - name: Retrieve pinned BIDS EEG fixture
+        run: uv run python scripts/fetch_bids_eeg_fixture.py "$RUNNER_TEMP/ds002181-fixture"
+
+      - name: Compare pinned fixture with direct MNE reference
+        run: uv run --group eeg pytest -q tests/test_bids_eeg_mne_reference.py
+        env:
+          BRAINLEARN_BIDS_EEG_FIXTURE: ${{ runner.temp }}/ds002181-fixture
 
       - name: Upload diagnostic drift log on failure
         if: failure()
