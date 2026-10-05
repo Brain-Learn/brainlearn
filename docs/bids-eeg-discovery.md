@@ -139,3 +139,45 @@ direct MNE calls. The test also checks event selection and source-file
 immutability. This verifies numerical agreement for the declared settings; it
 does not certify the scientific suitability of a user's recording or a full
 experimental analysis.
+
+## Pinned direct-MNE metadata reference
+
+`scripts/reference_bids_eeg_mne.py` independently selects the pinned
+`ds002181:1.0.0` recording with `mne_bids.find_matching_paths` and reads it
+through `mne_bids.read_raw_bids`. It emits the direct reader's recording path,
+channel labels/types, sampling frequency, sample count/duration, bad-channel
+count, annotations, and high/low-pass metadata, along with Python/MNE/MNE-BIDS,
+NumPy, and SciPy versions and the exact fixture file hashes. It does not import
+BrainLearn discovery or inspection code. The JSON baseline is
+[`ds002181-sub-1473-mne-reference-1.0.0.json`](fixtures/ds002181-sub-1473-mne-reference-1.0.0.json).
+
+The pinned five-file subset's EEGLAB `.set` header references an external
+`.fdt` that is not included in the subset. The script copies only the verified
+manifest files into a temporary directory and creates an empty companion there
+so MNE can read header and BIDS event metadata. It uses `preload=False` and
+never reads or compares signal samples. The source fixture is hash-checked
+before and after. This is an independent metadata and event-structure check,
+not a signal-value or analysis validation.
+
+The parity test uses exact equality for the selected relative recording path,
+channel labels, channel-type counts, sampling frequency, sample count, duration,
+bad-channel count, annotation count/descriptions, and MNE high/low-pass
+metadata. It compares the discovery event count and event-type set with the
+annotations MNE-BIDS loads from the pinned `events.tsv`. The EEG-channel count
+is compared with MNE's `eeg` channel count. These checks intentionally do not
+compare amplitudes, filtering, or other signal-derived values.
+
+Run the actual pinned-fixture parity check with:
+
+```bash
+uv sync --locked --all-packages --group eeg
+uv run python scripts/fetch_bids_eeg_fixture.py /tmp/brainlearn-ds002181-fixture
+BRAINLEARN_BIDS_EEG_FIXTURE=/tmp/brainlearn-ds002181-fixture \
+  uv run --locked --group eeg pytest -q tests/test_bids_eeg_mne_reference.py
+```
+
+The optional test compares the independent JSON reference against BrainLearn's
+metadata discovery and MNE inspection values, verifies the pinned versions and
+fixture identity, and confirms the source files remain unchanged. The ordinary
+unit suite skips this test when no fixture path is configured; the scheduled
+dataset-smoke workflow retrieves the small verified subset and runs it.

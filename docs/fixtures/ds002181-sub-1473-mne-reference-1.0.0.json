@@ -1,0 +1,359 @@
+{
+  "annotation_count": 31,
+  "annotations": [
+    {
+      "description": "onset",
+      "duration_seconds": 0.008,
+      "onset_seconds": 0.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 4.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 8.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 12.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 16.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 20.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 24.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 28.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 32.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 36.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 40.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 44.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 48.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 52.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 56.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 60.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 64.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 68.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 72.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 76.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 80.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 84.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 88.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 92.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 96.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 100.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 104.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 108.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 112.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 116.0
+    },
+    {
+      "description": "target",
+      "duration_seconds": 0.008,
+      "onset_seconds": 120.0
+    }
+  ],
+  "bad_channel_count": 0,
+  "bids_sidecar_values": {
+    "EEGChannelCount": 124,
+    "EEGReference": "Center(Cz)",
+    "MiscChannelCount": 1,
+    "PowerLineFrequency": 50,
+    "SamplingFrequency": 500,
+    "TaskName": "Baseline"
+  },
+  "channel_count": 125,
+  "channel_names": [
+    "E1",
+    "E2",
+    "E3",
+    "E4",
+    "E5",
+    "E6",
+    "E7",
+    "E8",
+    "E9",
+    "E10",
+    "E11",
+    "E12",
+    "E13",
+    "E14",
+    "E15",
+    "E16",
+    "E17",
+    "E18",
+    "E19",
+    "E20",
+    "E21",
+    "E22",
+    "E23",
+    "E24",
+    "E25",
+    "E26",
+    "E27",
+    "E28",
+    "E29",
+    "E30",
+    "E31",
+    "E32",
+    "E33",
+    "E34",
+    "E35",
+    "E36",
+    "E37",
+    "E38",
+    "E39",
+    "E40",
+    "E41",
+    "E42",
+    "E43",
+    "E44",
+    "E45",
+    "E46",
+    "E47",
+    "E48",
+    "E49",
+    "E50",
+    "E51",
+    "E52",
+    "E53",
+    "E54",
+    "E55",
+    "E56",
+    "E57",
+    "E58",
+    "E59",
+    "E60",
+    "E61",
+    "E62",
+    "E63",
+    "E64",
+    "E65",
+    "E66",
+    "E67",
+    "E68",
+    "E69",
+    "E70",
+    "E71",
+    "E72",
+    "E73",
+    "E74",
+    "E75",
+    "E76",
+    "E77",
+    "E78",
+    "E79",
+    "E80",
+    "E81",
+    "E82",
+    "E83",
+    "E84",
+    "E85",
+    "E86",
+    "E87",
+    "E88",
+    "E89",
+    "E90",
+    "E91",
+    "E92",
+    "E93",
+    "E94",
+    "E95",
+    "E96",
+    "E97",
+    "E98",
+    "E99",
+    "E100",
+    "E101",
+    "E102",
+    "E103",
+    "E104",
+    "E105",
+    "E106",
+    "E107",
+    "E108",
+    "E109",
+    "E110",
+    "E111",
+    "E112",
+    "E113",
+    "E114",
+    "E115",
+    "E116",
+    "E117",
+    "E118",
+    "E119",
+    "E120",
+    "E121",
+    "E122",
+    "E123",
+    "E124",
+    "Cz"
+  ],
+  "channel_type_counts": {
+    "eeg": 124,
+    "misc": 1
+  },
+  "duration_seconds": 124.0,
+  "fixture": {
+    "dataset_id": "ds002181",
+    "input_files": [
+      {
+        "byte_size": 379,
+        "path": "dataset_description.json",
+        "sha256": "02120902abf903e6eb3ffd001b2bba8720023a1e21946d38b3ab4ddbd491daad"
+      },
+      {
+        "byte_size": 1934,
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_channels.tsv",
+        "sha256": "6cc38eb82a7d632a94b077d26a7e31904f44e6152d386ce2d40b6f1422d26cab"
+      },
+      {
+        "byte_size": 613,
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_eeg.json",
+        "sha256": "2abb9356b1f752b4f947a4bf90f3d18643527d7e0d81c4b2ccb633ef57bc5df2"
+      },
+      {
+        "byte_size": 693168,
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_eeg.set",
+        "sha256": "123900cfe3b81528f63f24292dc1d1207d05ad17d9b44324e16fed7d0fe31fe2"
+      },
+      {
+        "byte_size": 957,
+        "path": "sub-1473/eeg/sub-1473_task-Baseline_events.tsv",
+        "sha256": "86cbb325e4b070ece0a9ceed09dcc049eb59167d2327f2a07eeb38a4ee561634"
+      }
+    ],
+    "provider": "OpenNeuro",
+    "snapshot": "1.0.0",
+    "snapshot_tree_sha1": "2ec6d5319a5ccd9b4fb45bebb07a30fe743b1810"
+  },
+  "highpass_hz": 0.0,
+  "lowpass_hz": 250.0,
+  "method": {
+    "external_eeglab_data_stub": {
+      "byte_size": 0,
+      "path": "sub-1473/eeg/1473.s.1hzHighpass.fdt",
+      "reason": "The pinned five-file subset omits the .fdt named by the .set header; an empty companion exists only in a temporary copy so MNE can read the header and BIDS event metadata."
+    },
+    "preload": false,
+    "reader": "mne_bids.read_raw_bids",
+    "selection": "mne_bids.find_matching_paths",
+    "signal_samples_read": false
+  },
+  "recording_path": "sub-1473/eeg/sub-1473_task-Baseline_eeg.set",
+  "sample_count": 62000,
+  "sampling_frequency_hz": 500.0,
+  "schema_version": "1.0",
+  "tool_versions": {
+    "mne": "1.13.2",
+    "mne_bids": "0.20.0",
+    "numpy": "2.5.3",
+    "python": "3.12.13",
+    "scipy": "1.18.1"
+  }
+}

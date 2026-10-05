@@ -601,3 +601,61 @@ run `37305761700`.
 
 This review approves the handoff only; it does not begin the direct-MNE
 reference-script assignment.
+
+
+## Step 5A.17 final direct-MNE reference review
+
+Review date: 2026-10-05
+
+Scope: PR #28 final head `f4cb1ccf033f37b548b46f2ab12446bda1074ab3`, compared with
+main `9f67986a21ea06340f3e8646e37d048f019b4743`.
+
+Status: **approved for the metadata/event reference scope**. The script is
+independent of BrainLearn discovery and inspection adapters: it verifies the
+manifest inputs, selects the `.set` recording with
+`mne_bids.find_matching_paths`, then reads metadata and BIDS events through
+`mne_bids.read_raw_bids`. On the pinned fixture it reports the expected single
+recording, 125 channels (124 EEG and 1 misc), 500 Hz, 62,000 header-declared
+samples, 124 seconds, zero bad channels, and 31 annotations. The BIDS
+`events.tsv` has 31 rows; MNE-BIDS annotation descriptions reflect its `value`
+column (`onset`, `target`), matching BrainLearn's discovery choice of `value`
+when `trial_type` is absent. Tests compare recording path, labels/types,
+sampling frequency, event count/type labels, and selected inspection metadata
+exactly. They do not compare event timing/duration against BrainLearn, which
+does not expose those fields in discovery/inspection parity, and do not claim
+signal-value agreement.
+
+The `.set` header names an external `.fdt` absent from the pinned five-file
+subset. The script checks that reference is a single safe filename, copies
+only manifest-verified source files into a temporary tree, and creates a zero
+byte `.fdt` there. `preload=False` is used, and neither reference nor
+BrainLearn inspection requests data samples. I independently patched
+MNE's `RawEEGLAB._read_segment_file` to raise and verified that both the
+direct reference and BrainLearn inspection completed without invoking the
+sample-read path. This supports metadata/event parsing only: sample count and
+duration come from the `.set` header and are not validated against a missing
+sample payload. It does not certify amplitudes, signal quality, processing, or
+experimental suitability. Raw fixture hashes were unchanged.
+
+The five retrieved files matched the pinned manifest exactly:
+
+- `dataset_description.json`: `02120902abf903e6eb3ffd001b2bba8720023a1e21946d38b3ab4ddbd491daad`
+- `sub-1473/eeg/sub-1473_task-Baseline_channels.tsv`: `6cc38eb82a7d632a94b077d26a7e31904f44e6152d386ce2d40b6f1422d26cab`
+- `sub-1473/eeg/sub-1473_task-Baseline_eeg.json`: `2abb9356b1f752b4f947a4bf90f3d18643527d7e0d81c4b2ccb633ef57bc5df2`
+- `sub-1473/eeg/sub-1473_task-Baseline_eeg.set`: `123900cfe3b81528f63f24292dc1d1207d05ad17d9b44324e16fed7d0fe31fe2`
+- `sub-1473/eeg/sub-1473_task-Baseline_events.tsv`: `86cbb325e4b070ece0a9ceed09dcc049eb59167d2327f2a07eeb38a4ee561634`
+
+The fixture-gated test passed (1). The full fixture-configured Python suite
+passed 769 tests, 2 skipped, with 2 upstream deprecation warnings. Ruff,
+format (79 files), strict mypy (30 source files), ESLint, Prettier, Vitest
+(171 tests/18 files), production build (1,846 modules; existing chunk-size
+advisory), production audit (0 vulnerabilities), and `git diff --check` passed.
+Both PR checks passed in Actions run `37313314345`. The scheduled workflow was
+also manually dispatched on this PR head; locked EEG installation, existing
+pinned integration smoke, fixture retrieval, and the direct-MNE parity step
+all passed in run `37313828413`.
+
+The independent review supports checking the Step 5A.17 reference-script
+item only for the stated metadata and event-structure scope. Step 5 remains
+unchecked because the broader completion gate is not met; this reference is
+not evidence of signal-value agreement.
