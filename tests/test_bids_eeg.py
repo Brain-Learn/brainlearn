@@ -498,7 +498,7 @@ def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
     project, root = _project(tmp_path)
     unsupported = _write_valid_dataset(root, extension=".xyz")
     service = BidsEegDiscoveryService(store)
-    with pytest.raises(BidsSignalInspectionError, match="supports EDF, BDF"):
+    with pytest.raises(BidsSignalInspectionError, match="Supported raw EEG formats"):
         service.inspect_signal(
             str(project), "raw-data/study", unsupported.relative_to(root).as_posix()
         )
@@ -506,10 +506,59 @@ def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
     unsupported.unlink()
     incomplete = _write_valid_dataset(root)
     (incomplete.parent / "sub-01_task-Rest_eeg.json").unlink()
-    with pytest.raises(BidsDatasetPathError, match="complete supported BIDS EEG metadata"):
+    with pytest.raises(BidsDatasetPathError, match="incomplete required BIDS metadata"):
         service.inspect_signal(
             str(project), "raw-data/study", incomplete.relative_to(root).as_posix()
         )
+
+
+@pytest.mark.parametrize(
+    ("extension", "invalid_state", "expected_message"),
+    [
+        (".xyz", "unsupported_format", "Supported raw EEG formats"),
+        (".edf", "missing_sidecar", "TaskName"),
+        (".edf", "missing_dataset_description", "dataset_description.json is missing"),
+    ],
+)
+def test_invalid_bids_states_return_actionable_api_errors_before_mne(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extension: str,
+    invalid_state: str,
+    expected_message: str,
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root, extension=extension)
+    if invalid_state == "missing_sidecar":
+        recording.with_suffix(".json").unlink()
+    elif invalid_state == "missing_dataset_description":
+        (root / "dataset_description.json").unlink()
+    source_before = recording.read_bytes()
+
+    def unexpected_mne_import(name: str):
+        pytest.fail(f"Invalid BIDS metadata must be rejected before importing {name}.")
+
+    monkeypatch.setattr(bids_eeg_module, "import_module", unexpected_mne_import)
+    client = TestClient(app)
+    payload = {
+        "path": str(project),
+        "relative_dir": "raw-data/study",
+        "recording_path": recording.relative_to(root).as_posix(),
+    }
+    responses = [
+        client.post("/api/datasets/bids-eeg/identity", headers=AUTH_HEADERS, json=payload),
+        client.post("/api/datasets/bids-eeg/inspect", headers=AUTH_HEADERS, json=payload),
+        client.post(
+            "/api/datasets/bids-eeg/preview",
+            headers=AUTH_HEADERS,
+            json={**payload, "duration_seconds": 2},
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 422, response.text
+        assert expected_message in response.json()["detail"]
+    assert recording.read_bytes() == source_before
 
 
 def test_input_identity_hashes_signal_and_effective_sidecars_without_copying(tmp_path: Path):

@@ -309,6 +309,78 @@ def test_bids_input_and_signal_inspection_run_as_noncacheable_workflow_nodes(
     assert not (project / "cache").exists()
 
 
+@pytest.mark.parametrize(
+    ("extension", "incomplete_sidecar", "expected_message"),
+    [
+        (".xyz", False, "Supported raw EEG formats"),
+        (".edf", True, "TaskName"),
+    ],
+)
+def test_bids_workflow_stops_before_inspection_for_invalid_dataset(
+    client: TestClient,
+    tmp_path: Path,
+    extension: str,
+    incomplete_sidecar: bool,
+    expected_message: str,
+) -> None:
+    project = _make_project(client, tmp_path)
+    dataset = project / "raw-data" / "study"
+    eeg_dir = dataset / "sub-01" / "eeg"
+    eeg_dir.mkdir(parents=True)
+    recording_path = f"sub-01/eeg/sub-01_task-Rest_eeg{extension}"
+    (dataset / recording_path).write_bytes(b"raw EEG test bytes")
+    (dataset / "dataset_description.json").write_text(
+        json.dumps({"Name": "Synthetic", "BIDSVersion": "1.2.0"}), encoding="utf-8"
+    )
+    if not incomplete_sidecar:
+        (eeg_dir / "sub-01_task-Rest_eeg.json").write_text(
+            json.dumps(
+                {
+                    "TaskName": "Rest",
+                    "SamplingFrequency": 500,
+                    "EEGReference": "average",
+                    "PowerLineFrequency": 50,
+                    "SoftwareFilters": "n/a",
+                }
+            ),
+            encoding="utf-8",
+        )
+    bids = instantiate_registered_node("input.bids_eeg", "bids", CanvasPosition(x=0, y=0))
+    bids.parameters[0].value = "raw-data/study"
+    inspect = instantiate_registered_node("eeg.inspect", "inspect", CanvasPosition(x=200, y=0))
+    inspect.parameters[0].value = recording_path
+    workflow = {
+        "schema_version": "1.0",
+        "id": "invalid-bids-stops-before-inspection",
+        "metadata": {
+            "name": "Invalid BIDS input",
+            "description": "",
+            "created_with": "BrainLearn tests",
+            "modality": "EEG",
+            "status": "example",
+        },
+        "nodes": [bids.model_dump(mode="json"), inspect.model_dump(mode="json")],
+        "edges": [
+            _edge(
+                "dataset-edge",
+                "bids",
+                "inspect",
+                source_port="dataset",
+                target_port="dataset",
+            )
+        ],
+    }
+
+    started = _start(client, project, workflow)
+    finished = _wait_for_state(client, project, started["run_id"], {"failed"})
+    nodes = {node["id"]: node for node in finished["node_runs"]}
+
+    assert finished["state"] == "failed"
+    assert expected_message in nodes["bids"]["failure"]["message"]
+    assert nodes["inspect"]["state"] == "dependency_skipped"
+    assert nodes["inspect"]["artifacts"] == []
+
+
 def test_failure_skips_downstream_and_fails_run(client: TestClient, tmp_path: Path) -> None:
     project = _make_project(client, tmp_path)
     workflow = _workflow(

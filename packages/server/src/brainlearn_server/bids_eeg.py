@@ -48,6 +48,10 @@ _SUPPORTED_EEG_EXTENSIONS = {
     ".set": "eeglab",
 }
 _EEG_SUFFIX = "_eeg"
+_SUPPORTED_EEG_FORMATS_MESSAGE = (
+    "Supported raw EEG formats are EDF (.edf), BDF (.bdf), BrainVision (.vhdr with matching "
+    ".vmrk and .eeg companions), and EEGLAB (.set with an optional .fdt companion)."
+)
 
 
 class BidsEegIssue(BaseModel):
@@ -87,6 +91,57 @@ class BidsEegDiscovery(BaseModel):
     recordings: tuple[BidsEegRecording, ...] = ()
     issues: tuple[BidsEegIssue, ...] = ()
     inspection_scope: Literal["metadata_only"] = "metadata_only"
+
+
+def bids_eeg_discovery_error(discovery: BidsEegDiscovery) -> str:
+    """Describe dataset issues and the next action before a workflow can proceed."""
+
+    issues = [(issue.path, issue.message) for issue in discovery.issues]
+    issues.extend(
+        (recording.path, issue.message)
+        for recording in discovery.recordings
+        for issue in recording.issues
+    )
+    details = [f"{path}: {message}" if path else message for path, message in issues[:8]]
+    if len(issues) > 8:
+        details.append(f"and {len(issues) - 8} more issue(s)")
+    if discovery.status == "unsupported":
+        prefix = (
+            "This BIDS EEG dataset contains an unsupported BIDS version/type or EEG format. "
+            f"{_SUPPORTED_EEG_FORMATS_MESSAGE}"
+        )
+    elif discovery.status == "not_bids":
+        prefix = "This folder is not a ready BIDS EEG dataset. Add and correct its BIDS metadata."
+    elif discovery.status == "no_recordings":
+        prefix = (
+            "No supported raw BIDS EEG recordings were found. Add a recording under sub-*/eeg/."
+        )
+    else:
+        prefix = (
+            "BIDS EEG metadata is incomplete. Correct the listed files and fields, then scan again."
+        )
+    next_step = " ".join(details) if details else "Review the dataset metadata and scan again."
+    return f"{prefix} {next_step}"
+
+
+def _recording_readiness_error(
+    discovery: BidsEegDiscovery, recording: BidsEegRecording
+) -> str | None:
+    if recording.status == "unsupported":
+        reasons = " ".join(issue.message for issue in recording.issues)
+        return (
+            f"Recording {recording.path} uses an unsupported EEG format. "
+            f"{_SUPPORTED_EEG_FORMATS_MESSAGE} {reasons}"
+        )
+    if recording.status == "incomplete_metadata":
+        reasons = " ".join(issue.message for issue in recording.issues)
+        return (
+            f"Recording {recording.path} has incomplete required BIDS metadata. "
+            f"Correct the applicable EEG sidecar/table fields and scan again. {reasons}"
+        )
+    if discovery.status != "ready":
+        return bids_eeg_discovery_error(discovery)
+    return None
 
 
 class BidsEegIdentityFile(BaseModel):
@@ -587,7 +642,10 @@ def _recording_candidates(
             issues.append(
                 BidsEegIssue(
                     code="missing_task_entity",
-                    message="EEG recording filenames must include a task entity.",
+                    message=(
+                        "EEG recording filenames must include a task entity; rename the file "
+                        "with a `task-<label>_eeg` suffix."
+                    ),
                     path=entry.relative_to(root).as_posix(),
                 )
             )
@@ -597,7 +655,11 @@ def _recording_candidates(
             issues.append(
                 BidsEegIssue(
                     code="unsupported_format",
-                    message="This EEG file format is not supported for discovery.",
+                    message=(
+                        f"This EEG file extension ({entry.suffix}) is unsupported. "
+                        f"{_SUPPORTED_EEG_FORMATS_MESSAGE} Convert or export the recording to "
+                        "one of these formats, then scan again."
+                    ),
                     path=entry.relative_to(root).as_posix(),
                 )
             )
@@ -610,7 +672,7 @@ def _recording_candidates(
                             code="incomplete_brainvision_set",
                             message=(
                                 "BrainVision recordings require matching .vhdr, .vmrk, and .eeg "
-                                "files."
+                                "files; add the missing companion(s)."
                             ),
                             path=entry.relative_to(root).as_posix(),
                         )
@@ -632,7 +694,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
         issues.append(
             BidsEegIssue(
                 code="unsafe_dataset_description",
-                message="dataset_description.json must not be a symlink.",
+                message=(
+                    "dataset_description.json must be a regular file, not a symlink. Replace "
+                    "the symlink with a project-local BIDS description."
+                ),
                 path="dataset_description.json",
             )
         )
@@ -640,7 +705,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
         issues.append(
             BidsEegIssue(
                 code="missing_dataset_description",
-                message="BIDS dataset_description.json is missing.",
+                message=(
+                    "BIDS dataset_description.json is missing. Add it with a non-empty Name "
+                    "and numeric BIDSVersion."
+                ),
                 path="dataset_description.json",
             )
         )
@@ -665,7 +733,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
             issues.append(
                 BidsEegIssue(
                     code="missing_dataset_name",
-                    message="dataset_description.json must provide a non-empty Name.",
+                    message=(
+                        "dataset_description.json must provide a non-empty Name. Add the dataset "
+                        "name to that file."
+                    ),
                     path="dataset_description.json",
                 )
             )
@@ -676,7 +747,8 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 BidsEegIssue(
                     code="invalid_bids_version",
                     message=(
-                        "dataset_description.json must provide a numeric BIDSVersion such as 1.2.0."
+                        "dataset_description.json must provide a numeric BIDSVersion such as "
+                        "1.2.0. Add or correct that field."
                     ),
                     path="dataset_description.json",
                 )
@@ -688,7 +760,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 issues.append(
                     BidsEegIssue(
                         code="unsupported_bids_version",
-                        message="This EEG metadata scanner supports BIDS major version 1 only.",
+                        message=(
+                            "This EEG metadata scanner supports BIDS major version 1 only. "
+                            "Use a raw BIDS 1.x dataset or convert it explicitly."
+                        ),
                         path="dataset_description.json",
                     )
                 )
@@ -697,7 +772,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
             issues.append(
                 BidsEegIssue(
                     code="unsupported_dataset_type",
-                    message="BIDS derivatives are not supported as raw EEG inputs.",
+                    message=(
+                        "BIDS derivatives are not supported as raw EEG inputs. Select the raw "
+                        "dataset or create a new raw import."
+                    ),
                     path="dataset_description.json",
                 )
             )
@@ -743,7 +821,11 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     recording_issues.append(
                         BidsEegIssue(
                             code="missing_eeg_sidecar",
-                            message="No matching or inherited *_eeg.json sidecar was found.",
+                            message=(
+                                "No matching or inherited *_eeg.json sidecar was found. Add an "
+                                "applicable sidecar with TaskName, SamplingFrequency, "
+                                "EEGReference, PowerLineFrequency, and SoftwareFilters."
+                            ),
                             path=relative,
                         )
                     )
@@ -763,7 +845,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 recording_issues.append(
                     BidsEegIssue(
                         code="invalid_sampling_frequency",
-                        message="EEG metadata must provide a positive numeric SamplingFrequency.",
+                        message=(
+                            "The applicable *_eeg.json sidecar must provide a positive numeric "
+                            "SamplingFrequency. Add or correct that field."
+                        ),
                         path=relative,
                     )
                 )
@@ -778,7 +863,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 recording_issues.append(
                     BidsEegIssue(
                         code="missing_eeg_reference",
-                        message="EEG metadata must provide a non-empty EEGReference.",
+                        message=(
+                            "The applicable *_eeg.json sidecar must provide a non-empty "
+                            "EEGReference. Add or correct that field."
+                        ),
                         path=relative,
                     )
                 )
@@ -787,7 +875,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 recording_issues.append(
                     BidsEegIssue(
                         code="missing_task_name",
-                        message="EEG metadata must provide a non-empty TaskName.",
+                        message=(
+                            "The applicable *_eeg.json sidecar must provide a non-empty TaskName. "
+                            "Add or correct that field."
+                        ),
                         path=relative,
                     )
                 )
@@ -799,7 +890,8 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                         BidsEegIssue(
                             code="invalid_power_line_frequency",
                             message=(
-                                "EEG metadata must provide a positive PowerLineFrequency or 'n/a'."
+                                "The applicable *_eeg.json sidecar must provide a positive "
+                                "PowerLineFrequency or 'n/a'. Add or correct that field."
                             ),
                             path=relative,
                         )
@@ -815,7 +907,10 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                 recording_issues.append(
                     BidsEegIssue(
                         code="invalid_software_filters",
-                        message="EEG metadata must provide SoftwareFilters as an object or 'n/a'.",
+                        message=(
+                            "The applicable *_eeg.json sidecar must provide SoftwareFilters as an "
+                            "object or 'n/a'. Add or correct that field."
+                        ),
                         path=relative,
                     )
                 )
@@ -1018,15 +1113,19 @@ class BidsEegDiscoveryService:
         recording = next(
             (item for item in discovery.recordings if item.path == recording_relative), None
         )
-        if recording is not None and recording.status == "unsupported":
-            raise BidsSignalInspectionError(
-                "Unsupported EEG format. Signal inspection supports EDF, BDF, "
-                "complete BrainVision, and EEGLAB recordings."
-            )
-        if recording is None or recording.status != "ready" or recording.format is None:
+        if recording is None:
             raise BidsDatasetPathError(
-                "Only a discovered recording with complete supported BIDS EEG metadata "
-                "can be inspected."
+                "The selected path is not a discovered recording. Scan the dataset and choose "
+                "a listed recording."
+            )
+        readiness_error = _recording_readiness_error(discovery, recording)
+        if readiness_error is not None:
+            if recording.status == "unsupported":
+                raise BidsSignalInspectionError(readiness_error)
+            raise BidsDatasetPathError(readiness_error)
+        if recording.format is None:
+            raise BidsDatasetPathError(
+                "The recording format is unavailable. Correct its BIDS filename and scan again."
             )
         signal_path = root / recording_relative
         source_paths = [signal_path]
@@ -1379,11 +1478,31 @@ class BidsEegDiscoveryService:
             raise BidsDatasetPathError(
                 "Choose a discovered recording inside this dataset."
             ) from exc
+        discovery = discover_bids_eeg(root, relative)
+        recording = next(
+            (item for item in discovery.recordings if item.path == recording_relative), None
+        )
+        if recording is None:
+            raise BidsDatasetPathError(
+                "The selected path is not a discovered recording. Scan the dataset and choose "
+                "a listed recording."
+            )
+        readiness_error = _recording_readiness_error(discovery, recording)
+        if readiness_error is not None:
+            raise BidsDatasetPathError(readiness_error)
         signal_path = root / recording_relative
         entities = _parse_entities(signal_path.stem, _EEG_SUFFIX)
         file_format = _SUPPORTED_EEG_EXTENSIONS.get(signal_path.suffix)
-        if entities is None or file_format is None:
-            raise BidsDatasetPathError("The selected recording has an invalid BIDS filename.")
+        if entities is None:
+            raise BidsDatasetPathError(
+                "The selected recording has an invalid BIDS filename. Correct its BIDS entities "
+                "and scan again."
+            )
+        if file_format is None:
+            raise BidsDatasetPathError(
+                f"The selected recording has an unsupported EEG format. "
+                f"{_SUPPORTED_EEG_FORMATS_MESSAGE}"
+            )
         directory = signal_path.parent
         budget = _DirectoryEntryBudget()
         source_paths = [signal_path]
@@ -1443,13 +1562,25 @@ class BidsEegDiscoveryService:
                     ),
                 )
 
-        discovery = discover_bids_eeg(root, relative)
-        recording = next(
-            (item for item in discovery.recordings if item.path == recording_relative), None
+        final_discovery = discover_bids_eeg(root, relative)
+        final_recording = next(
+            (item for item in final_discovery.recordings if item.path == recording_relative), None
         )
-        if recording is None or recording.status != "ready" or recording.format != file_format:
+        final_error = (
+            _recording_readiness_error(final_discovery, final_recording)
+            if final_recording is not None
+            else None
+        )
+        if (
+            final_recording is None
+            or final_recording.status != "ready"
+            or final_recording.format != file_format
+            or final_discovery.status != "ready"
+        ):
             raise BidsDatasetPathError(
-                "Only a recording with complete, supported BIDS EEG metadata can be identified."
+                final_error
+                or "The BIDS recording changed while its identity was being created. "
+                "Scan again before retrying."
             )
         if directory_snapshots != _snapshot_directories(root, directory):
             raise BidsDatasetPathError(

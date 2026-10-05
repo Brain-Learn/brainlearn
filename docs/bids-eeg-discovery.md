@@ -18,6 +18,15 @@ metadata while the `task-` filename entity remains the recording's task label.
 Unsupported BIDS major versions, derivative
 datasets, unsupported recording formats, malformed metadata, and missing
 required fields are reported as explicit unsupported or incomplete states.
+Issue messages identify the affected path and the field, companion file, or
+format to correct. Unsupported-format messages list the accepted EEG formats;
+incomplete-metadata messages identify the required sidecar or dataset
+description fields and tell the researcher to scan again after correction.
+Discovery actions for identity creation, signal inspection, and previews remain
+unavailable unless both the dataset and selected recording are ready. The
+identity, inspection, preview, and workflow input paths repeat the readiness
+check, so a stale UI state or a workflow submitted directly to the API cannot
+pass an unsupported or incomplete recording to MNE or downstream execution.
 
 When matching `channels.tsv` and `events.tsv` files exist, the scan summarizes
 channel names/count and event count/types. Channel tables are checked for
