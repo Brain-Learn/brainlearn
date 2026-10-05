@@ -580,3 +580,24 @@ run `37303304533`.
 Step 5A.16 is approved and checked. Step 5 remains unchecked pending its full
 scientific completion gate and the independent direct-MNE reference script.
 No signal processing was added.
+
+
+## Step 5A.17 next-assignment pointer review
+
+Review date: 2026-10-05
+
+Scope: docs-only PR #27 head `de38486ab37e713300a9b99f4d48ccf7d1be994f`,
+compared with main `9f67986a21ea06340f3e8646e37d048f019b4743`.
+
+Status: **approved**. The first unchecked Step 5 checklist item is “Add an
+independently reviewed direct-MNE reference script,” and the new `Next
+assignment` describes that work unit. Step 5A.16 remains checked, while the
+Step 5 heading and direct-MNE item remain unchecked. The complete diff changes
+only `docs/implementation-plan.md`: it preserves prior completion-log entries,
+adds the Step 5A.17 pending row, and updates the handoff pointer. No reference
+script implementation is included. `git diff --check origin/main...origin/pr-27`
+passed. Both required hosted jobs passed on PR #27 head `de38486` in Actions
+run `37305761700`.
+
+This review approves the handoff only; it does not begin the direct-MNE
+reference-script assignment.
