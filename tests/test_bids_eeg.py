@@ -127,6 +127,29 @@ def test_event_timing_identity_changes_when_onset_or_duration_changes(tmp_path: 
     assert first.events_timing_sha256 != second.events_timing_sha256
 
 
+def test_event_timing_identity_normalizes_subnanosecond_order_and_signed_zero(
+    tmp_path: Path,
+):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    events = root / "sub-01" / "eeg" / "sub-01_task-Rest_events.tsv"
+    service = BidsEegDiscoveryService(store)
+    events.write_text(
+        "onset\tduration\ttrial_type\n-0.0000000001\t0.5\tfirst\n1\t0.25\tsecond\n",
+        encoding="utf-8",
+    )
+    first = service.discover(str(root.parent.parent), "raw-data/study").recordings[0]
+    events.write_text(
+        "onset\tduration\ttrial_type\n1\t0.25\tsecond\n0.0000000001\t0.5\tfirst\n",
+        encoding="utf-8",
+    )
+    second = service.discover(str(root.parent.parent), "raw-data/study").recordings[0]
+
+    assert first.events_timing_sha256 is not None
+    assert second.events_timing_sha256 is not None
+    assert first.events_timing_sha256 == second.events_timing_sha256
+
+
 def test_applies_bids_inherited_task_sidecars(tmp_path: Path):
     _, root = _project(tmp_path)
     eeg_dir = root / "sub-01" / "eeg"

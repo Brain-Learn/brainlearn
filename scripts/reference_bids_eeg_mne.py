@@ -52,10 +52,14 @@ def _verified_files(dataset_root: Path, manifest: dict[str, Any]) -> list[dict[s
 def _annotation_timing_sha256(annotations: list[dict[str, Any]]) -> str:
     """Digest event timing and labels at 1 ns precision in canonical event order."""
 
+    def rounded_time(value: object) -> float:
+        rounded = round(float(value), 9)
+        return 0.0 if rounded == 0.0 else rounded
+
     events = [
         (
-            round(float(item["onset_seconds"]), 9),
-            round(float(item["duration_seconds"]), 9),
+            rounded_time(item["onset_seconds"]),
+            rounded_time(item["duration_seconds"]),
             str(item["description"]),
         )
         for item in annotations

@@ -562,12 +562,18 @@ def _read_tsv(path: Path, *, required: tuple[str, ...]) -> list[dict[str, str]]:
 def _events_timing_sha256(rows: list[dict[str, str]], type_field: str) -> str:
     """Hash normalized BIDS event timing and descriptions without returning all rows."""
 
+    def rounded_time(value: str) -> float | None:
+        if value.casefold() == "n/a":
+            return None
+        rounded = round(float(value), 9)
+        return 0.0 if rounded == 0.0 else rounded
+
     events: list[tuple[float | None, float | None, str]] = []
     for row in rows:
         onset_text = row["onset"].strip()
         duration_text = row["duration"].strip()
-        onset = None if onset_text.casefold() == "n/a" else round(float(onset_text), 9)
-        duration = None if duration_text.casefold() == "n/a" else round(float(duration_text), 9)
+        onset = rounded_time(onset_text)
+        duration = rounded_time(duration_text)
         description = row.get(type_field, "").strip()
         if description.casefold() == "n/a":
             description = ""

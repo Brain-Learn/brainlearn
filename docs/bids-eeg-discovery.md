@@ -34,8 +34,9 @@ channel names/count and event count/types. Channel tables are checked for
 `n/a` accepted for unknown onset or duration as specified by [BIDS events](https://bids-specification.readthedocs.io/en/stable/modality-agnostic-files/events.html).
 For event parity without returning a potentially large row array, discovery
 also returns `events_timing_sha256`: SHA-256 of sorted event descriptions,
-onsets, and durations, with numeric times rounded to 1 ns and `n/a` encoded as
-unknown. This identifies event timing metadata; it does not read signal data.
+onsets, and durations, with numeric times rounded to 1 ns, signed zero
+canonicalized, and `n/a` encoded as unknown. This identifies event timing
+metadata; it does not read signal data.
 These optional summaries do not make the scan a complete BIDS validator.
 
 Metadata discovery opens only bounded JSON and TSV files. It does not read EEG
