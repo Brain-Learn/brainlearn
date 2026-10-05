@@ -245,6 +245,57 @@ def test_metadata_query_limit_is_reported_without_failing_the_api_shape(
     } <= codes
 
 
+def test_malformed_eeg_sidecar_points_to_json_without_missing_field_noise(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    sidecar = root / "sub-01" / "eeg" / "sub-01_task-Rest_eeg.json"
+    sidecar.write_text('{"TaskName":', encoding="utf-8")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    issues = result.recordings[0].issues
+    sidecar_issue = next(issue for issue in issues if issue.code == "invalid_eeg_sidecar")
+    assert sidecar_issue.path == "sub-01/eeg/sub-01_task-Rest_eeg.json"
+    assert sidecar_issue.message == "Metadata JSON is malformed or not UTF-8."
+    assert not {
+        "invalid_sampling_frequency",
+        "missing_eeg_reference",
+        "missing_task_name",
+        "invalid_power_line_frequency",
+        "invalid_software_filters",
+    } & {issue.code for issue in issues}
+
+
+def test_invalid_channels_tsv_names_file_and_missing_columns(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    channels = root / "sub-01" / "eeg" / "sub-01_task-Rest_channels.tsv"
+    channels.write_text("name\ttype\nCz\tEEG\n", encoding="utf-8")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    issue = next(
+        issue for issue in result.recordings[0].issues if issue.code == "invalid_channels_tsv"
+    )
+    assert result.status == "incomplete_metadata"
+    assert issue.path == "sub-01/eeg/sub-01_task-Rest_channels.tsv"
+    assert "missing required column(s): units" in issue.message
+
+
+def test_invalid_channels_tsv_reports_duplicate_columns(tmp_path: Path):
+    _, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    channels = root / "sub-01" / "eeg" / "sub-01_task-Rest_channels.tsv"
+    channels.write_text("name\ttype\tunits\tname\nCz\tEEG\tV\tCz\n", encoding="utf-8")
+
+    result = discover_bids_eeg(root, "raw-data/study")
+
+    issue = next(
+        issue for issue in result.recordings[0].issues if issue.code == "invalid_channels_tsv"
+    )
+    assert "duplicate column name(s): name" in issue.message
+
+
 def test_reports_unsupported_format_and_incomplete_brainvision_set(tmp_path: Path):
     _, root = _project(tmp_path)
     unsupported = _write_valid_dataset(root, extension=".fif")
@@ -498,7 +549,7 @@ def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
     project, root = _project(tmp_path)
     unsupported = _write_valid_dataset(root, extension=".xyz")
     service = BidsEegDiscoveryService(store)
-    with pytest.raises(BidsSignalInspectionError, match="supports EDF, BDF"):
+    with pytest.raises(BidsSignalInspectionError, match="Supported raw EEG formats"):
         service.inspect_signal(
             str(project), "raw-data/study", unsupported.relative_to(root).as_posix()
         )
@@ -506,10 +557,59 @@ def test_signal_inspection_rejects_unsupported_and_incomplete_recordings(
     unsupported.unlink()
     incomplete = _write_valid_dataset(root)
     (incomplete.parent / "sub-01_task-Rest_eeg.json").unlink()
-    with pytest.raises(BidsDatasetPathError, match="complete supported BIDS EEG metadata"):
+    with pytest.raises(BidsDatasetPathError, match="incomplete required BIDS metadata"):
         service.inspect_signal(
             str(project), "raw-data/study", incomplete.relative_to(root).as_posix()
         )
+
+
+@pytest.mark.parametrize(
+    ("extension", "invalid_state", "expected_message"),
+    [
+        (".xyz", "unsupported_format", "Supported raw EEG formats"),
+        (".edf", "missing_sidecar", "TaskName"),
+        (".edf", "missing_dataset_description", "dataset_description.json is missing"),
+    ],
+)
+def test_invalid_bids_states_return_actionable_api_errors_before_mne(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extension: str,
+    invalid_state: str,
+    expected_message: str,
+):
+    project, root = _project(tmp_path)
+    recording = _write_valid_dataset(root, extension=extension)
+    if invalid_state == "missing_sidecar":
+        recording.with_suffix(".json").unlink()
+    elif invalid_state == "missing_dataset_description":
+        (root / "dataset_description.json").unlink()
+    source_before = recording.read_bytes()
+
+    def unexpected_mne_import(name: str):
+        pytest.fail(f"Invalid BIDS metadata must be rejected before importing {name}.")
+
+    monkeypatch.setattr(bids_eeg_module, "import_module", unexpected_mne_import)
+    client = TestClient(app)
+    payload = {
+        "path": str(project),
+        "relative_dir": "raw-data/study",
+        "recording_path": recording.relative_to(root).as_posix(),
+    }
+    responses = [
+        client.post("/api/datasets/bids-eeg/identity", headers=AUTH_HEADERS, json=payload),
+        client.post("/api/datasets/bids-eeg/inspect", headers=AUTH_HEADERS, json=payload),
+        client.post(
+            "/api/datasets/bids-eeg/preview",
+            headers=AUTH_HEADERS,
+            json={**payload, "duration_seconds": 2},
+        ),
+    ]
+
+    for response in responses:
+        assert response.status_code == 422, response.text
+        assert expected_message in response.json()["detail"]
+    assert recording.read_bytes() == source_before
 
 
 def test_input_identity_hashes_signal_and_effective_sidecars_without_copying(tmp_path: Path):

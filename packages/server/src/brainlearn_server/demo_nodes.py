@@ -129,7 +129,11 @@ def relay_adapter(ctx: NodeContext) -> list[StagedOutput]:
 def bids_input_adapter(ctx: NodeContext) -> list[StagedOutput]:
     """Resolve a project-relative BIDS dataset and emit a path-only reference."""
 
-    from brainlearn_server.bids_eeg import BidsDatasetPathError, BidsEegDiscoveryService
+    from brainlearn_server.bids_eeg import (
+        BidsDatasetPathError,
+        BidsEegDiscoveryService,
+        bids_eeg_discovery_error,
+    )
 
     _require_cancel(ctx)
     if ctx.project_path is None or ctx.project_store is None:
@@ -143,8 +147,7 @@ def bids_input_adapter(ctx: NodeContext) -> list[StagedOutput]:
     except BidsDatasetPathError as exc:
         raise ControlledFailure(str(exc)) from exc
     if discovery.status != "ready":
-        message = "; ".join(issue.message for issue in discovery.issues)
-        raise ControlledFailure(message or "The selected BIDS EEG dataset has no ready recording.")
+        raise ControlledFailure(bids_eeg_discovery_error(discovery))
     ctx.staging_dir.mkdir(parents=True, exist_ok=True)
     (ctx.staging_dir / "dataset.json").write_text(
         json.dumps(

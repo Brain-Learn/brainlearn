@@ -460,19 +460,12 @@ test("reports incomplete and unsupported metadata states with clear issues", asy
   discoverMock.mockResolvedValue({
     ...result,
     status: "incomplete_metadata",
-    recordings: [
+    issues: [
       {
-        ...result.recordings[0],
-        status: "incomplete_metadata",
-        sampling_frequency_hz: null,
-        issues: [
-          {
-            code: "invalid_sampling_frequency",
-            message:
-              "EEG metadata must provide a positive numeric SamplingFrequency.",
-            path: result.recordings[0].path,
-          },
-        ],
+        code: "missing_dataset_description",
+        message:
+          "BIDS dataset_description.json is missing. Add it with a non-empty Name and numeric BIDSVersion.",
+        path: "dataset_description.json",
       },
     ],
   });
@@ -485,13 +478,30 @@ test("reports incomplete and unsupported metadata states with clear issues", asy
   );
   fireEvent.click(screen.getByTestId("bids-eeg-discover"));
   expect(
-    await screen.findByText(/required metadata is incomplete/),
+    await screen.findByText(/BIDS metadata is incomplete/),
   ).toBeInTheDocument();
   expect(
-    screen.getByText(/positive numeric SamplingFrequency/),
+    screen.getByText(/Add it with a non-empty Name and numeric BIDSVersion/),
   ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Create input identity" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Inspect signal with MNE" }),
+  ).not.toBeInTheDocument();
 
-  discoverMock.mockResolvedValue({ ...result, status: "unsupported" });
+  discoverMock.mockResolvedValue({
+    ...result,
+    status: "unsupported",
+    issues: [
+      {
+        code: "unsupported_bids_version",
+        message:
+          "This EEG metadata scanner supports BIDS major version 1 only. Use a raw BIDS 1.x dataset or convert it explicitly.",
+        path: "dataset_description.json",
+      },
+    ],
+  });
   rerender(
     <BidsEegDiscovery
       projectPath="/tmp/brainlearn-project"
@@ -501,8 +511,16 @@ test("reports incomplete and unsupported metadata states with clear issues", asy
   );
   fireEvent.click(await screen.findByTestId("bids-eeg-discover"));
   expect(
-    await screen.findByText(/unsupported BIDS version, type, or EEG format/),
+    await screen.findByText(
+      /Raw inputs must use BIDS 1.x and a supported EEG format/,
+    ),
   ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Create input identity" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Inspect signal with MNE" }),
+  ).not.toBeInTheDocument();
 });
 
 test("keeps scan failures visible and leaves the action retryable", async () => {

@@ -26,9 +26,9 @@ interface BidsEegDiscoveryProps {
 const STATUS_LABELS: Record<BidsEegDiscoveryResult["status"], string> = {
   ready: "BIDS EEG metadata is ready.",
   incomplete_metadata:
-    "BIDS EEG recordings were found, but required metadata is incomplete.",
+    "BIDS metadata is incomplete. Follow the file-specific corrections below, then scan again.",
   unsupported:
-    "This dataset contains an unsupported BIDS version, type, or EEG format.",
+    "This dataset has an unsupported BIDS version/type or EEG format. Raw inputs must use BIDS 1.x and a supported EEG format listed below.",
   not_bids: "This directory does not contain a BIDS dataset description.",
   no_recordings:
     "BIDS metadata was found, but no raw EEG recordings were discovered.",
@@ -425,49 +425,50 @@ export function BidsEegDiscovery({
                         {issue.message}
                       </div>
                     ))}
-                    {recording.status === "ready" && (
-                      <div className="project-buttons">
-                        <button
-                          data-testid={`bids-eeg-identify-${recording.path}`}
-                          disabled={identityPending !== null}
-                          aria-busy={identityPending === recording.path}
-                          onClick={() => void handleIdentify(recording.path)}
-                        >
-                          {identityPending === recording.path
-                            ? "Hashing source files…"
-                            : "Create input identity"}
-                        </button>
-                        <button
-                          data-testid={`bids-eeg-preview-${recording.path}`}
-                          disabled={
-                            previewPending !== null ||
-                            !signalInspections[recording.path]
-                          }
-                          aria-busy={previewPending === recording.path}
-                          onClick={() =>
-                            void handlePreviewSignal(recording.path)
-                          }
-                        >
-                          {previewPending === recording.path
-                            ? "Creating preview…"
-                            : signalInspections[recording.path]
-                              ? "Preview signal"
-                              : "Inspect before preview"}
-                        </button>
-                        <button
-                          data-testid={`bids-eeg-inspect-${recording.path}`}
-                          disabled={inspectionPending !== null}
-                          aria-busy={inspectionPending === recording.path}
-                          onClick={() =>
-                            void handleInspectSignal(recording.path)
-                          }
-                        >
-                          {inspectionPending === recording.path
-                            ? "Inspecting signal…"
-                            : "Inspect signal with MNE"}
-                        </button>
-                      </div>
-                    )}
+                    {result.status === "ready" &&
+                      recording.status === "ready" && (
+                        <div className="project-buttons">
+                          <button
+                            data-testid={`bids-eeg-identify-${recording.path}`}
+                            disabled={identityPending !== null}
+                            aria-busy={identityPending === recording.path}
+                            onClick={() => void handleIdentify(recording.path)}
+                          >
+                            {identityPending === recording.path
+                              ? "Hashing source files…"
+                              : "Create input identity"}
+                          </button>
+                          <button
+                            data-testid={`bids-eeg-preview-${recording.path}`}
+                            disabled={
+                              previewPending !== null ||
+                              !signalInspections[recording.path]
+                            }
+                            aria-busy={previewPending === recording.path}
+                            onClick={() =>
+                              void handlePreviewSignal(recording.path)
+                            }
+                          >
+                            {previewPending === recording.path
+                              ? "Creating preview…"
+                              : signalInspections[recording.path]
+                                ? "Preview signal"
+                                : "Inspect before preview"}
+                          </button>
+                          <button
+                            data-testid={`bids-eeg-inspect-${recording.path}`}
+                            disabled={inspectionPending !== null}
+                            aria-busy={inspectionPending === recording.path}
+                            onClick={() =>
+                              void handleInspectSignal(recording.path)
+                            }
+                          >
+                            {inspectionPending === recording.path
+                              ? "Inspecting signal…"
+                              : "Inspect signal with MNE"}
+                          </button>
+                        </div>
+                      )}
                     {signalInspections[recording.path] && (
                       <div
                         data-testid={`bids-eeg-inspection-${recording.path}`}

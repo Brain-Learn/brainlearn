@@ -540,3 +540,43 @@ Step 5A.15 is approved and checked. Step 5 remains unchecked because its
 scientific completion gate still includes unsupported-format errors and an
 independently reviewed direct-MNE reference script. No filtering or signal
 processing was introduced by this work unit.
+
+
+## Step 5A.16 final monitoring review
+
+Review date: 2026-10-05
+
+Scope: PR #26 final head `d0c15bf4958e08d1e41131f8512a893e6ca95cad`, compared
+with main `58a94c48f9242cd4d5c35cadd3d56e4cb6bbe335`.
+
+Status: **approved**. Discovery now reports unsupported recording formats and
+incomplete required BIDS metadata with corrective guidance. Dataset and
+recording readiness gate UI identity and inspection actions, and the service
+rechecks readiness before identity, inspection, preview, and workflow-input
+execution. Invalid input is rejected before MNE or downstream inspection; the
+worker regression confirms the inspection node is dependency-skipped without
+artifacts. API tests cover unsupported extensions, missing EEG sidecars, and
+missing dataset descriptions, with HTTP 422 responses and unchanged raw source
+bytes. The UI keeps actions unavailable for globally invalid datasets.
+
+The first review found that malformed `channels.tsv` diagnostics named the
+recording rather than the table, duplicate-column detection was quadratic, and
+malformed EEG JSON diagnostics named the recording and cascaded into misleading
+missing-field errors. The final head names the channels/JSON sidecars, reports
+missing or duplicate TSV headers, uses a linear duplicate scan, and suppresses
+required-field checks after a JSON parse failure. Regressions cover these cases.
+The malformed-sidecar inline finding was replied to and verified on the final
+head.
+
+In the clean managed checkout at `d0c15bf`, focused metadata/API checks passed
+(7 passed, 21 deselected); the optional EEG full suite passed 768 tests with 2
+skips and 2 upstream deprecation warnings. Ruff passed; format check passed (77
+files); strict mypy passed (30 source files); ESLint and Prettier passed;
+Vitest passed 171 tests in 18 files; production build passed (1,846 modules,
+with the existing chunk-size advisory); production audit found 0
+vulnerabilities; `git diff --check` passed. Both hosted jobs passed in Actions
+run `37303304533`.
+
+Step 5A.16 is approved and checked. Step 5 remains unchecked pending its full
+scientific completion gate and the independent direct-MNE reference script.
+No signal processing was added.
