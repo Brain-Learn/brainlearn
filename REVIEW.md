@@ -729,3 +729,28 @@ retrieval, and direct-MNE event-timing parity on code head `664d5ba`.
 
 The Step 5 completion gate is approved and checked. Step 6 remains unchecked;
 this review makes no signal-processing or clinical claims.
+
+## Step 5 live-application follow-through
+
+Review date: 2026-10-12
+
+On PR #30 head `1978dcfa2aa4844fe0ed02dff6ae95e35021ea46`, I used the live
+browser app and local service with an isolated synthetic BrainVision BIDS
+project. The UI imported the local dataset, discovered one recording, inspected
+it through MNE (500 Hz, 1,500 samples, 3 seconds, two EEG channels), displayed
+trace and Welch spectrum previews, created a content identity, and saved an
+explicit `needs_review` decision with a test-only note. The decision appeared
+in the project-local annotation collection and was bound to that recording's
+content identity. The seven source files had identical sizes and SHA-256 hashes
+before and after discovery, inspection, preview, identity creation, and decision
+save. The catalogue also returned `ds002181:1.0.0` under the EEG filter and
+showed its detail view.
+
+This supplements the component, API, and hosted integration evidence; it is a
+live browser-to-service test of local import through the QC decision path, not a
+browser-driven download of the full public snapshot. The download lifecycle
+remains supported by UI component tests, backend service tests, and the hosted
+checksum/offline-reopen smoke. The missing `.fdt` limitation on the direct-MNE
+fixture is unchanged: no signal-sample agreement or payload-based sample-count
+or duration validation is claimed. Step 5 remains approved; Step 6 was not
+started in this review unit.

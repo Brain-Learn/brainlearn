@@ -479,21 +479,20 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-05 | Step 5 full completion gate | Complete | Independent review of PR #30 on code head `664d5baa37ce314ced482ee8aa05a4651cdd4aed` confirmed GUI dataset metadata/download controls and cancel/resume behavior, API safeguards, persisted offline reopen, BIDS discovery/identity/inspection/previews/QC, unchanged source files, and direct-MNE parity on the pinned fixture. The parity digest compares all event labels, onsets, and durations at 1 ns precision; a monitor-found signed-zero canonicalization issue was repaired and regression-tested. In this clean checkout, fixture-enabled `uv run --locked --group eeg pytest -q` passed 771, 2 skipped, 2 upstream warnings; Ruff, format (79 files), strict mypy (30 files), ESLint, Prettier, Vitest (172 tests/18 files), production build (1,846 modules; existing chunk-size advisory), production audit (0 vulnerabilities), and `git diff --check` passed. Focused direct-MNE/discovery tests passed 31. Required hosted checks passed on evidence head `0ab6bb142b83667002026a96405e5bc8ae8a5433` in run `37351050885`; scheduled integration run `37350611830` passed on code head `664d5ba`, including pinned download/offline reopen and event-timing parity. The five-file fixture hashes match the pinned manifest. Its `.set` references an absent `.fdt`, so the direct-MNE reference uses an empty temporary companion and supports metadata/event parity only; MNE sample reads are not performed and no signal-value agreement or payload-based sample-count/duration validation is claimed. Preview trace/PSD calculations are independently compared to MNE on controlled synthetic data. UI component tests and backend service tests jointly cover GUI/API behavior; no browser-to-live-service end-to-end run is claimed. Step 5 is checked; Step 6 remains unchecked. | Monitor review complete on PR #30 |
 
+| 2026-10-12 | Step 5 live-app review and Step 6 handoff | Verified | On PR #30 head `1978dcfa2aa4844fe0ed02dff6ae95e35021ea46`, the live browser/service check completed local synthetic BIDS import, discovery, MNE inspection, trace/PSD preview, identity creation, and persisted explicit `needs_review` decision; all seven source-file sizes and SHA-256 values were unchanged across those source-bound actions. The EEG catalogue listed `ds002181:1.0.0`. The fixture-enabled suite and quality gates are recorded above; required CI passed in run `37351873966`, and scheduled pinned download/offline reopen and fixture parity passed in run `37350611830`. The direct-MNE `.fdt` limitation remains explicit. No Step 6 implementation was started. | PR #30 |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 5 — full dataset access and EEG inspection completion gate
+### Step 6 — first processing node and code-generation contract
 
-Independently review the complete Step 5 implementation against its acceptance
-gate: verify the GUI dataset discovery/details and safe download lifecycle,
-offline reopen, BrainLearn BIDS discovery/identity/inspection/previews/QC
-behavior, and the direct-MNE reference on the pinned fixture. Reproduce the
-required repository gate and inspect hosted evidence. Confirm that the
-documented limits of the metadata/event reference are compatible with the Step
-5 scientific claims; do not infer signal-value agreement. Record any missing
-behavior as a concrete blocker and leave Step 5 unchecked until every gate
-criterion is supported. If the whole gate is satisfied, record exact evidence
-in `REVIEW.md` and this plan and check Step 5. Do not begin Step 6 in this work
-unit.
+Implement the MNE filter adapter with explicit units and parameter limits,
+before/after signal and spectrum previews, and complete provenance. Add the
+versioned code-rendering interface and standalone Python export for BIDS import,
+inspection, and filtering. Use a deterministic sample-bearing synthetic BIDS
+fixture for the BrainLearn, direct-MNE, and generated-script comparison because
+the pinned public EEG subset lacks its sample payload. Keep the declared
+numerical tolerances and scientific assumptions explicit. Complete only Step 6
+in this work unit; do not begin Step 7.
