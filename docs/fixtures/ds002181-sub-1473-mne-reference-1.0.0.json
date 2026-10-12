@@ -299,6 +299,7 @@
     "misc": 1
   },
   "duration_seconds": 124.0,
+  "events_timing_sha256": "7970b4a800f5894562f35da8ca93d6f7ed5c3d3a582a2aa9bc731c04ca21b38a",
   "fixture": {
     "dataset_id": "ds002181",
     "input_files": [

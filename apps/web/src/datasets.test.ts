@@ -5,6 +5,7 @@ import {
   assertLocalImportRecord,
   cancelDownload,
   checksumCoverage,
+  discoverBidsEeg,
   formatBytes,
   getDownload,
   listDatasets,
@@ -92,6 +93,63 @@ test("listDatasets builds a bounded query and validates the page shape", async (
   expect(url).toContain("modality=EEG");
   expect(url).toContain("first=5");
   expect(url).toContain(`path=${encodeURIComponent("/tmp/project")}`);
+});
+
+test("discoverBidsEeg validates the bounded event-timing identity", async () => {
+  const discovery = {
+    schema_version: "1.0",
+    dataset_path: "raw-data/study",
+    status: "ready",
+    dataset_name: "Study",
+    bids_version: "1.2.0",
+    recordings: [
+      {
+        path: "sub-01/eeg/sub-01_task-Rest_eeg.edf",
+        subject: "01",
+        session: null,
+        task: "Rest",
+        format: "edf",
+        status: "ready",
+        sampling_frequency_hz: 500,
+        eeg_reference: "average",
+        eeg_channel_count: 2,
+        channel_names: ["Cz", "Pz"],
+        event_count: 1,
+        event_types: ["stimulus"],
+        events_timing_sha256: "a".repeat(64),
+        issues: [],
+      },
+    ],
+    issues: [],
+    inspection_scope: "metadata_only",
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({ ok: true, json: async () => discovery })),
+  );
+
+  const result = await discoverBidsEeg("/tmp/project", "raw-data/study", {
+    token: "session-token",
+  });
+  expect(result.recordings[0].events_timing_sha256).toBe("a".repeat(64));
+
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ...discovery,
+        recordings: [
+          { ...discovery.recordings[0], events_timing_sha256: "invalid" },
+        ],
+      }),
+    })),
+  );
+  await expect(
+    discoverBidsEeg("/tmp/project", "raw-data/study", {
+      token: "session-token",
+    }),
+  ).rejects.toThrow("discovery response does not match version 1.0");
 });
 
 test("previewBidsEegSignal sends bounded options and validates preview contract", async () => {

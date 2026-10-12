@@ -55,6 +55,7 @@ const result: BidsEegDiscoveryResult = {
       channel_names: ["Cz", "Pz"],
       event_count: 2,
       event_types: ["deviant", "standard"],
+      events_timing_sha256: "a".repeat(64),
       issues: [],
     },
   ],
