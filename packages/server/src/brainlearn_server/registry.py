@@ -1,8 +1,9 @@
 """Node manifests for the editable graph and its allowlisted worker.
 
-The curated BIDS EEG input and read-only inspection node execute through
-explicit worker adapters. Later EEG operations remain illustrative. The
-``demo.*`` manifests are explicitly non-scientific demonstration nodes whose
+The curated BIDS EEG input, read-only inspection, and experimental filter
+execute through explicit worker adapters. Later EEG operations remain
+illustrative. The ``demo.*`` manifests are explicitly non-scientific
+demonstration nodes whose
 ports and versions derive from the authoritative worker contract in
 :mod:`brainlearn_server.demo_nodes`.
 """
@@ -14,6 +15,7 @@ from typing import Literal
 from brainlearn_core import (
     CanvasPosition,
     CitationMetadata,
+    CodeRendererMetadata,
     LicenseMetadata,
     NodeInstance,
     NodeManifest,
@@ -26,6 +28,7 @@ from brainlearn_core import (
 )
 
 from brainlearn_server.demo_nodes import DEMO_NODES
+from brainlearn_server.python_export import CODE_RENDERER_ID, CODE_RENDERER_VERSION
 
 EXAMPLE_LICENSE = LicenseMetadata(
     name="BSD 3-Clause License",
@@ -178,13 +181,19 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.filter",
-        node_version="0.1.0",
+        node_version="1.1.0",
         label="Band-pass Filter",
-        description="Configure a visible, provenance-tracked frequency filter.",
+        description=(
+            "Apply an MNE FIR band-pass and optional notch filter to EEG channels, with a "
+            "bounded before/after preview and provenance."
+        ),
         category="Preprocessing",
+        status="experimental",
         ports=[
             _port("raw", "Raw EEG", PortDirection.INPUT, ScientificType.RAW_EEG),
             _port("filtered", "Filtered EEG", PortDirection.OUTPUT, ScientificType.RAW_EEG),
+            _port("preview", "Before/after preview", PortDirection.OUTPUT, ScientificType.REPORT),
+            _port("provenance", "Filter provenance", PortDirection.OUTPUT, ScientificType.REPORT),
         ],
         parameters=[
             ParameterSchema(
@@ -193,7 +202,9 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
                 value_type="number",
                 default=1.0,
                 required=True,
-                minimum=0.0,
+                description="High-pass cutoff in Hz; must be lower than the high cutoff.",
+                minimum=0.1,
+                maximum=100.0,
             ),
             ParameterSchema(
                 id="high_hz",
@@ -201,11 +212,45 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
                 value_type="number",
                 default=40.0,
                 required=True,
-                minimum=0.0,
+                description=(
+                    "Low-pass cutoff in Hz; must be below the recording's Nyquist frequency."
+                ),
+                minimum=0.5,
+                maximum=200.0,
+            ),
+            ParameterSchema(
+                id="notch_hz",
+                label="Notch frequencies (Hz)",
+                value_type="string",
+                default="",
+                description=(
+                    "Optional comma-separated notch centers in Hz; leave blank to disable. "
+                    "Each center must fall within the pass band and below Nyquist."
+                ),
+            ),
+            ParameterSchema(
+                id="notch_width_hz",
+                label="Notch width (Hz)",
+                value_type="number",
+                default=1.0,
+                description="Width passed to MNE's FIR notch filter, in Hz.",
+                minimum=0.1,
+                maximum=10.0,
             ),
         ],
         license=EXAMPLE_LICENSE,
-        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
+        code_renderers=[
+            CodeRendererMetadata(
+                id=CODE_RENDERER_ID,
+                version=CODE_RENDERER_VERSION,
+                language="python",
+                description=(
+                    "Exports the supported BIDS import, inspection, and MNE filter path as a "
+                    "standalone Python script."
+                ),
+            )
+        ],
     ),
     NodeManifest(
         id="eeg.ica_review",

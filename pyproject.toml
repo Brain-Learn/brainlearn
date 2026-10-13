@@ -18,6 +18,7 @@ dev = [
   "ruff>=0.12,<1",
 ]
 eeg = [
+  "brainlearn-mne",
   "mne==1.13.2",
   "mne-bids==0.20.0",
 ]
@@ -25,9 +26,10 @@ eeg = [
 [tool.uv.sources]
 brainlearn-core = { workspace = true }
 brainlearn-server = { workspace = true }
+brainlearn-mne = { workspace = true }
 
 [tool.uv.workspace]
-members = ["packages/core", "packages/server"]
+members = ["packages/core", "packages/server", "plugins/mne"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -42,5 +44,5 @@ select = ["E", "F", "I", "UP"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-packages = ["brainlearn_core", "brainlearn_server"]
-mypy_path = ["packages/core/src", "packages/server/src"]
+packages = ["brainlearn_core", "brainlearn_server", "brainlearn_mne"]
+mypy_path = ["packages/core/src", "packages/server/src", "plugins/mne/src"]

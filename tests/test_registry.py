@@ -45,7 +45,7 @@ def test_eeg_manifests_record_upstream_dependency_metadata() -> None:
             continue
         dependencies = {item.package_name: item for item in manifest.software_dependencies}
         assert "mne" in dependencies
-        if node_id in {"input.bids_eeg", "eeg.inspect"}:
+        if node_id in {"input.bids_eeg", "eeg.inspect", "eeg.filter"}:
             assert "mne-bids" in dependencies
         for dependency in dependencies.values():
             assert dependency.version == (
@@ -129,6 +129,11 @@ def test_registry_ports_and_parameters_match_example_instances() -> None:
         assert {parameter.id for parameter in node.parameters} == {
             parameter.id for parameter in manifest.parameters
         }
+
+    filter_renderers = manifests["eeg.filter"].code_renderers
+    assert [
+        (renderer.id, renderer.version, renderer.language) for renderer in filter_renderers
+    ] == [("brainlearn.eeg.mne-filter.python", "1.1.0", "python")]
 
 
 def test_registry_instances_form_a_compatible_editable_graph() -> None:

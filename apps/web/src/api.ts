@@ -1,5 +1,6 @@
 import type {
   NodeManifest,
+  RenderedCode,
   Workflow,
   WorkflowValidationResponse,
 } from "./types";
@@ -69,9 +70,15 @@ function isSoftwareDependency(value: unknown): boolean {
 export function assertNodeManifest(
   value: unknown,
 ): asserts value is NodeManifest {
+  const isCodeRenderer = (renderer: unknown): boolean =>
+    isRecord(renderer) &&
+    typeof renderer.id === "string" &&
+    /^\d+\.\d+\.\d+$/.test(String(renderer.version)) &&
+    renderer.language === "python" &&
+    typeof renderer.description === "string";
   if (
     !isRecord(value) ||
-    value.manifest_schema_version !== "1.1" ||
+    value.manifest_schema_version !== "1.2" ||
     typeof value.id !== "string" ||
     typeof value.node_version !== "string" ||
     typeof value.label !== "string" ||
@@ -88,6 +95,8 @@ export function assertNodeManifest(
     typeof value.license.name !== "string" ||
     !Array.isArray(value.software_dependencies) ||
     !value.software_dependencies.every(isSoftwareDependency) ||
+    !Array.isArray(value.code_renderers) ||
+    !value.code_renderers.every(isCodeRenderer) ||
     !Array.isArray(value.capability_requirements) ||
     !value.capability_requirements.every(
       (requirement) =>
@@ -98,7 +107,7 @@ export function assertNodeManifest(
     )
   ) {
     throw new Error(
-      "The node registry response does not match contract version 1.1.",
+      "The node registry response does not match contract version 1.2.",
     );
   }
 }
@@ -124,6 +133,47 @@ export async function validateWorkflow(
   if (!response.ok)
     throw new Error(`Validation API returned ${response.status}`);
   return (await response.json()) as WorkflowValidationResponse;
+}
+
+export async function renderWorkflowPython(
+  workflow: Workflow,
+  token: string,
+): Promise<RenderedCode> {
+  const response = await fetch("/api/workflows/render/python", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(workflow),
+  });
+  if (!response.ok) {
+    const payload: unknown = await response.json().catch(() => null);
+    const detail =
+      isRecord(payload) && typeof payload.detail === "string"
+        ? payload.detail
+        : `Python export failed with status ${response.status}.`;
+    throw new Error(detail);
+  }
+  const payload: unknown = await response.json();
+  if (
+    !isRecord(payload) ||
+    payload.schema_version !== "1.0" ||
+    typeof payload.renderer_id !== "string" ||
+    typeof payload.renderer_version !== "string" ||
+    payload.language !== "python" ||
+    typeof payload.filename !== "string" ||
+    !Array.isArray(payload.dependencies) ||
+    !payload.dependencies.every(
+      (dependency) => typeof dependency === "string",
+    ) ||
+    typeof payload.source !== "string"
+  ) {
+    throw new Error(
+      "The Python export response did not match renderer contract version 1.0.",
+    );
+  }
+  return payload as unknown as RenderedCode;
 }
 
 export interface ExampleInfo {

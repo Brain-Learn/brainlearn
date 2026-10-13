@@ -20,12 +20,13 @@ import {
   removeNodes,
   resetPresentation,
   resolvePresentation,
+  supportsPythonFilterExport,
   updatePresentation,
 } from "./graph";
 import type { NodeManifest } from "./types";
 
 const manifest: NodeManifest = {
-  manifest_schema_version: "1.1",
+  manifest_schema_version: "1.2",
   id: "input.test",
   node_version: "0.1.0",
   label: "Test input",
@@ -47,7 +48,57 @@ const manifest: NodeManifest = {
   license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
   capability_requirements: [],
   software_dependencies: [],
+  code_renderers: [],
 };
+
+test("enables Python export only for the implemented BIDS inspection filter path", () => {
+  const workflow = {
+    ...emptyWorkflow(),
+    nodes: [
+      {
+        ...instantiateNode(manifest, "bids", { x: 0, y: 0 }),
+        type: "input.bids_eeg",
+      },
+      {
+        ...instantiateNode(manifest, "inspect", { x: 0, y: 0 }),
+        type: "eeg.inspect",
+      },
+      {
+        ...instantiateNode(manifest, "filter", { x: 0, y: 0 }),
+        type: "eeg.filter",
+      },
+    ],
+    edges: [
+      {
+        id: "bids-inspect",
+        source: { node_id: "bids", port_id: "dataset" },
+        target: { node_id: "inspect", port_id: "dataset" },
+      },
+      {
+        id: "inspect-filter",
+        source: { node_id: "inspect", port_id: "raw" },
+        target: { node_id: "filter", port_id: "raw" },
+      },
+    ],
+  };
+
+  expect(supportsPythonFilterExport(workflow)).toBe(true);
+  expect(
+    supportsPythonFilterExport({
+      ...workflow,
+      edges: workflow.edges.slice(0, 1),
+    }),
+  ).toBe(false);
+  expect(
+    supportsPythonFilterExport({
+      ...workflow,
+      nodes: [
+        ...workflow.nodes,
+        instantiateNode(manifest, "extra", { x: 0, y: 0 }),
+      ],
+    }),
+  ).toBe(false);
+});
 
 test("creates manifest-backed nodes and connects, disconnects, and removes them", () => {
   const first = instantiateNode(manifest, "first", { x: 0, y: 0 });

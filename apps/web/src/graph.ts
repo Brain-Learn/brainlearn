@@ -29,6 +29,35 @@ export function emptyWorkflow(): Workflow {
   };
 }
 
+export function supportsPythonFilterExport(workflow: Workflow): boolean {
+  const byType = new Map(workflow.nodes.map((node) => [node.type, node]));
+  if (
+    workflow.nodes.length !== 3 ||
+    workflow.edges.length !== 2 ||
+    byType.size !== 3 ||
+    !byType.has("input.bids_eeg") ||
+    !byType.has("eeg.inspect") ||
+    !byType.has("eeg.filter")
+  ) {
+    return false;
+  }
+  const bids = byType.get("input.bids_eeg");
+  const inspect = byType.get("eeg.inspect");
+  const filter = byType.get("eeg.filter");
+  if (!bids || !inspect || !filter) return false;
+  const actual = new Set(
+    workflow.edges.map(
+      (edge) =>
+        `${edge.source.node_id}:${edge.source.port_id}->${edge.target.node_id}:${edge.target.port_id}`,
+    ),
+  );
+  return (
+    actual.size === 2 &&
+    actual.has(`${bids.id}:dataset->${inspect.id}:dataset`) &&
+    actual.has(`${inspect.id}:raw->${filter.id}:raw`)
+  );
+}
+
 export function instantiateNode(
   manifest: NodeManifest,
   id: string,

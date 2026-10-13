@@ -1,8 +1,10 @@
 import { CircleAlert, RotateCcw, Square } from "lucide-react";
 import { useState } from "react";
 
+import { EEGFilterComparisonPreview } from "./EEGFilterComparisonPreview";
 import type {
   ArtifactRecord,
+  EEGFilterComparisonPreview as EEGFilterComparisonPreviewData,
   NodeRunRecord,
   RunRecord,
   RunResponse,
@@ -92,6 +94,8 @@ export function RunDrawer({
   onRecover,
   onOpenRun,
   onOpenArtifact,
+  filterPreview,
+  onCloseFilterPreview,
   actionPending,
 }: {
   run: RunRecord | null;
@@ -114,6 +118,8 @@ export function RunDrawer({
   onRecover: () => void;
   onOpenRun: (runId: string, path: string) => void;
   onOpenArtifact: (artifact: ArtifactRecord) => void;
+  filterPreview: EEGFilterComparisonPreviewData | null;
+  onCloseFilterPreview: () => void;
   actionPending: boolean;
 }) {
   const terminal = run
@@ -281,12 +287,22 @@ export function RunDrawer({
                       disabled={actionPending}
                       onClick={() => onOpenArtifact(artifact)}
                     >
-                      Open
+                      {artifact.media_type ===
+                      "application/vnd.brainlearn.eeg-filter-preview+json"
+                        ? "View comparison"
+                        : "Open"}
                     </button>
                   </div>
                 )),
               )}
             </div>
+          )}
+
+          {filterPreview && (
+            <EEGFilterComparisonPreview
+              onClose={onCloseFilterPreview}
+              preview={filterPreview}
+            />
           )}
 
           <div className="run-events">

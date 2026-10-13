@@ -239,6 +239,14 @@ def eeg_inspection_adapter(ctx: NodeContext) -> list[StagedOutput]:
     ]
 
 
+def eeg_filter_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Apply the allowlisted MNE EEG band-pass and optional notch to inspected BIDS data."""
+
+    from brainlearn_server.mne_filter import filter_bids_eeg
+
+    return filter_bids_eeg(ctx)
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
 
@@ -373,6 +381,56 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
                 required=True,
                 description="Path to one discovered recording, relative to its dataset root.",
             )
+        },
+        cacheable=False,
+    ),
+    "eeg.filter": DemoNodeManifest(
+        version="1.1.0",
+        inputs={"raw": True},
+        outputs={"filtered": True, "preview": True, "provenance": True},
+        handler=eeg_filter_adapter,
+        parameters={
+            "low_hz": DemoParameter(
+                id="low_hz",
+                label="Low cutoff (Hz)",
+                value_type="number",
+                default=1.0,
+                required=True,
+                description="High-pass cutoff in Hz; must be above 0 and below the high cutoff.",
+                minimum=0.1,
+                maximum=100.0,
+            ),
+            "high_hz": DemoParameter(
+                id="high_hz",
+                label="High cutoff (Hz)",
+                value_type="number",
+                default=40.0,
+                required=True,
+                description=(
+                    "Low-pass cutoff in Hz; must be below the recording's Nyquist frequency."
+                ),
+                minimum=0.5,
+                maximum=200.0,
+            ),
+            "notch_hz": DemoParameter(
+                id="notch_hz",
+                label="Notch frequencies (Hz)",
+                value_type="string",
+                default="",
+                description=(
+                    "Optional comma-separated notch centers in Hz; leave blank to disable. "
+                    "Each center must fall within the pass band and below Nyquist."
+                ),
+            ),
+            "notch_width_hz": DemoParameter(
+                id="notch_width_hz",
+                label="Notch width (Hz)",
+                value_type="number",
+                default=1.0,
+                description="Width passed to MNE's FIR notch filter, in Hz.",
+                minimum=0.1,
+                maximum=10.0,
+            ),
         },
         cacheable=False,
     ),

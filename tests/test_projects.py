@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 
 import pytest
-from brainlearn_core import ProjectManifest, Workflow, migrate_project_dict, migrate_workflow_dict
+from brainlearn_core import (
+    ProjectManifest,
+    Workflow,
+    migrate_project_dict,
+    migrate_workflow_dict,
+    validate_workflow,
+)
 from brainlearn_server import auth as auth_module
 from brainlearn_server import project_store as store_module
 from brainlearn_server.app import app, store
@@ -14,7 +20,9 @@ from brainlearn_server.project_store import (
     WORKFLOW_FILENAME,
     atomic_write_json,
     canonicalize_project_path,
+    migrate_project_workflow_dict,
 )
+from brainlearn_server.registry import NODE_REGISTRY_BY_ID
 from fastapi.testclient import TestClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -65,6 +73,36 @@ def test_migrations_reject_unknown_versions() -> None:
         migrate_project_dict({"project_schema_version": "9.9"})
     with pytest.raises(ValueError, match="Unsupported workflow schema_version"):
         migrate_workflow_dict({"schema_version": "9.9"})
+
+
+def test_legacy_filter_node_migrates_without_mutating_saved_workflow() -> None:
+    original = _example_workflow()
+    legacy_filter = next(node for node in original["nodes"] if node["type"] == "eeg.filter")  # type: ignore[index]
+    legacy_filter["parameters"][1]["value"] = 55.0  # type: ignore[index]
+
+    migrated = migrate_project_workflow_dict(original)
+    workflow = Workflow.model_validate(migrated)
+    current_filter = next(node for node in workflow.nodes if node.type == "eeg.filter")
+    parameter_values = {parameter.id: parameter.value for parameter in current_filter.parameters}
+
+    assert len(legacy_filter["ports"]) == 2  # type: ignore[index]
+    assert parameter_values == {
+        "low_hz": 1.0,
+        "high_hz": 55.0,
+        "notch_hz": "",
+        "notch_width_hz": 1.0,
+    }
+    assert validate_workflow(workflow, NODE_REGISTRY_BY_ID).valid
+
+
+def test_project_migration_leaves_customized_filter_nodes_untouched() -> None:
+    workflow = _example_workflow()
+    legacy_filter = next(node for node in workflow["nodes"] if node["type"] == "eeg.filter")  # type: ignore[index]
+    legacy_filter["description"] = "Researcher-authored note."  # type: ignore[index]
+
+    migrated = migrate_project_workflow_dict(workflow)
+
+    assert migrated == workflow
 
 
 def test_canonicalize_rejects_relative_paths() -> None:

@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,95 @@ from brainlearn_core.validation import ValidationResult
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID
 
 RECENT_FILENAME = "recent.json"
+
+_LEGACY_FILTER_DESCRIPTION = "Configure a visible, provenance-tracked frequency filter."
+
+
+def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Apply project-schema migrations and exact registered-node migrations."""
+
+    migrated = migrate_workflow_dict(data)
+    nodes = migrated.get("nodes")
+    if not isinstance(nodes, list):
+        return migrated
+    migrated_nodes = [_migrate_legacy_filter_node(node) for node in nodes]
+    if all(before is after for before, after in zip(nodes, migrated_nodes, strict=True)):
+        return migrated
+    result = dict(migrated)
+    result["nodes"] = migrated_nodes
+    return result
+
+
+def _migrate_legacy_filter_node(value: Any) -> Any:
+    """Upgrade only the exact Step 5 illustrative filter snapshot."""
+
+    if not isinstance(value, dict) or value.get("type") != "eeg.filter":
+        return value
+    ports = value.get("ports")
+    parameters = value.get("parameters")
+    expected_ports = [
+        ("raw", "Raw EEG", "input", "raw_eeg"),
+        ("filtered", "Filtered EEG", "output", "raw_eeg"),
+    ]
+    if (
+        value.get("label") != "Band-pass Filter"
+        or value.get("category") != "Preprocessing"
+        or value.get("description") != _LEGACY_FILTER_DESCRIPTION
+        or value.get("pauses_for_review", False) is not False
+        or not isinstance(ports, list)
+        or len(ports) != len(expected_ports)
+        or not isinstance(parameters, list)
+        or len(parameters) != 2
+    ):
+        return value
+    for port, (port_id, label, direction, data_type) in zip(ports, expected_ports, strict=True):
+        if (
+            not isinstance(port, dict)
+            or set(port) - {"id", "label", "direction", "data_type", "required"}
+            or (port.get("id"), port.get("label"), port.get("direction"), port.get("data_type"))
+            != (port_id, label, direction, data_type)
+            or port.get("required", True) is not True
+        ):
+            return value
+    expected_parameters = [
+        ("low_hz", "Low cutoff (Hz)"),
+        ("high_hz", "High cutoff (Hz)"),
+    ]
+    parameter_values: dict[str, Any] = {}
+    for parameter, (parameter_id, label) in zip(parameters, expected_parameters, strict=True):
+        if (
+            not isinstance(parameter, dict)
+            or set(parameter) - {"id", "label", "value", "required", "description"}
+            or (parameter.get("id"), parameter.get("label")) != (parameter_id, label)
+            or parameter.get("required") is not True
+            # Pydantic adds ``description: null`` when an older workflow is
+            # parsed and saved. Accept that serializer-only field while
+            # leaving any researcher-authored description untouched.
+            or parameter.get("description") is not None
+        ):
+            return value
+        parameter_values[parameter_id] = parameter.get("value")
+
+    manifest = NODE_REGISTRY_BY_ID.get("eeg.filter")
+    if manifest is None:
+        return value
+    migrated = deepcopy(value)
+    migrated["label"] = manifest.label
+    migrated["category"] = manifest.category
+    migrated["description"] = manifest.description
+    migrated["pauses_for_review"] = manifest.review_behavior == "required"
+    migrated["ports"] = [port.model_dump(mode="json") for port in manifest.ports]
+    migrated["parameters"] = [
+        {
+            "id": schema.id,
+            "label": schema.label,
+            "value": parameter_values.get(schema.id, schema.default),
+            "required": schema.required,
+            "description": schema.description,
+        }
+        for schema in manifest.parameters
+    ]
+    return migrated
 
 
 def _default_state_dir() -> Path:
@@ -200,7 +290,7 @@ class ProjectStore:
         if not isinstance(manifest_raw, dict) or not isinstance(workflow_raw, dict):
             raise ValueError(f"Project '{target}' contains invalid JSON documents.")
         manifest = ProjectManifest.model_validate(migrate_project_dict(manifest_raw))
-        graph = Workflow.model_validate(migrate_workflow_dict(workflow_raw))
+        graph = Workflow.model_validate(migrate_project_workflow_dict(workflow_raw))
         self.add_recent(target, manifest.name, manifest.updated_at)
         return target, manifest, graph
 
@@ -230,7 +320,7 @@ class ProjectStore:
         previous_text = workflow_path.read_text(encoding="utf-8")
         try:
             previous_raw = json.loads(previous_text)
-            previous_graph = Workflow.model_validate(migrate_workflow_dict(previous_raw))
+            previous_graph = Workflow.model_validate(migrate_project_workflow_dict(previous_raw))
             previous_valid = validate_workflow(previous_graph, NODE_REGISTRY_BY_ID).valid
         except ValueError:
             previous_graph = None

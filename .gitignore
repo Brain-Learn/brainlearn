@@ -26,6 +26,10 @@ runs/
 *.vhdr
 *.vmrk
 *.eeg
+# Keep the tiny deterministic BrainLearn demo fixture in source control.
+!examples/synthetic-eeg-bids/**/*.vhdr
+!examples/synthetic-eeg-bids/**/*.vmrk
+!examples/synthetic-eeg-bids/**/*.eeg
 
 # Editors and operating systems
 .DS_Store

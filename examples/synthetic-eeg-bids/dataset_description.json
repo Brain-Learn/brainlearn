@@ -1,0 +1,12 @@
+{
+  "Name": "BrainLearn Synthetic EEG Demo",
+  "BIDSVersion": "1.8.0",
+  "DatasetType": "raw",
+  "License": "CC0-1.0",
+  "GeneratedBy": [
+    {
+      "Name": "BrainLearn synthetic EEG fixture",
+      "Version": "1.0.0"
+    }
+  ]
+}

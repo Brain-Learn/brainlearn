@@ -59,11 +59,12 @@ def test_registry_lists_versioned_manifests() -> None:
     assert {"demo.copy", "demo.delay", "demo.fail", "demo.review", "demo.relay"} <= {
         manifest["id"] for manifest in manifests
     }
-    assert all(manifest["manifest_schema_version"] == "1.1" for manifest in manifests)
+    assert all(manifest["manifest_schema_version"] == "1.2" for manifest in manifests)
     statuses = {manifest["id"]: manifest["status"] for manifest in manifests}
     assert {node_id for node_id, status in statuses.items() if status == "experimental"} == {
         "input.bids_eeg",
         "eeg.inspect",
+        "eeg.filter",
     }
     assert all(
         status == "example" for node_id, status in statuses.items() if node_id.startswith("demo.")

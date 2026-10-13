@@ -20,7 +20,7 @@ import type {
 } from "./types";
 
 const bidsManifest: NodeManifest = {
-  manifest_schema_version: "1.1",
+  manifest_schema_version: "1.2",
   id: "input.bids_eeg",
   node_version: "0.1.0",
   label: "BIDS EEG",
@@ -34,6 +34,7 @@ const bidsManifest: NodeManifest = {
   license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
   capability_requirements: [],
   software_dependencies: [],
+  code_renderers: [],
 };
 
 const IDENTITY = (domain: string, ch: string) =>

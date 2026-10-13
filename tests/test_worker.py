@@ -406,9 +406,8 @@ def test_failure_skips_downstream_and_fails_run(client: TestClient, tmp_path: Pa
 
 def test_unsupported_node_types_fail_deterministically(client: TestClient, tmp_path: Path) -> None:
     project = _make_project(client, tmp_path)
-    workflow = _workflow(
-        [_node("mystery", "eeg.filter", {"low_hz": 1.0}, inputs=True, outputs=True)], []
-    )
+    unsupported = instantiate_registered_node("eeg.ica_review", "mystery", CanvasPosition(x=0, y=0))
+    workflow = _workflow([unsupported.model_dump(mode="json")], [])
     started = _start(client, project, workflow)
     finished = _wait_for_state(client, project, started["run_id"], {"failed"})
     assert finished["node_runs"][0]["failure"]["code"] == "unsupported_node_type"

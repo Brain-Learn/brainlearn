@@ -146,15 +146,16 @@ Scientific review required before checking this step.
 
 Goal: execute a real filter and prove that the same graph can produce readable Python.
 
-- [ ] Implement the MNE band-pass/notch filter adapter with explicit units and parameter constraints.
-- [ ] Show before/after signal and spectrum previews.
-- [ ] Record filter design, phase behavior, edge handling, software version, and warnings.
-- [ ] Define a versioned code-rendering interface for node manifests.
-- [ ] Generate a minimal standalone Python script for BIDS import, inspection, and filtering.
-- [ ] Keep data paths configurable and escape generated literals safely.
-- [ ] Include dependency versions and citations with the export.
-- [ ] Add tests that execute the generated script on the fixture.
-- [ ] Compare internal and generated-code outputs using predeclared numerical tolerances.
+- [x] Implement the MNE band-pass/notch filter adapter with explicit units and parameter constraints.
+- [x] Show before/after signal and spectrum previews.
+- [x] Record filter design, phase behavior, edge handling, software version, and warnings.
+- [x] Define a versioned code-rendering interface for node manifests.
+- [x] Generate a minimal standalone Python script for BIDS import, inspection, and filtering.
+- [x] Keep data paths configurable and escape generated literals safely.
+- [x] Include dependency versions and citations with the export.
+- [x] Add tests that execute the generated script on the fixture.
+- [x] Compare internal and generated-code outputs using predeclared numerical tolerances.
+- [x] Migrate the exact legacy illustrative filter node so Step 5 projects still open against the current registry.
 
 Completion gate: the internal adapter, direct-MNE reference, and generated Python script agree within documented tolerances on the same fixture and parameters. Changing filter parameters updates both execution and exported code.
 
@@ -480,19 +481,20 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-05 | Step 5 full completion gate | Complete | Independent review of PR #30 on code head `664d5baa37ce314ced482ee8aa05a4651cdd4aed` confirmed GUI dataset metadata/download controls and cancel/resume behavior, API safeguards, persisted offline reopen, BIDS discovery/identity/inspection/previews/QC, unchanged source files, and direct-MNE parity on the pinned fixture. The parity digest compares all event labels, onsets, and durations at 1 ns precision; a monitor-found signed-zero canonicalization issue was repaired and regression-tested. In this clean checkout, fixture-enabled `uv run --locked --group eeg pytest -q` passed 771, 2 skipped, 2 upstream warnings; Ruff, format (79 files), strict mypy (30 files), ESLint, Prettier, Vitest (172 tests/18 files), production build (1,846 modules; existing chunk-size advisory), production audit (0 vulnerabilities), and `git diff --check` passed. Focused direct-MNE/discovery tests passed 31. Required hosted checks passed on evidence head `0ab6bb142b83667002026a96405e5bc8ae8a5433` in run `37351050885`; scheduled integration run `37350611830` passed on code head `664d5ba`, including pinned download/offline reopen and event-timing parity. The five-file fixture hashes match the pinned manifest. Its `.set` references an absent `.fdt`, so the direct-MNE reference uses an empty temporary companion and supports metadata/event parity only; MNE sample reads are not performed and no signal-value agreement or payload-based sample-count/duration validation is claimed. Preview trace/PSD calculations are independently compared to MNE on controlled synthetic data. UI component tests and backend service tests jointly cover GUI/API behavior; no browser-to-live-service end-to-end run is claimed. Step 5 is checked; Step 6 remains unchecked. | Monitor review complete on PR #30 |
 
 | 2026-10-12 | Step 5 live-app review and Step 6 handoff | Verified | On PR #30 head `1978dcfa2aa4844fe0ed02dff6ae95e35021ea46`, the live browser/service check completed local synthetic BIDS import, discovery, MNE inspection, trace/PSD preview, identity creation, and persisted explicit `needs_review` decision; all seven source-file sizes and SHA-256 values were unchanged across those source-bound actions. The EEG catalogue listed `ds002181:1.0.0`. The fixture-enabled suite and quality gates are recorded above; required CI passed in run `37351873966`, and scheduled pinned download/offline reopen and fixture parity passed in run `37350611830`. The direct-MNE `.fdt` limitation remains explicit. No Step 6 implementation was started. | PR #30 |
+| 2026-10-13 | Step 6 filter and Python export | Verified; monitoring pending | Added the allowlisted `brainlearn-mne` 0.2.0 adapter for explicit-unit 1–40 Hz default FIR band-pass plus optional explicitly entered notch centers, resource limits, before/after trace and Welch spectrum previews, warnings, settings, pinned versions, and MNE/MNE-BIDS citations. The renderer is advertised on the filter node via NodeManifest schema 1.2 and renderer `brainlearn.eeg.mne-filter.python` 1.1.0; the authenticated endpoint returns a schema-1.0 envelope and refuses unadvertised versions. The standalone script supports configurable BIDS and output paths, safe literal escaping, source hashes, clear dependency pins, and paired output rollback; existing outputs are preserved unless `--overwrite` is passed. A deterministic 10-second, 2-channel BIDS fixture carries CC0-1.0 metadata and a checked-in manifest of generator/file SHA-256 values. Exact legacy Step 5 filter snapshots migrate in the server project store while custom graph data remains untouched. The test executes BrainLearn, independent direct MNE, and generated-script paths on the same 50 Hz notch/1–70 Hz setup; maximum absolute difference is bounded by `2e-5 µV` (`rtol=1e-6`, `atol=2e-5 µV`), and tests prove the notch changes output, export reflects configured parameters, paths are escaped, inputs stay unchanged, and overwrite behavior is explicit. Python 3.12.13 gate: `uv sync --locked --all-packages --group eeg`; `uv run --frozen ruff check .` passed; format check passed (86 files); strict mypy passed (34 source files); `uv run --frozen pytest -q` passed 797, 3 skipped, 2 upstream deprecation warnings (36.75s). Frontend: ESLint and Prettier passed; Vitest passed 176 tests in 19 files; Vite build passed (1,848 modules; existing 500 kB chunk advisory); `npm audit --omit=dev` found 0 vulnerabilities. The first full Vitest run exposed a timing race in an existing dataset-download progress test; the focused test and a complete rerun both passed. `uv lock --check` and `git diff --check` passed after the plan update. The default EEG example and app now distinguish the three-node exportable path; UI component/API tests pass, but no live browser-to-service run is claimed. Step 6's top-level and scientific-review gates remain unchecked pending independent monitoring. | PR pending |
+
+| 2026-10-13 | Step 6 hosted implementation CI | Verified; monitoring pending | Both required GitHub Actions jobs passed on implementation commit `8b5276e6224dc8a2ae8734a1b3b9ba5b0067728f` in run `38375853528`. PR #31 is ready for independent review. The Step 6 top-level and scientific-review gates remain unchecked. | PR #31 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 6 — first processing node and code-generation contract
+### Step 6 — independent implementation and scientific review
 
-Implement the MNE filter adapter with explicit units and parameter limits,
-before/after signal and spectrum previews, and complete provenance. Add the
-versioned code-rendering interface and standalone Python export for BIDS import,
-inspection, and filtering. Use a deterministic sample-bearing synthetic BIDS
-fixture for the BrainLearn, direct-MNE, and generated-script comparison because
-the pinned public EEG subset lacks its sample payload. Keep the declared
-numerical tolerances and scientific assumptions explicit. Complete only Step 6
-in this work unit; do not begin Step 7.
+Review the Step 6 implementation PR, reproduce the full gate and the direct-MNE
+comparison, inspect the generated script and source-preservation behavior, and
+assess the documented filter assumptions. Keep Step 6's top-level checkbox
+unchecked until the independent review is complete. Do not begin Step 7 in the
+review work unit. The synthetic fixture supports engineering agreement only;
+the public fixture still lacks sample payload for scientific validation.

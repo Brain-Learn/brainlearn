@@ -53,6 +53,8 @@ function renderDrawer(
     onRecover: vi.fn(),
     onOpenRun: vi.fn(),
     onOpenArtifact: vi.fn(),
+    filterPreview: null,
+    onCloseFilterPreview: vi.fn(),
     actionPending: false,
     ...overrides,
   };
@@ -279,6 +281,8 @@ test("offers cancel only for non-terminal runs and honors reduced motion", () =>
       message={null}
       onCancel={() => {}}
       onOpenArtifact={() => {}}
+      filterPreview={null}
+      onCloseFilterPreview={() => {}}
       onOpenRun={() => {}}
       onRecover={() => {}}
       onReview={() => {}}
