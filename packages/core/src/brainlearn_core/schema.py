@@ -81,6 +81,17 @@ class CapabilityRequirement(BaseModel):
     description: str = Field(min_length=1)
 
 
+class CodeRendererMetadata(BaseModel):
+    """Versioned standalone code renderer advertised by a node manifest."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+    language: Literal["python"]
+    description: str = Field(min_length=1)
+
+
 class SoftwareDependencyMetadata(BaseModel):
     """Pinned upstream software recorded by a node manifest."""
 
@@ -110,7 +121,7 @@ class NodeManifest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    manifest_schema_version: Literal["1.1"] = "1.1"
+    manifest_schema_version: Literal["1.2"] = "1.2"
     id: str = Field(min_length=1)
     node_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
     label: str = Field(min_length=1)
@@ -124,6 +135,7 @@ class NodeManifest(BaseModel):
     license: LicenseMetadata
     capability_requirements: list[CapabilityRequirement] = Field(default_factory=list)
     software_dependencies: list[SoftwareDependencyMetadata] = Field(default_factory=list)
+    code_renderers: list[CodeRendererMetadata] = Field(default_factory=list)
 
 
 class CanvasPosition(BaseModel):

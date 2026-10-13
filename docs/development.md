@@ -46,7 +46,7 @@ npm --prefix apps/web run dev
 
 Open `http://127.0.0.1:5173`. Select a node to inspect its parameters and scientific port types. Vite proxies `/api` calls to the local service.
 
-The canvas starts empty. Select registry entries to add nodes, drag compatible output and input handles to connect them, and select nodes or edges before pressing Delete to remove them. Parameter controls come from the backend manifest. Undo and redo cover graph edits. The Validate graph action sends the complete in-memory graph to the backend and confirms whether the returned workflow round-trips unchanged. All nodes remain non-executing examples.
+The canvas starts empty. Select registry entries to add nodes, drag compatible output and input handles to connect them, and select nodes or edges before pressing Delete to remove them. Parameter controls come from the backend manifest. Undo and redo cover graph edits. The Validate graph action sends the complete in-memory graph to the backend and confirms whether the returned workflow round-trips unchanged. The BIDS EEG input, Inspect Signal, and Band-pass Filter nodes execute the bounded experimental path documented in [the EEG filter demo](eeg-filter-demo.md); the remaining nodes are still non-executing examples.
 
 ## Local projects and drafts
 

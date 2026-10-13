@@ -1,0 +1,9 @@
+{
+  "TaskName": "Demo",
+  "SamplingFrequency": 250,
+  "PowerLineFrequency": 50,
+  "EEGReference": "linked mastoids (synthetic reference)",
+  "SoftwareFilters": "n/a",
+  "EEGChannelCount": 2,
+  "RecordingType": "continuous"
+}

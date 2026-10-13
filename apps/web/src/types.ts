@@ -36,7 +36,7 @@ export interface ParameterSchema {
 }
 
 export interface NodeManifest {
-  manifest_schema_version: "1.1";
+  manifest_schema_version: "1.2";
   id: string;
   node_version: string;
   label: string;
@@ -54,6 +54,14 @@ export interface NodeManifest {
     description: string;
   }>;
   software_dependencies: SoftwareDependencyMetadata[];
+  code_renderers: CodeRendererMetadata[];
+}
+
+export interface CodeRendererMetadata {
+  id: string;
+  version: string;
+  language: "python";
+  description: string;
 }
 
 export interface SoftwareDependencyMetadata {
@@ -181,6 +189,57 @@ export interface ArtifactRecord {
   sha256: string;
   produced_by_node: string;
   port_id: string;
+}
+
+export interface EEGFilterTraceBin {
+  time_seconds: number;
+  minimum_uv: number;
+  maximum_uv: number;
+}
+
+export interface EEGFilterTrace {
+  channel_name: string;
+  bins: EEGFilterTraceBin[];
+}
+
+export interface EEGFilterSpectrumTrace {
+  channel_name: string;
+  power_uv2_per_hz: number[];
+}
+
+export interface EEGFilterPreviewSide {
+  traces: EEGFilterTrace[];
+  frequencies_hz: number[];
+  spectrum_traces: EEGFilterSpectrumTrace[];
+  preview_sample_count: number;
+  preview_duration_seconds: number;
+  spectrum_method: string;
+  spectrum_n_fft: number;
+  spectrum_n_per_seg: number;
+  spectrum_n_overlap: number;
+}
+
+export interface EEGFilterComparisonPreview {
+  schema_version: "1.0";
+  source_content_identity: string;
+  recording_path: string;
+  sampling_frequency_hz: number;
+  channels: string[];
+  unit: "µV";
+  spectrum_unit: "µV²/Hz";
+  before: EEGFilterPreviewSide;
+  after: EEGFilterPreviewSide;
+  note: string;
+}
+
+export interface RenderedCode {
+  schema_version: "1.0";
+  renderer_id: string;
+  renderer_version: string;
+  language: "python";
+  filename: string;
+  dependencies: string[];
+  source: string;
 }
 
 export interface FailureRecord {

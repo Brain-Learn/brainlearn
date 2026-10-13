@@ -48,7 +48,7 @@ function demoManifest(
   review_behavior: "none" | "required" = "none",
 ): NodeManifest {
   return {
-    manifest_schema_version: "1.1",
+    manifest_schema_version: "1.2",
     id,
     node_version: "0.1.0",
     label,
@@ -62,6 +62,7 @@ function demoManifest(
     license: { name: "BSD 3-Clause License", spdx_id: "BSD-3-Clause" },
     capability_requirements: [],
     software_dependencies: [],
+    code_renderers: [],
   };
 }
 
@@ -288,7 +289,9 @@ test("palette distinguishes executable demonstrations from EEG examples", async 
   render(<App />);
   await screen.findByRole("button", { name: /Copy/ });
   expect(
-    screen.getByText(/Demonstration nodes run locally/),
+    screen.getByText(
+      /BIDS import, signal inspection, and the MNE filter run locally/,
+    ),
   ).toBeInTheDocument();
   for (const manifest of demoRegistry) {
     expect(

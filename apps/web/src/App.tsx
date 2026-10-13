@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import {
   BrainCircuit,
   CircleAlert,
+  Code2,
   MonitorCog,
   Play,
   Redo2,
@@ -28,10 +29,12 @@ import {
   fetchExampleWorkflow,
   fetchExampleWorkflows,
   fetchNodeRegistry,
+  renderWorkflowPython,
   validateWorkflow,
 } from "./api";
 import type { ExampleInfo } from "./api";
 import { DatasetLibrary } from "./DatasetLibrary";
+import { parseEEGFilterPreview } from "./filterPreview";
 import {
   NODE_REMOVAL_TRANSITION_MS,
   resolveFitViewDuration,
@@ -71,6 +74,7 @@ import {
   removeEdges,
   removeNodes,
   resetPresentation,
+  supportsPythonFilterExport,
   updateParameter,
   updatePresentation,
   type CanvasPosition,
@@ -78,6 +82,7 @@ import {
 import type {
   NodeManifest,
   NodePresentation,
+  EEGFilterComparisonPreview,
   ParameterSchema,
   ValidationIssue,
   ValidationResult,
@@ -701,6 +706,11 @@ function App() {
   const [historyPending, setHistoryPending] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [runActionPending, setRunActionPending] = useState(false);
+  const [exportingPython, setExportingPython] = useState(false);
+  const [filterPreview, setFilterPreview] = useState<{
+    runId: string;
+    preview: EEGFilterComparisonPreview;
+  } | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const leavingTimer = useRef<number | null>(null);
   const nextId = useRef(1);
@@ -1579,6 +1589,17 @@ function App() {
         artifact.artifact_id,
         sessionTokenRef.current,
       );
+      if (
+        artifact.media_type ===
+        "application/vnd.brainlearn.eeg-filter-preview+json"
+      ) {
+        const preview = parseEEGFilterPreview(
+          JSON.parse(await opened.blob.text()),
+        );
+        setFilterPreview({ runId: run.id, preview });
+        setRunMessage("Before/after filter comparison opened.");
+        return;
+      }
       if (artifactUrl.current) URL.revokeObjectURL(artifactUrl.current);
       const url = URL.createObjectURL(opened.blob);
       artifactUrl.current = url;
@@ -1612,6 +1633,36 @@ function App() {
     }
   };
 
+  const handleExportPython = async () => {
+    setExportingPython(true);
+    try {
+      const rendered = await renderWorkflowPython(
+        workflow,
+        sessionTokenRef.current,
+      );
+      const url = URL.createObjectURL(
+        new Blob([rendered.source], { type: "text/x-python;charset=utf-8" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = rendered.filename;
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setRunMessage(
+        `Python script exported with ${rendered.dependencies.join(" and ")}.`,
+      );
+    } catch (reason) {
+      setRunMessage(
+        reason instanceof Error ? reason.message : "Python export failed.",
+      );
+    } finally {
+      setExportingPython(false);
+    }
+  };
+
   const selected = workflow.nodes.find((node) => node.id === selectedId);
   const selectedManifest = registry.find(
     (manifest) => manifest.id === selected?.type,
@@ -1619,6 +1670,7 @@ function App() {
   const selectedIssues = validation.issues.filter(
     (issue) => issue.node_id === selectedId,
   );
+  const pythonExportSupported = supportsPythonFilterExport(workflow);
 
   return (
     <main className="app-shell">
@@ -1628,7 +1680,11 @@ function App() {
         </div>
         <div className="workflow-title">
           <span>{workflow.metadata.name}</span>
-          <span className="example-badge">EXAMPLE · NO EXECUTION</span>
+          <span className="example-badge">
+            {workflow.nodes.some((node) => node.type === "eeg.filter")
+              ? "LOCAL MNE · EXPERIMENTAL"
+              : "WORKFLOW EXAMPLE"}
+          </span>
         </div>
         <div className="top-actions">
           <button aria-label="Undo" disabled={!past.length} onClick={undo}>
@@ -1636,6 +1692,19 @@ function App() {
           </button>
           <button aria-label="Redo" disabled={!future.length} onClick={redo}>
             <Redo2 size={15} />
+          </button>
+          <button
+            className="export-button"
+            disabled={exportingPython || !pythonExportSupported}
+            onClick={() => void handleExportPython()}
+            title={
+              pythonExportSupported
+                ? "Export this workflow as a standalone Python script"
+                : "Python export supports BIDS EEG → Inspect Signal → Band-pass Filter."
+            }
+          >
+            <Code2 size={15} />{" "}
+            {exportingPython ? "Exporting…" : "Export Python"}
           </button>
           <button
             className="run-button"
@@ -1673,7 +1742,9 @@ function App() {
               onKeyDown={(event) => handlePaletteKeyDown(event, manifest)}
             >
               <span>
-                <small>{manifest.category} · EXAMPLE</small>
+                <small>
+                  {manifest.category} · {manifest.status.toUpperCase()}
+                </small>
                 {manifest.label}
               </span>
             </button>
@@ -1681,9 +1752,10 @@ function App() {
         </div>
         <div className="library-note">
           Select a manifest to add it, drag it onto the canvas at an exact
-          position, or focus it and press Enter. EEG nodes are non-executing
-          examples; Demonstration nodes run locally as explicitly non-scientific
-          examples.
+          position, or focus it and press Enter. BIDS import, signal inspection,
+          and the MNE filter run locally as experimental EEG processing. Later
+          analysis nodes remain illustrative. Demonstration nodes are
+          non-scientific examples.
         </div>
         <div className="panel-heading">
           <span>Examples</span>
@@ -1872,6 +1944,12 @@ function App() {
         message={runMessage}
         onCancel={() => void handleCancelRun()}
         onOpenArtifact={(artifact) => void handleOpenArtifact(artifact)}
+        filterPreview={
+          activeRun && filterPreview?.runId === activeRun.id
+            ? filterPreview.preview
+            : null
+        }
+        onCloseFilterPreview={() => setFilterPreview(null)}
         onOpenRun={(runId, path) => void handleOpenHistoryRun(runId, path)}
         onRecover={() => void handleRecoverRuns()}
         onReview={(nodeRunId, decision, note) =>

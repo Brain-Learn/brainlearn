@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 FIXTURE = Path(__file__).parents[1] / "examples" / "demo-branched.workflow.json"
 EEG_EXAMPLE = Path(__file__).parents[1] / "examples" / "eeg-first-look.workflow.json"
+EEG_FILTER_DEMO = Path(__file__).parents[1] / "examples" / "eeg-filter-demo.workflow.json"
 
 
 def _load() -> Workflow:
@@ -105,14 +106,27 @@ def test_eeg_example_still_validates() -> None:
     assert validate_workflow(workflow, NODE_REGISTRY_BY_ID).valid
 
 
+def test_eeg_filter_demo_is_the_supported_export_topology() -> None:
+    workflow = Workflow.model_validate(
+        migrate_workflow_dict(json.loads(EEG_FILTER_DEMO.read_text(encoding="utf-8")))
+    )
+    assert validate_workflow(workflow, NODE_REGISTRY_BY_ID).valid
+    assert {node.type for node in workflow.nodes} == {
+        "input.bids_eeg",
+        "eeg.inspect",
+        "eeg.filter",
+    }
+
+
 def test_example_discovery_lists_versioned_examples() -> None:
     client = TestClient(app)
     response = client.get("/api/workflows/examples")
     assert response.status_code == 200, response.text
     examples = {item["id"]: item for item in response.json()["examples"]}
-    assert set(examples) == {"eeg-first-look", "demo-branched"}
+    assert set(examples) == {"eeg-first-look", "eeg-filter-demo", "demo-branched"}
     assert examples["demo-branched"]["schema_version"] == "1.0"
     assert examples["demo-branched"]["name"] == "Branched demonstration"
+    assert examples["eeg-filter-demo"]["name"] == "EEG filter demo"
 
 
 def test_example_load_returns_the_fixture_and_keeps_legacy_route() -> None:
@@ -127,6 +141,9 @@ def test_example_load_returns_the_fixture_and_keeps_legacy_route() -> None:
         "timer",
         "gate",
     }
+    filter_demo = client.get("/api/workflows/examples/eeg-filter-demo")
+    assert filter_demo.status_code == 200, filter_demo.text
+    assert filter_demo.json()["id"] == "eeg-filter-demo"
     legacy = client.get("/api/workflows/example")
     assert legacy.status_code == 200, legacy.text
     assert legacy.json()["id"] == "eeg-first-look"

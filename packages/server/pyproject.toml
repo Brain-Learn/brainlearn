@@ -7,6 +7,7 @@ license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 dependencies = [
   "brainlearn-core",
+  "brainlearn-mne",
   "fastapi>=0.116,<1",
   "pydantic>=2.11,<3",
   "uvicorn[standard]>=0.35,<1",
@@ -17,6 +18,7 @@ brainlearn-server = "brainlearn_server.app:run"
 
 [tool.uv.sources]
 brainlearn-core = { workspace = true }
+brainlearn-mne = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]
