@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -199,6 +200,11 @@ def test_adapter_direct_mne_and_generated_script_agree_and_preserve_source(
     assert provenance["software"] == {"mne": "1.13.2", "mne-bids": "0.20.0"}
     assert provenance["plugin_version"] == "0.2.0"
     assert provenance["citations"]
+    assert {
+        "dataset_description.json",
+        "participants.tsv",
+        "sub-01/eeg/sub-01_task-Demo_events.json",
+    } <= {item["path"] for item in provenance["source_files"]}
 
     service = BidsEegDiscoveryService(store)
     root, recording_relative, recording = service._resolve_signal_recording(
@@ -248,7 +254,7 @@ def test_adapter_direct_mne_and_generated_script_agree_and_preserve_source(
     _set_filter_parameters(workflow, low_hz=1.0, high_hz=70.0, notch_hz="50", notch_width_hz=2.0)
     rendered = render_eeg_filter_python(workflow)
     assert rendered.schema_version == "1.0"
-    assert rendered.renderer_version == "1.1.0"
+    assert rendered.renderer_version == "1.2.0"
     assert "NOTCH_HZ = [50.0]" in rendered.source
     assert "filtered.notch_filter(" in rendered.source
     assert rendered.dependencies == ["mne==1.13.2", "mne-bids==0.20.0"]
@@ -278,6 +284,14 @@ def test_adapter_direct_mne_and_generated_script_agree_and_preserve_source(
     generated_values = generated.get_data(units="uV")
     assert generated.ch_names == adapter_channels
     generated.close()
+    generated_provenance = json.loads(
+        generated_path.with_suffix(".provenance.json").read_text(encoding="utf-8")
+    )
+    assert {
+        "dataset_description.json",
+        "participants.tsv",
+        "sub-01/eeg/sub-01_task-Demo_events.json",
+    } <= set(generated_provenance["source_file_sha256"])
     np.testing.assert_allclose(
         adapter_values,
         generated_values,
@@ -394,6 +408,69 @@ def test_filter_refuses_source_changed_since_inspection(client: TestClient, tmp_
         eeg_filter_adapter(context)
 
 
+def test_filter_refuses_participant_metadata_changed_since_inspection(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project = _create_project(client, tmp_path / "project")
+    context, dataset = _filter_context(project, tmp_path)
+    participants = dataset / "participants.tsv"
+    participants.write_text("participant_id\nsub-01\n# changed\n", encoding="utf-8")
+
+    with pytest.raises(ControlledFailure, match="changed after inspection"):
+        eeg_filter_adapter(context)
+
+
+def test_generated_script_refuses_participant_metadata_changed_after_mne_read(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project = _create_project(client, tmp_path / "project")
+    dataset = project / "synthetic" / "example-bids"
+    script_path = tmp_path / "generated-filter.py"
+    script_path.write_text(render_eeg_filter_python(_workflow()).source, encoding="utf-8")
+    patch_directory = tmp_path / "python-patch"
+    patch_directory.mkdir()
+    (patch_directory / "sitecustomize.py").write_text(
+        "import os\n"
+        "import mne_bids\n"
+        "_read_raw_bids = mne_bids.read_raw_bids\n"
+        "def _read_then_mutate(*args, **kwargs):\n"
+        "    raw = _read_raw_bids(*args, **kwargs)\n"
+        "    with open(os.environ['BRAINLEARN_MUTATE_PARTICIPANTS'], 'a', encoding='utf-8') as f:\n"
+        "        f.write('# changed after MNE-BIDS read\\n')\n"
+        "    return raw\n"
+        "mne_bids.read_raw_bids = _read_then_mutate\n",
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "mutated-filtered-raw.fif"
+    environment = os.environ.copy()
+    environment["BRAINLEARN_MUTATE_PARTICIPANTS"] = str(dataset / "participants.tsv")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(patch_directory), environment.get("PYTHONPATH", "")])
+    )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            "--dataset-root",
+            str(dataset),
+            "--recording-path",
+            RECORDING_RELATIVE,
+            "--output",
+            str(output_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=environment,
+    )
+
+    assert completed.returncode != 0
+    assert "Source files changed during filtering" in completed.stderr
+    assert not output_path.exists()
+    assert not output_path.with_suffix(".provenance.json").exists()
+
+
 def test_python_renderer_uses_current_parameters_and_escapes_literals() -> None:
     workflow = _workflow()
     workflow.nodes[0].parameters[0].value = "synthetic/quoted'\\dataset"
@@ -490,6 +567,6 @@ def test_python_export_route_requires_auth_and_returns_versioned_code(client: Te
     payload: dict[str, Any] = response.json()
     assert payload["schema_version"] == "1.0"
     assert payload["renderer_id"] == "brainlearn.eeg.mne-filter.python"
-    assert payload["renderer_version"] == "1.1.0"
+    assert payload["renderer_version"] == "1.2.0"
     assert payload["filename"] == "brainlearn_eeg_filter.py"
     assert "filtered.filter(" in payload["source"]

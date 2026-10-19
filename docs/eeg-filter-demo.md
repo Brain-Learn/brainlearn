@@ -53,7 +53,7 @@ outputs are preserved unless `--overwrite` is explicitly supplied.
 ## Filter and preview conventions
 
 The node registry advertises the `brainlearn.eeg.mne-filter.python` renderer
-(`1.1.0`, Python) on the filter node. The renderer response envelope is schema
+(`1.2.0`, Python) on the filter node. The renderer response envelope is schema
 `1.0`; it includes the renderer version, pinned dependencies, citations, and
 generated source.
 
@@ -77,7 +77,10 @@ generated source.
 - Signal traces are shown in µV. Welch power is reported as µV²/Hz; the UI
   displays it in decibels using `10 log10(power)` with a finite floor.
 - The original BIDS recording is read but never rewritten. Its content identity
-  is checked both before and after processing.
+  is checked both before and after processing. The identity and standalone
+  Python export include the dataset description, participant/session tables,
+  and all applicable inherited metadata sidecars MNE-BIDS can read, including
+  events JSON, electrodes, and coordinate-system metadata.
 
 ## Reference comparison
 

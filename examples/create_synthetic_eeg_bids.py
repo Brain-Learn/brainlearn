@@ -99,6 +99,10 @@ def create_dataset(destination: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    (root / "participants.tsv").write_text(
+        "participant_id\nsub-01\n",
+        encoding="utf-8",
+    )
     (eeg_dir / f"{name}.json").write_text(
         json.dumps(
             {
@@ -123,6 +127,11 @@ def create_dataset(destination: Path) -> None:
     )
     (eeg_dir / "sub-01_task-Demo_events.tsv").write_text(
         "onset\tduration\ttrial_type\n5.0\t0\tstimulus\n",
+        encoding="utf-8",
+    )
+    (eeg_dir / "sub-01_task-Demo_events.json").write_text(
+        json.dumps({"trial_type": {"stimulus": {"Description": "Synthetic event"}}}, indent=2)
+        + "\n",
         encoding="utf-8",
     )
 

@@ -48,9 +48,14 @@ content or certify scientific compatibility.
 
 For a ready recording, the user can separately request an input content
 identity. BrainLearn hashes the recording, required BrainVision companions,
-an existing EEGLAB `.fdt` companion, and the effective inherited EEG JSON,
-channels TSV, and events TSV sidecars. Files are opened read-only and hashed in
-1 MiB chunks; no source bytes are copied or persisted. The identity uses the
+an existing EEGLAB `.fdt` companion, `dataset_description.json`, an existing
+root `participants.tsv`, the selected subject/session `scans.tsv`, and every
+matching inherited EEG JSON, channels/events TSV, events JSON, electrodes TSV,
+and coordinate-system JSON sidecar. Including broader applicable sidecars can
+invalidate an identity when MNE-BIDS would ultimately select a more specific
+one; this conservative behavior prevents metadata MNE-BIDS can consume from
+changing without a new identity. Files are opened read-only and hashed in 1 MiB
+chunks; no source bytes are copied or persisted. The identity uses the
 `brainlearn-v1:artifact:` contract over a versioned payload containing the
 recording-relative paths, byte sizes, and SHA-256 digests in path order. It
 does not depend on the local project path.

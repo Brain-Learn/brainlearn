@@ -5,14 +5,16 @@
   "dataset_version": "1.0.0",
   "files": {
     "dataset_description.json": "66262b8c559138e5b2c19cde2b43ec861644869a7bb40f77b4e6b7dd7cc85211",
+    "participants.tsv": "a3f1467aa0689eb2dbe516c699225bc68f31b230bf81232c712b756ffa41fcdb",
     "sub-01/eeg/sub-01_task-Demo_channels.tsv": "381acf0c786489c565ea420a82198bbfa9d893fa3a72e96ec606e4440eb64ee4",
     "sub-01/eeg/sub-01_task-Demo_eeg.eeg": "f1d6d847a07a1d93a07fda56d678a4e01c84d1edec02032aead3aca866df459c",
     "sub-01/eeg/sub-01_task-Demo_eeg.json": "0be9bc7abbf80e408265a6e97a51a5418b60b6e758d0fdad5fc0d08dfe6473ab",
     "sub-01/eeg/sub-01_task-Demo_eeg.vhdr": "50686f068386ccb0040fd648e1b47a977cf94020ea4ed266d195a003fddac540",
     "sub-01/eeg/sub-01_task-Demo_eeg.vmrk": "81f15e88b220e540e4e0b680b731edf86276e2e21c2fc1f3f5e458f4c004021b",
+    "sub-01/eeg/sub-01_task-Demo_events.json": "4e3ceb8fc3a8454a0881e1169e6d48e0c4491d1dd1ef516271cad4593463fef7",
     "sub-01/eeg/sub-01_task-Demo_events.tsv": "f07c0bdf1f8ace99fa719a16896c2809daa882d2f41f2226afb133779d6c6343"
   },
   "generator": "create_synthetic_eeg_bids.py",
-  "generator_sha256": "bcaf5d86425954beebd7ffea98e20ecf720aaffc3379040b704512695c934a63",
+  "generator_sha256": "6fb7b822fba1f92460c00363525799c6e477f9014886d3d40a0d9ebcce56e409",
   "license": "CC0-1.0"
 }

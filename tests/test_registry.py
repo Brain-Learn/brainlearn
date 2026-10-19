@@ -133,7 +133,7 @@ def test_registry_ports_and_parameters_match_example_instances() -> None:
     filter_renderers = manifests["eeg.filter"].code_renderers
     assert [
         (renderer.id, renderer.version, renderer.language) for renderer in filter_renderers
-    ] == [("brainlearn.eeg.mne-filter.python", "1.1.0", "python")]
+    ] == [("brainlearn.eeg.mne-filter.python", "1.2.0", "python")]
 
 
 def test_registry_instances_form_a_compatible_editable_graph() -> None:
