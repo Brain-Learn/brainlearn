@@ -29,8 +29,9 @@ The adapter uses pinned MNE-Python 1.13.2 and scikit-learn 1.7.2. It fits
 32-bit seed as `random_state`. It selects EEG channels not marked bad by MNE,
 disables annotation rejection, and uses every sample (`decim=1`). The exact
 fitted channel list and automatically excluded bad EEG channels are stored in
-the diagnostics and provenance. Fits are limited to 256 usable EEG
-channels and 25,000,000 channel-samples. These are product safeguards, not
+the diagnostics and provenance. The pre-load guard limits the whole EEG input
+to 25,000,000 channel-samples, counting marked-bad channels too; the ICA fit is
+limited to 256 usable EEG channels. These are product safeguards, not
 recommended scientific settings for every recording.
 
 MNE performs its own pre-whitening and PCA before ICA. The fitted component
@@ -68,7 +69,10 @@ The saved QC record contains the run, review node, graph-node and input
 identities, current input artifact identities, reviewer, decision, exclusions,
 note, and timestamp. Before accepting an ICA decision, the service verifies the
 raw and fitted artifacts and confirms that the fit provenance names the same
-raw artifact. For a BIDS reference it also rechecks the current source identity.
+raw artifact, uses the current provenance schema, and records explicit
+convergence with a valid iteration count. Legacy fit records without that
+evidence are view-only and cannot be approved or applied. For a BIDS reference
+the service also rechecks the current source identity.
 When either input artifact is no longer the current graph input, the historical
 record remains on disk for audit but is hidden from the active run and cannot be
 reused. Rejection is persisted and ends that workflow run without emitting
