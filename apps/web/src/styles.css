@@ -783,6 +783,137 @@ article[aria-label="Dataset details"] h4:focus {
   color: #e2ecf8;
   background: #152438;
 }
+.ica-diagnostics {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid #304057;
+  border-radius: 8px;
+  background: #0d1a29;
+  color: #cbd8e8;
+}
+.ica-diagnostics-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ica-diagnostics-heading h3 {
+  margin: 0;
+  color: #e2ecf8;
+}
+.ica-diagnostics-heading p,
+.ica-diagnostics-note,
+.ica-chart-caption {
+  margin: 4px 0 0;
+  color: #9aabc0;
+  line-height: 1.5;
+}
+.ica-diagnostics-heading button {
+  border: 1px solid #40536c;
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: #e2ecf8;
+  background: #152438;
+}
+.ica-component-select,
+.ica-weight-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 140px) 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.ica-component-select {
+  grid-template-columns: auto minmax(100px, 180px);
+  width: fit-content;
+}
+.ica-component-select select {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #40536c;
+  border-radius: 5px;
+  color: #e2ecf8;
+  background: #152438;
+}
+.ica-diagnostics-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ica-diagnostics-columns figure {
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid #27394f;
+  border-radius: 6px;
+  background: #0b1623;
+}
+.ica-diagnostics-columns figure:first-child {
+  grid-row: span 2;
+}
+.ica-diagnostics-columns figcaption {
+  margin-bottom: 8px;
+  color: #cbd8e8;
+  font-weight: 600;
+}
+.ica-weight-list {
+  display: grid;
+  gap: 5px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.ica-weight-row {
+  grid-template-columns: 42px minmax(40px, 1fr) 56px;
+  font-size: 11px;
+}
+.ica-weight-row code {
+  color: #9aabc0;
+  text-align: right;
+}
+.ica-weight-track {
+  width: 100%;
+  height: 10px;
+}
+.ica-weight-track line,
+.ica-chart-axis {
+  stroke: #52657c;
+  stroke-width: 1;
+}
+.ica-weight-track .positive {
+  fill: #50d0b7;
+}
+.ica-weight-track .negative {
+  fill: #efa660;
+}
+.ica-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4.2;
+  overflow: visible;
+}
+.ica-envelope {
+  stroke: #55cdb5;
+  stroke-width: 1.5;
+}
+.ica-spectrum {
+  fill: none;
+  stroke: #7bb9ff;
+  stroke-width: 1.8;
+}
+.ica-chart-caption {
+  font-size: 11px;
+}
+@media (max-width: 780px) {
+  .ica-diagnostics-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ica-diagnostics-columns figure:first-child {
+    grid-row: auto;
+  }
+}
 .filter-comparison-legend {
   display: flex;
   flex-wrap: wrap;

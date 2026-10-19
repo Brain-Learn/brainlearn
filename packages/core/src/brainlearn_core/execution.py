@@ -377,6 +377,15 @@ class QCReviewInputIdentity(BaseModel):
     content_identity: str = Field(min_length=1, pattern=_IDENTITY_PATTERN)
 
 
+class QCReviewArtifactIdentity(BaseModel):
+    """Immutable artifact identity for one input port of a reviewed node."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    port_id: str = Field(min_length=1, max_length=128)
+    artifact_id: str = Field(min_length=1, pattern=_ARTIFACT_IDENTITY_PATTERN)
+
+
 class QCReviewRecord(BaseModel):
     """Immutable researcher decision bound to one run, node, and input set.
 
@@ -394,6 +403,9 @@ class QCReviewRecord(BaseModel):
     node_id: str = Field(min_length=1, max_length=128)
     node_content_identity: str = Field(min_length=1, pattern=_NODE_IDENTITY_PATTERN)
     input_identities: tuple[QCReviewInputIdentity, ...] = Field(min_length=1, max_length=128)
+    input_artifact_identities: tuple[QCReviewArtifactIdentity, ...] = Field(
+        default=(), max_length=128
+    )
     source_content_identity: str | None = Field(default=None, pattern=_IDENTITY_PATTERN)
     reviewer: str = Field(min_length=1, max_length=200)
     decision: Literal["approved", "rejected"]
@@ -419,6 +431,9 @@ class QCReviewRecord(BaseModel):
         ports = [item.port_id for item in self.input_identities]
         if len(set(ports)) != len(ports):
             raise ValueError("QC review input port identities must not contain duplicates.")
+        artifact_ports = [item.port_id for item in self.input_artifact_identities]
+        if len(set(artifact_ports)) != len(artifact_ports):
+            raise ValueError("QC review input artifact ports must not contain duplicates.")
         if any(not name.strip() or len(name) > 512 for name in self.excluded_channel_names):
             raise ValueError("Excluded channel names must be non-empty and at most 512 characters.")
         if len(set(self.excluded_channel_names)) != len(self.excluded_channel_names):

@@ -58,6 +58,38 @@ export function supportsPythonFilterExport(workflow: Workflow): boolean {
   );
 }
 
+export function supportsPythonIcaExport(workflow: Workflow): boolean {
+  const byType = new Map(workflow.nodes.map((node) => [node.type, node]));
+  const nodeTypes = [
+    "input.bids_eeg",
+    "eeg.inspect",
+    "eeg.filter",
+    "eeg.ica_fit",
+    "eeg.ica_review",
+  ];
+  if (workflow.nodes.length !== 5 || workflow.edges.length !== 5) return false;
+  if (new Set(nodeTypes.map((type) => byType.get(type)?.id)).size !== 5)
+    return false;
+  const [bids, inspect, filter, fit, review] = nodeTypes.map((type) =>
+    byType.get(type),
+  );
+  if (!bids || !inspect || !filter || !fit || !review) return false;
+  const actual = new Set(
+    workflow.edges.map(
+      (edge) =>
+        `${edge.source.node_id}:${edge.source.port_id}->${edge.target.node_id}:${edge.target.port_id}`,
+    ),
+  );
+  return (
+    actual.size === 5 &&
+    actual.has(`${bids.id}:dataset->${inspect.id}:dataset`) &&
+    actual.has(`${inspect.id}:raw->${filter.id}:raw`) &&
+    actual.has(`${filter.id}:filtered->${fit.id}:raw`) &&
+    actual.has(`${filter.id}:filtered->${review.id}:raw`) &&
+    actual.has(`${fit.id}:ica->${review.id}:fit`)
+  );
+}
+
 export function instantiateNode(
   manifest: NodeManifest,
   id: string,

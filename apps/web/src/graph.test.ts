@@ -21,6 +21,7 @@ import {
   resetPresentation,
   resolvePresentation,
   supportsPythonFilterExport,
+  supportsPythonIcaExport,
   updatePresentation,
 } from "./graph";
 import type { NodeManifest } from "./types";
@@ -96,6 +97,42 @@ test("enables Python export only for the implemented BIDS inspection filter path
         ...workflow.nodes,
         instantiateNode(manifest, "extra", { x: 0, y: 0 }),
       ],
+    }),
+  ).toBe(false);
+});
+
+test("enables ICA export only for the five-node reviewed filter and ICA path", () => {
+  const node = (id: string, type: string) => ({
+    ...instantiateNode(manifest, id, { x: 0, y: 0 }),
+    type,
+  });
+  const workflow = {
+    ...emptyWorkflow(),
+    nodes: [
+      node("bids", "input.bids_eeg"),
+      node("inspect", "eeg.inspect"),
+      node("filter", "eeg.filter"),
+      node("fit", "eeg.ica_fit"),
+      node("review", "eeg.ica_review"),
+    ],
+    edges: [
+      ["bids", "dataset", "inspect", "dataset"],
+      ["inspect", "raw", "filter", "raw"],
+      ["filter", "filtered", "fit", "raw"],
+      ["filter", "filtered", "review", "raw"],
+      ["fit", "ica", "review", "fit"],
+    ].map(([source, sourcePort, target, targetPort], index) => ({
+      id: `edge-${index}`,
+      source: { node_id: source, port_id: sourcePort },
+      target: { node_id: target, port_id: targetPort },
+    })),
+  };
+
+  expect(supportsPythonIcaExport(workflow)).toBe(true);
+  expect(
+    supportsPythonIcaExport({
+      ...workflow,
+      edges: workflow.edges.slice(0, 4),
     }),
   ).toBe(false);
 });

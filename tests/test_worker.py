@@ -22,7 +22,7 @@ from brainlearn_server.app import app, runs, store
 from brainlearn_server.auth import reset_session_token_for_tests
 from brainlearn_server.bids_eeg import BidsEegDiscoveryService, BidsEegSignalInspection
 from brainlearn_server.registry import instantiate_registered_node
-from brainlearn_server.worker import build_run_record
+from brainlearn_server.worker import _worker_manifest, build_run_record
 from fastapi.testclient import TestClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -406,13 +406,9 @@ def test_failure_skips_downstream_and_fails_run(client: TestClient, tmp_path: Pa
     assert not list((project / "runs" / started["run_id"] / "artifacts").rglob("*"))
 
 
-def test_unsupported_node_types_fail_deterministically(client: TestClient, tmp_path: Path) -> None:
-    project = _make_project(client, tmp_path)
-    unsupported = instantiate_registered_node("eeg.ica_review", "mystery", CanvasPosition(x=0, y=0))
-    workflow = _workflow([unsupported.model_dump(mode="json")], [])
-    started = _start(client, project, workflow)
-    finished = _wait_for_state(client, project, started["run_id"], {"failed"})
-    assert finished["node_runs"][0]["failure"]["code"] == "unsupported_node_type"
+def test_future_eeg_nodes_remain_outside_the_worker_allowlist() -> None:
+    assert _worker_manifest("eeg.ica_review") is not None
+    assert _worker_manifest("eeg.epochs") is None
 
 
 def test_start_rejects_invalid_workflows_and_bad_requests(
@@ -1068,7 +1064,7 @@ def test_recover_resumes_interrupted_run_automatically(client: TestClient, tmp_p
 
     quarantined = project / "runs" / persisted.id / "quarantine" / f"{node.id}-interrupted"
     assert (quarantined / "attempt-3" / "partial.bin").read_bytes() == b"interrupted"
-    assert list((project / "runs" / persisted.id / "staging").rglob("*")) == []
+    assert not staging.exists()
 
     finished = _wait_for_state(client, project, persisted.id, {"succeeded"})
     assert finished["node_runs"][0]["attempt"] == 4

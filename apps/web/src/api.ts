@@ -18,6 +18,7 @@ function isPort(value: unknown): boolean {
     [
       "bids_dataset",
       "raw_eeg",
+      "ica_fit",
       "reviewed_eeg",
       "epochs",
       "evoked",

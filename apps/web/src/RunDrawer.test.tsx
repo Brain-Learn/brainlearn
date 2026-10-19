@@ -56,6 +56,8 @@ function renderDrawer(
     onOpenArtifact: vi.fn(),
     filterPreview: null,
     onCloseFilterPreview: vi.fn(),
+    icaDiagnostics: null,
+    onCloseIcaDiagnostics: vi.fn(),
     actionPending: false,
     ...overrides,
   };
@@ -309,6 +311,61 @@ test("collects researcher and bad-channel exclusions for EEG review", () => {
   expect(props.onReview).toHaveBeenCalledWith("bad-channels", "approved", "", {
     reviewer: "Researcher A",
     excludedChannelNames: ["Fp1", "Cz"],
+    excludedIcaComponents: [],
+  });
+});
+
+test("collects explicit one-based ICA component choices", () => {
+  const run = runFixture({
+    state: "waiting_for_review",
+    node_runs: [
+      {
+        schema_version: "1.0",
+        id: "ica-review",
+        node_id: "ica-review",
+        node_type: "eeg.ica_review",
+        node_version: "0.1.0",
+        dependencies: ["filter", "ica-fit"],
+        attempt: 1,
+        state: "waiting_for_review",
+        started_at: "2026-09-13T00:00:01+00:00",
+        finished_at: null,
+        inputs: {
+          raw: "brainlearn-v1:node:" + "d".repeat(64),
+          fit: "brainlearn-v1:node:" + "e".repeat(64),
+        },
+        parameters: {},
+        environment_identity: "brainlearn-v1:environment:" + "b".repeat(64),
+        seed: 0,
+        settings: {},
+        content_identity: "brainlearn-v1:node:" + "c".repeat(64),
+        artifacts: [],
+        failure: null,
+        review_pause: {
+          schema_version: "1.0",
+          id: "review-ica-1",
+          node_run_id: "ica-review",
+          input_identity: "brainlearn-v1:node:" + "c".repeat(64),
+          requested_at: "2026-09-13T00:00:01+00:00",
+          decided_at: null,
+          decision: null,
+          note: "Inspect each component before deciding.",
+        },
+      },
+    ],
+  });
+  const props = renderDrawer(run);
+  fireEvent.change(screen.getByLabelText("Researcher for ica-review"), {
+    target: { value: "Researcher A" },
+  });
+  fireEvent.change(screen.getByLabelText("ICA components for ica-review"), {
+    target: { value: "1, 3" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+  expect(props.onReview).toHaveBeenCalledWith("ica-review", "approved", "", {
+    reviewer: "Researcher A",
+    excludedChannelNames: [],
+    excludedIcaComponents: [0, 2],
   });
 });
 
@@ -337,6 +394,8 @@ test("offers cancel only for non-terminal runs and honors reduced motion", () =>
       onOpenArtifact={() => {}}
       filterPreview={null}
       onCloseFilterPreview={() => {}}
+      icaDiagnostics={null}
+      onCloseIcaDiagnostics={() => {}}
       onOpenRun={() => {}}
       onRecover={() => {}}
       onReview={() => {}}

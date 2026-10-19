@@ -28,7 +28,12 @@ from brainlearn_core import (
 )
 
 from brainlearn_server.demo_nodes import DEMO_NODES
-from brainlearn_server.python_export import CODE_RENDERER_ID, CODE_RENDERER_VERSION
+from brainlearn_server.python_export import (
+    CODE_RENDERER_ID,
+    CODE_RENDERER_VERSION,
+    ICA_CODE_RENDERER_ID,
+    ICA_CODE_RENDERER_VERSION,
+)
 
 EXAMPLE_LICENSE = LicenseMetadata(
     name="BSD 3-Clause License",
@@ -105,6 +110,23 @@ _MNE_BIDS_DEPENDENCY = software_dependency_metadata(
             doi="10.21105/joss.01896",
             url="https://doi.org/10.21105/joss.01896",
         ),
+    ],
+)
+
+_SCIKIT_LEARN_DEPENDENCY = software_dependency_metadata(
+    package_name="scikit-learn",
+    version="1.7.2",
+    license=LicenseMetadata(
+        name="BSD 3-Clause License",
+        spdx_id="BSD-3-Clause",
+        url="https://opensource.org/license/bsd-3-clause",
+    ),
+    citations=[
+        CitationMetadata(
+            title="Scikit-learn: Machine Learning in Python",
+            doi="10.48550/arXiv.1201.0490",
+            url="https://scikit-learn.org/1.7/",
+        )
     ],
 )
 
@@ -272,16 +294,56 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     NodeManifest(
         id="eeg.ica_review",
         node_version="0.1.0",
-        label="ICA Review",
-        description="Pause for a researcher to review proposed ICA components.",
+        label="ICA Component Review",
+        description=(
+            "Pause for explicit researcher component choices, then apply the saved exclusions "
+            "to the matching input recording."
+        ),
         category="Quality control",
+        status="experimental",
         ports=[
             _port("raw", "Raw EEG", PortDirection.INPUT, ScientificType.RAW_EEG),
+            _port("fit", "Fitted ICA", PortDirection.INPUT, ScientificType.ICA_FIT),
             _port("reviewed", "Reviewed EEG", PortDirection.OUTPUT, ScientificType.REVIEWED_EEG),
+            _port("provenance", "Review provenance", PortDirection.OUTPUT, ScientificType.REPORT),
         ],
         review_behavior="required",
         license=EXAMPLE_LICENSE,
-        software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
+        software_dependencies=_software_dependencies(
+            _MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY, _SCIKIT_LEARN_DEPENDENCY
+        ),
+        code_renderers=[
+            CodeRendererMetadata(
+                id=ICA_CODE_RENDERER_ID,
+                version=ICA_CODE_RENDERER_VERSION,
+                language="python",
+                description=(
+                    "Exports the supported EEG filter and ICA path with a persisted approved "
+                    "component decision."
+                ),
+            )
+        ],
+    ),
+    NodeManifest(
+        id="eeg.ica_fit",
+        node_version="0.1.0",
+        label="Fit ICA",
+        description=(
+            "Fit an MNE ICA model and inspect component maps, source time courses, spectra, "
+            "and diagnostics without rejecting components."
+        ),
+        category="Preprocessing",
+        status="experimental",
+        ports=[
+            _port("raw", "Raw EEG", PortDirection.INPUT, ScientificType.RAW_EEG),
+            _port("ica", "Fitted ICA model", PortDirection.OUTPUT, ScientificType.ICA_FIT),
+            _port("diagnostics", "ICA components", PortDirection.OUTPUT, ScientificType.REPORT),
+            _port("provenance", "Fit provenance", PortDirection.OUTPUT, ScientificType.REPORT),
+        ],
+        license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(
+            _MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY, _SCIKIT_LEARN_DEPENDENCY
+        ),
     ),
     NodeManifest(
         id="eeg.epochs",
