@@ -936,3 +936,42 @@ effects, or scientific suitability. Step 7's bad-channel review leaf is
 complete; the Step 7 parent and scientific-review gate remain unchecked, and
 ICA was not started. The wider EEG workflow remains experimental pending a
 sample-bearing public reference and independent EEG methods review.
+
+## Step 7 ICA final monitored review
+
+Review date: 2026-10-19
+
+Scope: PR #35 final head `3af4115b98878b9f1a8b04c3118912be0ea5b72b`,
+compared with main `8df8c8d8dd16208c857c3d77a3baa3d70d6670ef`.
+
+Status: **approved for the ICA engineering implementation.** The separate fit,
+review, and apply stages preserve an explicit researcher decision bound to the
+run, node, input identities, and current raw/model artifacts. Stale or
+historical decisions cannot be applied. Non-converged fits fail closed; the
+fit provenance records exactly which good EEG channels were fitted and which
+bad channels were excluded. Both decision and apply paths require current
+schema-1.1 converged-fit provenance, and the generated script checks the BIDS
+source inventory, hashes, content identity, and fit signature before applying
+the saved exclusions. Staging and JSON writes reject symlinked or pre-existing
+targets. The pre-load sample bound counts every EEG channel that will be
+loaded, including bad channels; the fit separately caps usable EEG channels at
+256. Legacy convergence records remain view-only. The legacy no-edges project
+migration retains filter migration behavior and the user's settings.
+
+Independent clean-checkout verification at this head: focused ICA tests passed
+(12); locked EEG dependency sync passed; Ruff passed; formatting passed (91
+files); strict mypy passed (36 source files); pytest passed (829 passed, 3
+skipped, 2 upstream Starlette/AnyIO warnings); ESLint and Prettier passed;
+Vitest passed (183 tests in 21 files); production build passed (1,850
+modules, with the existing chunk-size advisory); the production npm audit
+reported 0 vulnerabilities; `uv lock --check` and `git diff --check` passed.
+On the pinned synthetic BIDS fixture, BrainLearn, direct MNE, and generated
+Python outputs agreed at `rtol=1e-6`, `atol=3e-5 µV`, and source files remained
+unchanged. Hosted Python and frontend checks both passed on final head
+`3af4115` in Actions run `39247940198` (Python 1m54s; frontend 46s).
+
+This is engineering approval on a synthetic fixture, not scientific
+certification. The fixture has no sensor locations, and a sample-bearing public
+BIDS recording plus independent EEG methods review remain outstanding. Step
+7's parent and scientific-review gate remain unchecked; Step 8 must not start
+until those review gates pass.
