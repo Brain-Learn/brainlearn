@@ -834,6 +834,10 @@ function App() {
   }, []);
 
   const mergeHistoryEntry = useCallback((response: RunResponse) => {
+    // A history response started before this run update is now stale. Keep it
+    // from replacing the newer in-memory record when that request completes.
+    ++historySeq.current;
+    setHistoryPending(false);
     setRunHistory((prev) => {
       const index = prev.findIndex(
         (entry) =>

@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -67,6 +68,7 @@ function terminalRun(state: RunRecord["state"]): RunRecord {
 
 function stubRunFlow(options?: {
   startRun?: () => Promise<unknown>;
+  listRuns?: () => Promise<unknown>;
   onStartBody?: (body: Record<string, unknown>) => void;
 }) {
   const startCalls: Array<Record<string, unknown>> = [];
@@ -79,6 +81,10 @@ function stubRunFlow(options?: {
       }
       if (url.endsWith("/api/workflows/examples")) {
         return { ok: true, json: async () => ({ examples: [] }) };
+      }
+      if (url.includes("/api/runs/list")) {
+        const records = options?.listRuns ? await options.listRuns() : [];
+        return { ok: true, json: async () => records };
       }
       if (url.endsWith("/api/workflows/validate") && init?.body) {
         const workflow = JSON.parse(String(init.body)) as Workflow;
@@ -177,10 +183,18 @@ test("Run workflow requires an open project", async () => {
 });
 
 test("Run workflow launches and renders the result in the drawer", async () => {
-  stubRunFlow();
+  let resolveHistory!: (value: unknown) => void;
+  const pendingHistory = new Promise<unknown>((resolve) => {
+    resolveHistory = resolve;
+  });
+  stubRunFlow({ listRuns: () => pendingHistory });
   await openProjectAndRun();
   fireEvent.click(screen.getByRole("button", { name: "Run workflow" }));
   expect(await screen.findByText("Succeeded")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getAllByText("run-demo-1")).toHaveLength(2),
+  );
+  await act(async () => resolveHistory([]));
   await waitFor(() =>
     expect(screen.getAllByText("run-demo-1")).toHaveLength(2),
   );
