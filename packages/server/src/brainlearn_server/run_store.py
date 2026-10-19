@@ -18,6 +18,7 @@ import os
 import re
 import stat
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BufferedReader
@@ -191,7 +192,13 @@ class RunStore:
             atomic_write_json(target, record.model_dump(mode="json"))
         return record
 
-    def save_qc_review(self, raw_path: str, record: QCReviewRecord) -> QCReviewRecord:
+    def save_qc_review(
+        self,
+        raw_path: str,
+        record: QCReviewRecord,
+        *,
+        verify_source_identity: Callable[[], str],
+    ) -> QCReviewRecord:
         """Persist one immutable review only while its EEG review node is waiting."""
 
         import hashlib
@@ -215,6 +222,11 @@ class RunStore:
                 or record.source_content_identity is None
             ):
                 raise ValueError("The QC review must match a pending bad-channel review node.")
+            if verify_source_identity() != record.source_content_identity:
+                raise ValueError(
+                    "The EEG recording changed while the review decision was being saved. "
+                    "Re-run Inspect Signal before reviewing it again."
+                )
             for component in (project / RUNS_DIRNAME, run_dir, target_dir):
                 if component.is_symlink():
                     raise OSError("QC review storage is blocked by a symlink.")

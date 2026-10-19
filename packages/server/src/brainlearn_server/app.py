@@ -243,11 +243,19 @@ researcher_decisions = ResearcherDecisionStore(store)
 
 
 def _run_response(path: str, record: RunRecord) -> RunResponse:
+    try:
+        qc_reviews = runs.list_qc_reviews(path, record.id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return RunResponse(
         path=path,
         run_id=record.id,
         run=record,
-        qc_reviews=runs.list_qc_reviews(path, record.id),
+        qc_reviews=qc_reviews,
     )
 
 

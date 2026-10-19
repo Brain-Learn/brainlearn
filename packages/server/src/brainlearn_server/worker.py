@@ -12,6 +12,7 @@ paths, and arbitrary Python are never accepted from payloads.
 
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -847,8 +848,10 @@ class WorkerService:
                     raise ReviewConflictError(
                         "Enter the researcher who made the bad-channel review."
                     )
-                source_content_identity = self._validate_bad_channel_choices(
-                    project, record, node, excluded_channel_names
+                source_content_identity, verify_source_identity = (
+                    self._validate_bad_channel_choices(
+                        project, record, node, excluded_channel_names
+                    )
                 )
                 qc_review = QCReviewRecord(
                     id=node.review_pause.id,
@@ -868,7 +871,11 @@ class WorkerService:
                     created_at=utc_now_iso(),
                 )
                 # The review is durably saved before the run can resume or fail.
-                self.runs.save_qc_review(project, qc_review)
+                self.runs.save_qc_review(
+                    project,
+                    qc_review,
+                    verify_source_identity=verify_source_identity,
+                )
             elif reviewer is not None or excluded_channel_names:
                 raise ReviewConflictError(
                     "Researcher and channel exclusions are available only for bad-channel review."
@@ -930,14 +937,15 @@ class WorkerService:
         record: RunRecord,
         node: NodeRunRecord,
         excluded_channel_names: tuple[str, ...],
-    ) -> str:
-        """Bind channel choices to the live BIDS source and EEG channel inventory."""
+    ) -> tuple[str, Callable[[], str]]:
+        """Bind channel choices to a fresh BIDS identity and EEG channel inventory."""
 
         import json
 
         from brainlearn_server.bids_eeg import (
             BidsDatasetPathError,
             BidsEegDiscoveryService,
+            BidsIdentityResourceLimit,
             BidsSignalInspectionError,
         )
 
@@ -976,7 +984,29 @@ class WorkerService:
             raise ReviewConflictError(
                 f"{invalid[0]!r} is not an EEG channel in the current recording."
             )
-        return inventory.source_content_identity
+
+        def verify_current_source_identity() -> str:
+            try:
+                current = service.identify(
+                    project, reference["dataset_path"], reference["recording_path"]
+                )
+            except (
+                BidsDatasetPathError,
+                BidsIdentityResourceLimit,
+                BidsSignalInspectionError,
+                OSError,
+            ) as exc:
+                raise ReviewConflictError(
+                    f"Unable to recheck the EEG recording before saving the review: {exc}"
+                ) from exc
+            if current.status != "ready" or current.content_identity is None:
+                raise ReviewConflictError(
+                    current.message
+                    or "Unable to recheck the EEG recording before saving the review."
+                )
+            return current.content_identity
+
+        return inventory.source_content_identity, verify_current_source_identity
 
     # -- driver ----------------------------------------------------------
     def _ensure_driver(self, project: str, run_id: str) -> None:

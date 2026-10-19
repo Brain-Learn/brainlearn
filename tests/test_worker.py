@@ -739,6 +739,91 @@ def test_bad_channel_review_rejects_changed_source_without_saving(
     assert opened.json()["qc_reviews"] == []
 
 
+def test_bad_channel_review_rechecks_source_at_persistence_boundary(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brainlearn_server.bids_eeg import BidsEegDiscoveryService
+
+    fixture = Path(__file__).parents[1] / "examples" / "synthetic-eeg-bids"
+    project = _make_project(client, tmp_path)
+    dataset = project / "synthetic" / "example-bids"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(fixture, dataset)
+    signal = dataset / "sub-01" / "eeg" / "sub-01_task-Demo_eeg.eeg"
+    original_inventory = BidsEegDiscoveryService.channel_inventory
+
+    def mutate_after_inventory(
+        service: BidsEegDiscoveryService,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> Any:
+        inventory = original_inventory(
+            service, raw_project_path, relative_dataset_path, recording_path
+        )
+        signal.write_bytes(signal.read_bytes() + b"changed-after-inventory")
+        return inventory
+
+    monkeypatch.setattr(BidsEegDiscoveryService, "channel_inventory", mutate_after_inventory)
+    started = _start(client, project, _bad_channel_review_workflow())
+    parked = _wait_for_state(client, project, started["run_id"], {"waiting_for_review"})
+    node = next(
+        item for item in parked["node_runs"] if item["node_type"] == "eeg.bad_channel_review"
+    )
+
+    response = client.post(
+        "/api/runs/review",
+        json={
+            "path": str(project),
+            "run_id": started["run_id"],
+            "node_run_id": node["id"],
+            "decision": "approved",
+            "reviewer": "Researcher A",
+            "excluded_channel_names": ["Cz"],
+        },
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 409
+    assert "changed while the review decision was being saved" in response.json()["detail"]
+    opened = client.post(
+        "/api/runs/open",
+        json={"path": str(project), "run_id": started["run_id"]},
+        headers=AUTH_HEADERS,
+    )
+    assert opened.json()["run"]["state"] == "waiting_for_review"
+    assert opened.json()["qc_reviews"] == []
+
+
+def test_open_run_reports_symlinked_qc_storage_as_conflict(
+    client: TestClient, tmp_path: Path
+) -> None:
+    _posix_only()
+    fixture = Path(__file__).parents[1] / "examples" / "synthetic-eeg-bids"
+    project = _make_project(client, tmp_path)
+    dataset = project / "synthetic" / "example-bids"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(fixture, dataset)
+    started = _start(client, project, _bad_channel_review_workflow())
+    _wait_for_state(client, project, started["run_id"], {"waiting_for_review"})
+
+    external = tmp_path / "outside-qc"
+    external.mkdir()
+    sentinel = external / "sentinel.json"
+    sentinel.write_text("untouched", encoding="utf-8")
+    qc_reviews = project / "runs" / started["run_id"] / "qc-reviews"
+    qc_reviews.symlink_to(external, target_is_directory=True)
+
+    response = client.post(
+        "/api/runs/open",
+        json={"path": str(project), "run_id": started["run_id"]},
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 409
+    assert "symlink" in response.json()["detail"]
+    assert sentinel.read_text(encoding="utf-8") == "untouched"
+    assert list(external.iterdir()) == [sentinel]
+
+
 def test_bad_channel_review_persists_rejection(client: TestClient, tmp_path: Path) -> None:
     fixture = Path(__file__).parents[1] / "examples" / "synthetic-eeg-bids"
     project = _make_project(client, tmp_path)
