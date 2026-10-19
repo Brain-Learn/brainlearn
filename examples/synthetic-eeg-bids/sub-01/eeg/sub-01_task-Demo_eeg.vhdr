@@ -1,0 +1,17 @@
+Brain Vision Data Exchange Header File Version 1.0
+
+[Common Infos]
+Codepage=UTF-8
+DataFile=sub-01_task-Demo_eeg.eeg
+MarkerFile=sub-01_task-Demo_eeg.vmrk
+DataFormat=BINARY
+DataOrientation=MULTIPLEXED
+NumberOfChannels=2
+SamplingInterval=4000.0
+
+[Binary Infos]
+BinaryFormat=INT_16
+
+[Channel Infos]
+Ch1=Cz,,0.1,µV
+Ch2=Pz,,0.1,µV

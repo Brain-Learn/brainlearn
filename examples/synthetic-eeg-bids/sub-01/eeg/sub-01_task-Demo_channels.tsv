@@ -1,0 +1,3 @@
+name	type	units	reference
+Cz	EEG	µV	linked mastoids (synthetic reference)
+Pz	EEG	µV	linked mastoids (synthetic reference)

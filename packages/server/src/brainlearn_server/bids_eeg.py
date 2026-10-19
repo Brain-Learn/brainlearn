@@ -1580,6 +1580,24 @@ class BidsEegDiscoveryService:
         directory = signal_path.parent
         budget = _DirectoryEntryBudget()
         source_paths = [signal_path]
+        # MNE-BIDS reads these dataset and acquisition-level tables when
+        # importing a recording. Bind the filter to their bytes too, so an
+        # edit cannot silently change subject metadata or the scan date.
+        source_paths.append(root / "dataset_description.json")
+        participants_path = root / "participants.tsv"
+        if participants_path.exists() or participants_path.is_symlink():
+            source_paths.append(participants_path)
+        subject = entities.get("sub")
+        session = entities.get("ses")
+        if subject is not None:
+            subject_dir = root / f"sub-{subject}"
+            scans_dir = subject_dir / f"ses-{session}" if session is not None else subject_dir
+            scans_name = f"sub-{subject}_"
+            if session is not None:
+                scans_name += f"ses-{session}_"
+            scans_path = scans_dir / f"{scans_name}scans.tsv"
+            if scans_path.exists() or scans_path.is_symlink():
+                source_paths.append(scans_path)
         if file_format == "brainvision":
             source_paths.extend((signal_path.with_suffix(".vmrk"), signal_path.with_suffix(".eeg")))
         elif file_format == "eeglab":
@@ -1588,17 +1606,21 @@ class BidsEegDiscoveryService:
                 source_paths.append(fdt_path)
 
         try:
-            source_paths.extend(
-                _metadata_candidates(root, directory, entities, "eeg", ".json", budget)
-            )
-            for suffix, extension in (("channels", ".tsv"), ("events", ".tsv")):
-                candidates = _metadata_candidates(
-                    root, directory, entities, suffix, extension, budget
+            # Hash every applicable inheritance candidate MNE-BIDS can select.
+            # Including broader candidates may invalidate a run conservatively,
+            # but prevents an overlooked inherited JSON/TSV from changing the
+            # data MNE-BIDS loads without changing the recorded identity.
+            for suffix, extension in (
+                ("eeg", ".json"),
+                ("channels", ".tsv"),
+                ("events", ".tsv"),
+                ("events", ".json"),
+                ("electrodes", ".tsv"),
+                ("coordsystem", ".json"),
+            ):
+                source_paths.extend(
+                    _metadata_candidates(root, directory, entities, suffix, extension, budget)
                 )
-                if candidates:
-                    # These table sidecars replace broader inherited tables; this is the
-                    # same effective sidecar selection used during metadata inspection.
-                    source_paths.append(candidates[-1])
         except BidsMetadataError as exc:
             raise BidsDatasetPathError(str(exc)) from None
 
@@ -1683,7 +1705,7 @@ class BidsEegDiscoveryService:
         identity = content_identity(
             "artifact",
             {
-                "schema_version": "bids-eeg-input-1.0",
+                "schema_version": "bids-eeg-input-1.1",
                 "recording_path": recording_relative,
                 "files": [item.model_dump(mode="json") for item in files],
             },

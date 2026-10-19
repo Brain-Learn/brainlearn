@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "id": "eeg-filter-demo",
+  "metadata": {
+    "name": "EEG filter demo",
+    "description": "Experimental BIDS import, signal inspection, and MNE band-pass with optional notch filtering and before/after previews.",
+    "created_with": "BrainLearn 0.1.0",
+    "modality": "EEG",
+    "status": "experimental"
+  },
+  "nodes": [
+    {
+      "id": "bids",
+      "type": "input.bids_eeg",
+      "label": "BIDS EEG",
+      "category": "Input",
+      "description": "Use a discovered project-local BIDS EEG dataset as a workflow input.",
+      "position": {"x": 40, "y": 180},
+      "ports": [
+        {"id": "dataset", "label": "Dataset", "direction": "output", "data_type": "bids_dataset"}
+      ],
+      "parameters": [
+        {"id": "root", "label": "Dataset root", "value": "synthetic/example-bids", "required": true, "description": "Project-relative path to a discovered BIDS EEG dataset."}
+      ]
+    },
+    {
+      "id": "inspect",
+      "type": "eeg.inspect",
+      "label": "Inspect Signal",
+      "category": "Quality control",
+      "description": "Read measured signal and acquisition properties without transforming the recording or generating previews.",
+      "position": {"x": 330, "y": 180},
+      "ports": [
+        {"id": "dataset", "label": "Dataset", "direction": "input", "data_type": "bids_dataset"},
+        {"id": "raw", "label": "Raw EEG reference", "direction": "output", "data_type": "raw_eeg"},
+        {"id": "report", "label": "Inspection report", "direction": "output", "data_type": "report"}
+      ],
+      "parameters": [
+        {"id": "recording_path", "label": "Recording path", "value": "", "required": true, "description": "Path to one discovered recording, relative to its dataset root."}
+      ],
+      "pauses_for_review": false
+    },
+    {
+      "id": "filter",
+      "type": "eeg.filter",
+      "label": "Band-pass Filter",
+      "category": "Preprocessing",
+      "description": "Apply an MNE FIR band-pass and optional notch filter to EEG channels, with a bounded before/after preview and provenance.",
+      "position": {"x": 650, "y": 180},
+      "ports": [
+        {"id": "raw", "label": "Raw EEG", "direction": "input", "data_type": "raw_eeg"},
+        {"id": "filtered", "label": "Filtered EEG", "direction": "output", "data_type": "raw_eeg"},
+        {"id": "preview", "label": "Before/after preview", "direction": "output", "data_type": "report"},
+        {"id": "provenance", "label": "Filter provenance", "direction": "output", "data_type": "report"}
+      ],
+      "parameters": [
+        {"id": "low_hz", "label": "Low cutoff (Hz)", "value": 1.0, "required": true, "description": "High-pass cutoff in Hz; must be lower than the high cutoff."},
+        {"id": "high_hz", "label": "High cutoff (Hz)", "value": 40.0, "required": true, "description": "Low-pass cutoff in Hz; must be below the recording's Nyquist frequency."},
+        {"id": "notch_hz", "label": "Notch frequencies (Hz)", "value": "", "required": false, "description": "Optional comma-separated notch centers in Hz; leave blank to disable. Each center must fall within the pass band and below Nyquist."},
+        {"id": "notch_width_hz", "label": "Notch width (Hz)", "value": 1.0, "required": false, "description": "Width passed to MNE's FIR notch filter, in Hz."}
+      ]
+    }
+  ],
+  "edges": [
+    {"id": "e1", "source": {"node_id": "bids", "port_id": "dataset"}, "target": {"node_id": "inspect", "port_id": "dataset"}},
+    {"id": "e2", "source": {"node_id": "inspect", "port_id": "raw"}, "target": {"node_id": "filter", "port_id": "raw"}}
+  ]
+}

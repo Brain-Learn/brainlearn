@@ -675,6 +675,7 @@ def test_input_identity_hashes_signal_and_effective_sidecars_without_copying(tmp
     assert response.status_code == 200, response.text
     payload: dict[str, Any] = response.json()
     expected_paths = [
+        "dataset_description.json",
         "sub-01/eeg/sub-01_task-Rest_channels.tsv",
         "sub-01/eeg/sub-01_task-Rest_eeg.edf",
         "sub-01/eeg/sub-01_task-Rest_eeg.json",
@@ -782,19 +783,79 @@ def test_brainvision_identity_includes_required_companions_and_inherited_sidecar
     (root / "sub-01_events.tsv").write_text(
         "onset\tduration\ttrial_type\n0\t0.5\tstandard\n", encoding="utf-8"
     )
+    (root / "participants.tsv").write_text("participant_id\nsub-01\n", encoding="utf-8")
+    (root / "sub-01" / "sub-01_scans.tsv").write_text(
+        "filename\tacq_time\nsub-01/eeg/sub-01_task-Rest_eeg.vhdr\tn/a\n",
+        encoding="utf-8",
+    )
+    (root / "task-Rest_events.json").write_text(
+        json.dumps({"trial_type": {"standard": {"Description": "Standard"}}}),
+        encoding="utf-8",
+    )
+    (root / "sub-01_electrodes.tsv").write_text("name\tx\ty\tz\nCz\t0\t0\t0\n", encoding="utf-8")
+    (root / "sub-01_coordsystem.json").write_text(
+        json.dumps({"EEGCoordinateSystem": "CapTrak", "EEGCoordinateUnits": "mm"}),
+        encoding="utf-8",
+    )
 
     identity = BidsEegDiscoveryService(store).identify(
         str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.vhdr"
     )
     assert identity.status == "ready"
     assert {item.path for item in identity.files} == {
+        "dataset_description.json",
+        "participants.tsv",
+        "sub-01/sub-01_scans.tsv",
         "sub-01/eeg/sub-01_task-Rest_eeg.vhdr",
         "sub-01/eeg/sub-01_task-Rest_eeg.vmrk",
         "sub-01/eeg/sub-01_task-Rest_eeg.eeg",
         "task-Rest_eeg.json",
         "sub-01_channels.tsv",
         "sub-01_events.tsv",
+        "task-Rest_events.json",
+        "sub-01_electrodes.tsv",
+        "sub-01_coordsystem.json",
     }
+
+
+def test_input_identity_changes_when_mne_bids_metadata_changes(tmp_path: Path):
+    project, root = _project(tmp_path)
+    _write_valid_dataset(root)
+    metadata = {
+        "participants.tsv": "participant_id\nsub-01\n",
+        "sub-01/sub-01_scans.tsv": (
+            "filename\tacq_time\nsub-01/eeg/sub-01_task-Rest_eeg.edf\tn/a\n"
+        ),
+        "task-Rest_events.json": json.dumps(
+            {"trial_type": {"standard": {"Description": "Standard event"}}}
+        ),
+        "sub-01_electrodes.tsv": "name\tx\ty\tz\nCz\t0\t0\t0\n",
+        "sub-01_coordsystem.json": json.dumps(
+            {"EEGCoordinateSystem": "CapTrak", "EEGCoordinateUnits": "mm"}
+        ),
+    }
+    for relative_path, contents in metadata.items():
+        path = root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents + ("\n" if not contents.endswith("\n") else ""), encoding="utf-8")
+
+    service = BidsEegDiscoveryService(store)
+    identity = service.identify(
+        str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+    )
+    assert identity.status == "ready"
+    assert {"dataset_description.json", *metadata} <= {item.path for item in identity.files}
+
+    previous_identity = identity.content_identity
+    for relative_path in metadata:
+        path = root / relative_path
+        path.write_text(path.read_text(encoding="utf-8") + "# updated\n", encoding="utf-8")
+        updated = service.identify(
+            str(project), "raw-data/study", "sub-01/eeg/sub-01_task-Rest_eeg.edf"
+        )
+        assert updated.status == "ready"
+        assert updated.content_identity != previous_identity
+        previous_identity = updated.content_identity
 
 
 def test_identity_hash_refuses_a_file_changed_during_streaming(

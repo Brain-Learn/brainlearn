@@ -754,3 +754,65 @@ checksum/offline-reopen smoke. The missing `.fdt` limitation on the direct-MNE
 fixture is unchanged: no signal-sample agreement or payload-based sample-count
 or duration validation is claimed. Step 5 remains approved; Step 6 was not
 started in this review unit.
+
+## Step 6 final implementation and scientific review
+
+Review date: 2026-10-19
+
+Scope: PR #31 code repair `6fbd513e99cb925573497b81361c72e1d5438c04` and
+hosted-evidence head `5466ab954006ee83cb7a04d15577f0fc2606b18a`, compared with
+main `084695a6c7230244846d3696883b76fe8cd2679c`.
+
+Status: **approved for the experimental first filter workflow and Python
+export contract.** The repaired identity logic binds `dataset_description.json`,
+optional `participants.tsv` and subject/session `scans.tsv`, and all matching
+inherited EEG JSON, channels/events TSV, events JSON, electrodes TSV, and
+coordinate-system JSON sidecars. I checked this inventory against the pinned
+MNE-BIDS 0.20.0 `read_raw_bids` event and sidecar loading paths; no other
+MNE-BIDS metadata input used by this supported EEG import path was omitted.
+Regressions confirm that changing each added metadata class changes the source
+identity, the worker refuses a persistent participant-table edit after
+inspection, the generated script refuses a participant-table edit after
+`read_raw_bids`, and both worker and script provenance contain the new fixture
+metadata. The deterministic sample-bearing two-channel fixture matches its
+CC0-1.0 manifest, including the generator checksum.
+
+The generated script's second no-overwrite issue is fixed. It stages the FIF
+and provenance, then uses same-filesystem hard links as atomic create-if-absent
+publication. I independently reran the subprocess regression for both race
+targets: a test hook creates a sentinel destination during `filtered.save`;
+the script exits unsuccessfully, preserves the sentinel bytes, does not leave
+the other destination, and cleans temporary or partial outputs. The explicit
+`--overwrite` path remains covered by the end-to-end export test, which also
+checks that a pre-existing output pair is left untouched when overwrite is not
+requested and replaced when it is. Renderer version is 1.2.1.
+
+The focused subprocess, parity, and stale-metadata checks passed 4 tests with
+2 upstream deprecation warnings. The full clean-checkout gate passed:
+`uv sync --locked --all-packages --group eeg`; Ruff; formatting (86 files);
+strict mypy (32 source files); pytest (802 passed, 3 skipped, 2 upstream
+Starlette/AnyIO deprecation warnings in 42.06 seconds); frontend ESLint and
+Prettier; Vitest (176 tests in 19 files); production build (1,848 modules,
+with the existing chunk-size advisory); production dependency audit (0
+vulnerabilities); `uv lock --check`; and `git diff --check`. The focused
+comparison and complete suite exercise the BrainLearn worker, a separately
+written direct-MNE call, and the executed generated script on identical
+parameters and fixture, within `rtol=1e-6` and `atol=2e-5 µV`. The hosted
+Python and frontend jobs both passed on head `5466ab9` in Actions run
+`39230094615`.
+
+The review of filter assumptions confirms that the experimental defaults and
+MNE FIR settings are explicit, optional notch centers are researcher supplied,
+and the preview is described as a comparison rather than a signal-quality or
+filter-suitability assessment. This is a bounded engineering approval: the
+synthetic fixture has actual sample bytes and supports numerical agreement,
+but the pinned public `ds002181:1.0.0` EEGLAB subset still lacks its referenced
+`.fdt`. No public-sample signal validation, general filter appropriateness,
+experimental suitability, clinical use, or scientific certification is
+claimed. Preserve the experimental label; a sample-bearing public reference
+and external EEG methods review remain necessary before claiming a
+scientifically validated EEG workflow. No browser-to-live-service run was
+performed for Step 6.
+
+Step 6 is checked for its experimental filter and code-generation completion
+gate. Step 7 remains the next assignment and was not started in this review.

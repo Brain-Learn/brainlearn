@@ -13,7 +13,7 @@ import App from "./App";
 import type { NodeManifest, Workflow } from "./types";
 
 const bidsManifest: NodeManifest = {
-  manifest_schema_version: "1.1",
+  manifest_schema_version: "1.2",
   id: "input.bids_eeg",
   node_version: "0.1.0",
   label: "BIDS EEG",
@@ -62,6 +62,7 @@ const bidsManifest: NodeManifest = {
       installed_version: null,
     },
   ],
+  code_renderers: [],
 };
 
 beforeEach(() => {
@@ -120,6 +121,7 @@ afterEach(() => {
 test("adds and removes a registry node from an empty canvas", async () => {
   render(<App />);
   expect(screen.getByText("Build an example EEG graph")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Export Python/ })).toBeDisabled();
   const addButton = await screen.findByRole("button", { name: /BIDS EEG/ });
 
   fireEvent.click(addButton);

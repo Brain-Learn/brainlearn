@@ -1,0 +1,12 @@
+[project]
+name = "brainlearn-mne"
+version = "0.2.0"
+description = "Allowlisted MNE-Python adapters for BrainLearn EEG workflows"
+requires-python = ">=3.12"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

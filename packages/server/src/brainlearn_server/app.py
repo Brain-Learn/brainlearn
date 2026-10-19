@@ -70,6 +70,13 @@ from brainlearn_server.local_import import (
     LocalImportService,
 )
 from brainlearn_server.project_store import ProjectStore, canonicalize_project_path
+from brainlearn_server.python_export import (
+    CODE_RENDERER_ID,
+    CODE_RENDERER_VERSION,
+    CodeRenderError,
+    RenderedCode,
+    render_eeg_filter_python,
+)
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
 from brainlearn_server.researcher_decisions import (
     ResearcherDecision,
@@ -85,6 +92,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 EXAMPLE_PATH = REPOSITORY_ROOT / "examples" / "eeg-first-look.workflow.json"
 EXAMPLE_WORKFLOWS: dict[str, Path] = {
     "eeg-first-look": EXAMPLE_PATH,
+    "eeg-filter-demo": REPOSITORY_ROOT / "examples" / "eeg-filter-demo.workflow.json",
     "demo-branched": REPOSITORY_ROOT / "examples" / "demo-branched.workflow.json",
 }
 
@@ -306,6 +314,36 @@ def submitted_workflow_validation(workflow: Workflow) -> WorkflowValidationRespo
         workflow=workflow,
         validation=validate_workflow(workflow, NODE_REGISTRY_BY_ID),
     )
+
+
+@app.post("/api/workflows/render/python", response_model=RenderedCode)
+def render_workflow_python(
+    workflow: Workflow, _auth: None = Depends(require_session_token)
+) -> RenderedCode:
+    """Render the supported EEG import/inspection/filter graph as standalone Python."""
+
+    validation = validate_workflow(workflow, NODE_REGISTRY_BY_ID)
+    if not validation.valid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Correct workflow validation issues before exporting code.",
+                "issues": [issue.model_dump(mode="json") for issue in validation.issues],
+            },
+        )
+    filter_manifest = NODE_REGISTRY_BY_ID.get("eeg.filter")
+    if filter_manifest is None or not any(
+        renderer.id == CODE_RENDERER_ID and renderer.version == CODE_RENDERER_VERSION
+        for renderer in filter_manifest.code_renderers
+    ):
+        raise HTTPException(
+            status_code=503,
+            detail="The EEG filter node does not advertise this Python renderer version.",
+        )
+    try:
+        return render_eeg_filter_python(workflow)
+    except CodeRenderError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _optional_search_text(value: str | None, *, field: str, max_length: int) -> str | None:
