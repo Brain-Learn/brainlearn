@@ -896,3 +896,43 @@ effects. Step 7's bad-channel review leaf is complete; the Step 7 parent and
 scientific-review gate remain unchecked. No ICA work was started. The wider
 EEG workflow remains experimental pending a sample-bearing public reference and
 independent EEG methods review.
+
+## Step 7 final hosted re-review
+
+Review date: 2026-10-19
+
+Scope: PR #34 final head `7220365b98e4abdd052248fe4bfe46f60bbbe0a6`,
+compared with main `f6b5c6be6ac2bbf9ff2058a68bb1d90366459969`.
+
+Status: **approved for explicit bad-channel annotation persistence only.** The
+source identity is checked both when the pause is created and at the QC record
+save boundary; invalid channel names are rejected; decisions are immutable and
+run/node/input/source bound; approval and rejection persist across reopening;
+and rejected decisions fail the run. The source is unchanged, and the review
+does not apply exclusions downstream.
+
+Two unrelated asynchronous test races surfaced on the monitor-documentation
+updates and were repaired on this same PR. The branched-workflow test now waits
+for the exact cached trunk-node states before comparing identities. A stale
+run-history response could replace a newer run entry; `mergeHistoryEntry` now
+invalidates older list requests, and a regression holds an empty list response
+until after a run appears and confirms it stays visible. I reviewed both
+repairs in the final diff.
+
+On the final clean checkout, focused bad-channel/QC-scope/symlink checks passed
+12 (187 deselected), and the cache-reuse synchronization regression passed 1.
+The complete gate passed: locked EEG sync; Ruff; formatting (87 files); scoped
+mypy (32 source files); strict mypy (34 source files); pytest (816 passed, 3
+skipped, 2 upstream deprecation warnings in 37.96 seconds); ESLint; Prettier;
+Vitest (177 tests in 19 files); production build (1,848 modules, with the
+existing chunk-size advisory); production dependency audit (0 vulnerabilities);
+`uv lock --check`; and `git diff --check origin/main...HEAD`. Both hosted jobs
+passed on final head `7220365` in Actions run `39239172052` (Python 1m22s;
+frontend 30s).
+
+This approval covers persistence of a researcher's explicit channel
+annotations. It does not validate bad-channel criteria, downstream signal
+effects, or scientific suitability. Step 7's bad-channel review leaf is
+complete; the Step 7 parent and scientific-review gate remain unchecked, and
+ICA was not started. The wider EEG workflow remains experimental pending a
+sample-bearing public reference and independent EEG methods review.
