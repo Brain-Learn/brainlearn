@@ -29,13 +29,27 @@ def _verified_copy(ctx: NodeContext, port: str, target: Path) -> Any:
     artifact = ctx.input_artifacts.get(port)
     if artifact is None:
         raise ControlledFailure(f"The ICA {port!r} input has no persisted artifact identity.")
-    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        relative = target.relative_to(ctx.staging_dir)
+    except ValueError as exc:
+        raise ControlledFailure("The ICA input copy target must stay inside run staging.") from exc
+    if not relative.parts or any(part in ("", ".", "..") for part in relative.parts):
+        raise ControlledFailure("The ICA input copy target is unsafe.")
+    current = ctx.staging_dir
+    if current.is_symlink() or not current.is_dir():
+        raise ControlledFailure("The ICA staging directory is unsafe or symlinked.")
+    for part in relative.parts[:-1]:
+        current = current / part
+        if current.is_symlink() or not current.is_dir():
+            raise ControlledFailure("The ICA input copy path contains an unsafe directory.")
+    if target.is_symlink() or target.exists():
+        raise ControlledFailure("The ICA input copy target already exists or is unsafe.")
     try:
         with (
             ctx.run_store.open_artifact_stream(ctx.project_path, ctx.run_id, artifact.artifact_id)[
                 0
             ] as source,
-            target.open("wb") as destination,
+            target.open("xb") as destination,
         ):
             shutil.copyfileobj(source, destination, 1024 * 1024)
     except (OSError, ValueError, FileNotFoundError) as exc:
@@ -44,6 +58,12 @@ def _verified_copy(ctx: NodeContext, port: str, target: Path) -> Any:
         ) from exc
     _require_cancel(ctx)
     return artifact
+
+
+def _ica_work_dir(ctx: NodeContext, name: str) -> Path:
+    from brainlearn_server.worker import _owned_child
+
+    return _owned_child(ctx.staging_dir, ctx.node_id, "ICA work directory", name)
 
 
 def _read_json(path: Path, description: str) -> dict[str, Any]:
@@ -144,7 +164,7 @@ def fit_ica_eeg(ctx: NodeContext) -> list[StagedOutput]:
     """Fit ICA to a hash-verified input, without applying any component exclusions."""
 
     _require_cancel(ctx)
-    work_dir = ctx.staging_dir / "ica-work"
+    work_dir = _ica_work_dir(ctx, "ica-work")
     raw = None
     try:
         artifact = ctx.input_artifacts.get("raw")
@@ -153,7 +173,13 @@ def fit_ica_eeg(ctx: NodeContext) -> list[StagedOutput]:
         raw, reference = _load_raw(ctx, "raw", work_dir)
 
         eeg_raw = raw.copy().pick("eeg")
-        n_samples = len(eeg_raw.ch_names) * int(eeg_raw.n_times)
+        bad_channels = set(eeg_raw.info.get("bads", ()))
+        usable_eeg_channels = [
+            name
+            for name, kind in zip(eeg_raw.ch_names, eeg_raw.get_channel_types(), strict=True)
+            if kind == "eeg" and name not in bad_channels
+        ]
+        n_samples = len(usable_eeg_channels) * int(eeg_raw.n_times)
         if n_samples > 25_000_000:
             raise ControlledFailure("The recording exceeds the bounded ICA fitting sample limit.")
         eeg_raw.load_data(verbose="ERROR")
@@ -252,7 +278,7 @@ def apply_reviewed_ica_eeg(ctx: NodeContext) -> list[StagedOutput]:
     _require_cancel(ctx)
     if ctx.project_path is None or ctx.run_store is None or ctx.run_id is None:
         raise ControlledFailure("ICA review requires a persisted run.")
-    work_dir = ctx.staging_dir / "ica-review-work"
+    work_dir = _ica_work_dir(ctx, "ica-review-work")
     raw = None
     try:
         raw, reference = _load_raw(ctx, "raw", work_dir)

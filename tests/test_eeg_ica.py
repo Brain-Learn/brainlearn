@@ -15,15 +15,19 @@ import mne
 import numpy as np
 import pytest
 from brainlearn_core import (
+    ArtifactRecord,
     CanvasPosition,
     QCReviewArtifactIdentity,
     QCReviewInputIdentity,
     QCReviewRecord,
     Workflow,
+    content_identity,
 )
 from brainlearn_server import project_store as store_module
 from brainlearn_server.app import app, runs, store, workers
 from brainlearn_server.auth import reset_session_token_for_tests
+from brainlearn_server.demo_nodes import ControlledFailure, NodeContext
+from brainlearn_server.mne_ica import _verified_copy
 from brainlearn_server.python_export import render_eeg_ica_python
 from brainlearn_server.registry import instantiate_registered_node
 from fastapi.testclient import TestClient
@@ -137,6 +141,128 @@ def _source_snapshot(root: Path) -> dict[str, tuple[int, str]]:
     }
 
 
+def _bad_channel_raw() -> mne.io.BaseRaw:
+    sampling_frequency = 100.0
+    sample_count = 5000
+    time = np.arange(sample_count) / sampling_frequency
+    sources = np.vstack(
+        [
+            np.sin(2 * np.pi * 3.1 * time) + 0.2 * np.sin(2 * np.pi * 7.3 * time),
+            np.sign(np.sin(2 * np.pi * 0.7 * time)) + 0.13 * np.sin(2 * np.pi * 11.0 * time),
+        ]
+    )
+    mixing = np.array([[1.0, 0.3], [0.2, 1.0], [0.8, -0.5]])
+    info = mne.create_info(["Cz", "Pz", "Oz"], sampling_frequency, ch_types="eeg")
+    info["bads"] = ["Pz"]
+    return mne.io.RawArray(mixing @ sources * 1e-6, info, verbose="ERROR")
+
+
+def test_ica_fit_fails_closed_on_nonconvergence_and_preexisting_outputs(
+    tmp_path: Path,
+) -> None:
+    from brainlearn_mne.ica import MneIcaError, fit_ica
+
+    info = mne.create_info(["Cz", "Pz", "Oz"], 100, ch_types="eeg")
+    info["bads"] = ["Pz"]
+    unstable = mne.io.RawArray(
+        np.random.default_rng(0).normal(size=(3, 2000)) * 1e-6, info, verbose="ERROR"
+    )
+    nonconverged_dir = tmp_path / "nonconverged"
+    with pytest.raises(MneIcaError, match="FastICA did not converge"):
+        fit_ica(
+            unstable,
+            random_state=0,
+            staging_dir=nonconverged_dir,
+            source_identity="test-source",
+            input_artifact_id="test-input",
+            cancel_check=lambda: None,
+        )
+    unstable.close()
+    assert list(nonconverged_dir.iterdir()) == []
+
+    raw = _bad_channel_raw()
+    staging = tmp_path / "symlink-output"
+    staging.mkdir()
+    outside = tmp_path / "outside-diagnostics.json"
+    outside.write_text("leave this file alone", encoding="utf-8")
+    (staging / "ica-diagnostics.json").symlink_to(outside)
+    with pytest.raises(MneIcaError, match="already exists or is unsafe"):
+        fit_ica(
+            raw,
+            random_state=0,
+            staging_dir=staging,
+            source_identity="test-source",
+            input_artifact_id="test-input",
+            cancel_check=lambda: None,
+        )
+    raw.close()
+    assert outside.read_text(encoding="utf-8") == "leave this file alone"
+    assert not (staging / "ica-model-ica.fif").exists()
+
+
+def test_ica_fit_records_only_good_eeg_channels_and_explicit_bad_exclusions(
+    tmp_path: Path,
+) -> None:
+    from brainlearn_mne.ica import fit_ica
+
+    raw = _bad_channel_raw()
+    staging = tmp_path / "bad-channel-fit"
+    result = fit_ica(
+        raw,
+        random_state=0,
+        staging_dir=staging,
+        source_identity="test-source",
+        input_artifact_id="test-input",
+        cancel_check=lambda: None,
+    )
+    raw.close()
+    provenance = json.loads(result.provenance_path.read_text("utf-8"))
+    diagnostics = json.loads(result.diagnostics_path.read_text("utf-8"))
+    ica = mne.preprocessing.read_ica(result.model_path, verbose="ERROR")
+    assert ica.ch_names == ["Cz", "Oz"]
+    assert provenance["channels"] == ["Cz", "Oz"]
+    assert provenance["picks"] == ["Cz", "Oz"]
+    assert provenance["excluded_bad_channels"] == ["Pz"]
+    assert diagnostics["channels"] == ["Cz", "Oz"]
+    assert diagnostics["excluded_bad_channels"] == ["Pz"]
+    assert provenance["iterations"] == diagnostics["fit_iterations"]
+    assert provenance["converged"] is diagnostics["fit_converged"] is True
+
+
+@pytest.mark.parametrize("work_dir", ["ica-work", "ica-review-work"])
+def test_ica_verified_copy_refuses_symlinked_work_directory(tmp_path: Path, work_dir: str) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    sentinel.write_text("untouched", encoding="utf-8")
+    (staging / work_dir).symlink_to(outside, target_is_directory=True)
+    artifact = ArtifactRecord(
+        artifact_id="brainlearn-v1:artifact:" + "a" * 64,
+        path="runs/run/artifacts/source/raw.fif",
+        byte_size=1,
+        sha256="b" * 64,
+        produced_by_node="source",
+        port_id="raw",
+    )
+    context = NodeContext(
+        node_id="ica",
+        node_type="eeg.ica_fit",
+        parameters={},
+        inputs={},
+        staging_dir=staging,
+        input_artifacts={"raw": artifact},
+        project_path=str(tmp_path),
+        run_store=object(),
+        run_id="run",
+    )
+    with pytest.raises(ControlledFailure, match="unsafe directory"):
+        _verified_copy(context, "raw", staging / work_dir / "raw-input_raw.fif")
+    assert sentinel.read_text(encoding="utf-8") == "untouched"
+    assert list(outside.iterdir()) == [sentinel]
+
+
 def _direct_mne_reviewed_values(dataset: Path, scratch: Path, excluded: list[int]) -> np.ndarray:
     from mne_bids import get_bids_path_from_fname, read_raw_bids
 
@@ -222,11 +348,19 @@ def test_ica_pauses_persists_review_and_matches_direct_mne_and_export(
         item for item in fit["artifacts"] if item["port_id"] == "diagnostics"
     )
     diagnostics = json.loads((project / diagnostics_artifact["path"]).read_text("utf-8"))
+    provenance_artifact = next(item for item in fit["artifacts"] if item["port_id"] == "provenance")
+    fit_provenance = json.loads((project / provenance_artifact["path"]).read_text("utf-8"))
     assert diagnostics["component_count"] == 2
     assert len(diagnostics["component_maps"]) == 2
     assert len(diagnostics["time_courses"]) == 2
     assert len(diagnostics["spectra"]) == 2
     assert diagnostics["topography_available"] is False
+    assert diagnostics["fit_converged"] is True
+    assert diagnostics["fit_iterations"] == fit_provenance["iterations"]
+    assert fit_provenance["converged"] is True
+    assert fit_provenance["channels"] == diagnostics["channels"]
+    assert fit_provenance["picks"] == diagnostics["channels"]
+    assert fit_provenance["excluded_bad_channels"] == []
     assert not any(item["port_id"] == "reviewed" for item in review["artifacts"])
 
     invalid = client.post(
@@ -333,6 +467,39 @@ def test_ica_pauses_persists_review_and_matches_direct_mne_and_export(
     )
     assert exported_provenance["ica_review"]["reviewer"] == "Researcher A"
     assert exported_provenance["ica_review"]["excluded_components"] == [0]
+    assert exported_provenance["source_content_identity"]
+    assert (
+        exported_provenance["source_content_identity"]
+        == exported_provenance["ica_review"]["source_content_identity"]
+    )
+
+    changed_dataset = tmp_path / "changed-bids"
+    shutil.copytree(dataset, changed_dataset)
+    eeg_file = changed_dataset / RECORDING_RELATIVE.replace(".vhdr", ".eeg")
+    changed_bytes = bytearray(eeg_file.read_bytes())
+    changed_bytes[0] ^= 1
+    eeg_file.write_bytes(changed_bytes)
+    changed_output = tmp_path / "changed-source-reviewed.fif"
+    changed_run = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--dataset-root",
+            str(changed_dataset),
+            "--recording-path",
+            RECORDING_RELATIVE,
+            "--output",
+            str(changed_output),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert changed_run.returncode != 0
+    assert "differs from the source approved" in changed_run.stderr
+    assert not changed_output.exists()
+    assert not changed_output.with_suffix(".provenance.json").exists()
     assert _source_snapshot(dataset) == before
 
 
@@ -465,9 +632,52 @@ def test_ica_python_renderer_requires_approved_review_for_its_graph() -> None:
         note="Keep the reviewed choice with the exported code.",
         created_at="2026-10-19T00:00:00+00:00",
     )
-    rendered = render_eeg_ica_python(workflow, review, seed=0)
+    source_files = [
+        {
+            "path": RECORDING_RELATIVE,
+            "byte_size": 1,
+            "sha256": "a" * 64,
+        }
+    ]
+    source_identity = content_identity(
+        "artifact",
+        {
+            "schema_version": "bids-eeg-input-1.1",
+            "recording_path": RECORDING_RELATIVE,
+            "files": source_files,
+        },
+    )
+    rendered = render_eeg_ica_python(
+        workflow,
+        review,
+        seed=0,
+        filter_provenance={
+            "operation": "mne.raw.filter",
+            "recording_path": RECORDING_RELATIVE,
+            "source_content_identity": source_identity,
+            "source_files": source_files,
+        },
+        fit_provenance={
+            "schema_version": "1.1",
+            "operation": "fit_ica",
+            "input_artifact_id": "brainlearn-v1:artifact:" + "1" * 64,
+            "method": "fastica",
+            "converged": True,
+            "fitted_components": 2,
+            "random_state": 0,
+            "max_iter": 1000,
+            "reject_by_annotation": False,
+            "decim": 1,
+            "channels": ["Cz", "Pz"],
+            "picks": ["Cz", "Pz"],
+            "excluded_bad_channels": [],
+            "iterations": 17,
+        },
+    )
     assert rendered.renderer_id == "brainlearn.eeg.mne-ica.python"
-    assert rendered.renderer_version == "0.1.0"
+    assert rendered.renderer_version == "0.2.0"
     assert "ICA_REVIEW_JSON" in rendered.source
     assert "ica.apply(filtered, exclude=ICA_EXCLUDED_COMPONENTS" in rendered.source
+    assert "current_source_identity != ICA_SOURCE_CONTENT_IDENTITY" in rendered.source
+    assert "FastICA did not converge within 1000 iterations" in rendered.source
     compile(rendered.source, rendered.filename, "exec")

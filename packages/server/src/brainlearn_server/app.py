@@ -446,7 +446,68 @@ def render_reviewed_run_python(
         for identity in review.input_artifact_identities:
             with runs.open_artifact_stream(payload.path, payload.run_id, identity.artifact_id)[0]:
                 pass
-        return render_eeg_ica_python(payload.workflow, review, seed=run.seed or 0)
+        filter_graph_node = next(
+            (item for item in payload.workflow.nodes if item.type == "eeg.filter"), None
+        )
+        fit_graph_node = next(
+            (item for item in payload.workflow.nodes if item.type == "eeg.ica_fit"), None
+        )
+        if filter_graph_node is None or fit_graph_node is None:
+            raise HTTPException(status_code=409, detail="The ICA workflow topology is incomplete.")
+        filter_run = next(
+            (item for item in run.node_runs if item.node_id == filter_graph_node.id), None
+        )
+        fit_run = next((item for item in run.node_runs if item.node_id == fit_graph_node.id), None)
+        if filter_run is None or fit_run is None:
+            raise HTTPException(status_code=409, detail="The completed ICA run is incomplete.")
+        filter_output = next(
+            (item for item in filter_run.artifacts if item.port_id == "filtered"), None
+        )
+        fit_output = next((item for item in fit_run.artifacts if item.port_id == "ica"), None)
+        review_inputs = {
+            item.port_id: item.artifact_id for item in review.input_artifact_identities
+        }
+        if (
+            filter_output is None
+            or fit_output is None
+            or review_inputs.get("raw") != filter_output.artifact_id
+            or review_inputs.get("fit") != fit_output.artifact_id
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="The approved ICA decision no longer matches its filter and fit outputs.",
+            )
+
+        def _read_provenance(node_run: Any, port_id: str, description: str) -> dict[str, Any]:
+            artifact = next((item for item in node_run.artifacts if item.port_id == port_id), None)
+            if artifact is None:
+                raise HTTPException(
+                    status_code=409, detail=f"The {description} provenance is missing."
+                )
+            try:
+                with runs.open_artifact_stream(payload.path, payload.run_id, artifact.artifact_id)[
+                    0
+                ] as stream:
+                    value = json.load(stream)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise HTTPException(
+                    status_code=409, detail=f"The {description} provenance cannot be verified."
+                ) from exc
+            if not isinstance(value, dict):
+                raise HTTPException(
+                    status_code=409, detail=f"The {description} provenance is invalid."
+                )
+            return value
+
+        filter_provenance = _read_provenance(filter_run, "provenance", "filter")
+        fit_provenance = _read_provenance(fit_run, "provenance", "ICA fit")
+        return render_eeg_ica_python(
+            payload.workflow,
+            review,
+            seed=run.seed or 0,
+            filter_provenance=filter_provenance,
+            fit_provenance=fit_provenance,
+        )
     except HTTPException:
         raise
     except FileNotFoundError as exc:

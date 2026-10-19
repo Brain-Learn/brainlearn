@@ -17,7 +17,7 @@ export function parseEEGICAComponentDiagnostics(
 ): EEGICAComponentDiagnostics {
   if (
     !isRecord(value) ||
-    value.schema_version !== "1.0" ||
+    !(value.schema_version === "1.0" || value.schema_version === "1.1") ||
     !Number.isFinite(value.sampling_frequency_hz) ||
     !Array.isArray(value.channels) ||
     value.channels.length < 2 ||
@@ -52,6 +52,25 @@ export function parseEEGICAComponentDiagnostics(
     throw new Error(
       "ICA component diagnostics are invalid or outside supported limits.",
     );
+  }
+  const channels = value.channels as string[];
+  if (
+    value.schema_version === "1.1" &&
+    (value.fit_converged !== true ||
+      !Number.isInteger(value.fit_iterations) ||
+      Number(value.fit_iterations) < 1 ||
+      Number(value.fit_iterations) >= 1000 ||
+      !Array.isArray(value.excluded_bad_channels) ||
+      !value.excluded_bad_channels.every(
+        (item) => typeof item === "string" && item.length > 0,
+      ) ||
+      new Set(value.excluded_bad_channels).size !==
+        value.excluded_bad_channels.length ||
+      value.excluded_bad_channels.some(
+        (name) => typeof name === "string" && channels.includes(name),
+      ))
+  ) {
+    throw new Error("ICA fit convergence or channel provenance is invalid.");
   }
   const componentCount = Number(value.component_count);
   for (let index = 0; index < componentCount; index += 1) {

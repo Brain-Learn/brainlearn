@@ -234,9 +234,12 @@ export interface EEGFilterComparisonPreview {
 }
 
 export interface EEGICAComponentDiagnostics {
-  schema_version: "1.0";
+  schema_version: "1.0" | "1.1";
   sampling_frequency_hz: number;
   channels: string[];
+  excluded_bad_channels?: string[];
+  fit_converged?: boolean;
+  fit_iterations?: number;
   component_count: number;
   component_maps: Array<{
     component: number;

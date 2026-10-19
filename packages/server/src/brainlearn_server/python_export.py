@@ -6,7 +6,7 @@ import json
 import math
 from typing import Literal
 
-from brainlearn_core import NodeInstance, QCReviewRecord, Workflow
+from brainlearn_core import NodeInstance, QCReviewRecord, Workflow, content_identity
 from pydantic import BaseModel, ConfigDict, Field
 
 CODE_RENDERER_SCHEMA_VERSION: Literal["1.0"] = "1.0"
@@ -14,7 +14,7 @@ CODE_RENDERER_ID = "brainlearn.eeg.mne-filter.python"
 CODE_RENDERER_VERSION = "1.2.1"
 _EXPECTED_NODE_TYPES = {"input.bids_eeg", "eeg.inspect", "eeg.filter"}
 ICA_CODE_RENDERER_ID = "brainlearn.eeg.mne-ica.python"
-ICA_CODE_RENDERER_VERSION = "0.1.0"
+ICA_CODE_RENDERER_VERSION = "0.2.0"
 
 
 class RenderedCode(BaseModel):
@@ -651,6 +651,8 @@ def render_eeg_ica_python(
     review: QCReviewRecord,
     *,
     seed: int,
+    filter_provenance: dict[str, object],
+    fit_provenance: dict[str, object],
 ) -> RenderedCode:
     """Render a supported filter/ICA workflow with a persisted, approved decision."""
 
@@ -668,8 +670,162 @@ def render_eeg_ica_python(
     excluded = list(review.excluded_ica_components)
     if len(set(excluded)) != len(excluded) or any(index < 0 for index in excluded):
         raise CodeRenderError("The persisted ICA component list is invalid.")
+    source_identity = filter_provenance.get("source_content_identity")
+    if filter_provenance.get("operation") != "mne.raw.filter":
+        raise CodeRenderError("The ICA export has no matching MNE filter provenance.")
+    recording_path = filter_provenance.get("recording_path")
+    source_files = filter_provenance.get("source_files")
+    if (
+        not isinstance(source_identity, str)
+        or not isinstance(recording_path, str)
+        or not isinstance(source_files, list)
+        or not source_files
+        or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("path"), str)
+            or not item["path"]
+            or item["path"].startswith("/")
+            or "\\" in item["path"]
+            or any(part in ("", ".", "..") for part in item["path"].split("/"))
+            or type(item.get("byte_size")) is not int
+            or item["byte_size"] < 0
+            or not isinstance(item.get("sha256"), str)
+            or len(item["sha256"]) != 64
+            or any(char not in "0123456789abcdef" for char in item["sha256"])
+            for item in source_files
+        )
+    ):
+        raise CodeRenderError("The filter run has no valid source identity for ICA export.")
+    normalized_source_files = [
+        {"path": item["path"], "byte_size": item["byte_size"], "sha256": item["sha256"]}
+        for item in source_files
+    ]
+    source_paths = [item["path"] for item in normalized_source_files]
+    if source_paths != sorted(set(source_paths)):
+        raise CodeRenderError("The filter source identity contains duplicate or unsorted paths.")
+    try:
+        computed_source_identity = content_identity(
+            "artifact",
+            {
+                "schema_version": "bids-eeg-input-1.1",
+                "recording_path": recording_path,
+                "files": normalized_source_files,
+            },
+        )
+    except (TypeError, ValueError) as exc:
+        raise CodeRenderError("The filter source identity could not be verified.") from exc
+    if computed_source_identity != source_identity:
+        raise CodeRenderError("The filter source files do not match their recorded identity.")
+
+    artifact_ids = {item.port_id: item.artifact_id for item in review.input_artifact_identities}
+    fit_channels = fit_provenance.get("channels")
+    excluded_bad_channels = fit_provenance.get("excluded_bad_channels")
+    fit_iterations = fit_provenance.get("iterations")
+    component_count = fit_provenance.get("fitted_components")
+    if (
+        fit_provenance.get("operation") != "fit_ica"
+        or fit_provenance.get("schema_version") != "1.1"
+        or fit_provenance.get("input_artifact_id") != artifact_ids.get("raw")
+        or fit_provenance.get("method") != "fastica"
+        or fit_provenance.get("converged") is not True
+        or fit_provenance.get("max_iter") != 1000
+        or fit_provenance.get("random_state") != seed
+        or fit_provenance.get("reject_by_annotation") is not False
+        or fit_provenance.get("decim") != 1
+        or type(component_count) is not int
+        or component_count < 1
+        or not isinstance(fit_channels, list)
+        or len(fit_channels) < 2
+        or not all(isinstance(item, str) and item for item in fit_channels)
+        or len(set(fit_channels)) != len(fit_channels)
+        or not isinstance(excluded_bad_channels, list)
+        or not all(isinstance(item, str) and item for item in excluded_bad_channels)
+        or len(set(excluded_bad_channels)) != len(excluded_bad_channels)
+        or any(item in fit_channels for item in excluded_bad_channels)
+        or fit_provenance.get("picks") != fit_channels
+        or type(fit_iterations) is not int
+        or not 1 <= fit_iterations < 1000
+    ):
+        raise CodeRenderError("The fitted ICA provenance does not match this approved decision.")
+    if any(index >= component_count for index in excluded):
+        raise CodeRenderError("The approved ICA component choice is outside the fitted model.")
     base = render_eeg_filter_python(filter_workflow)
     source = base.source
+    source = source.replace(
+        "import mne_bids\n",
+        "import mne_bids\nimport sklearn\nimport warnings\n"
+        "from sklearn.exceptions import ConvergenceWarning\n",
+    )
+    source = source.replace(
+        'EXPECTED_MNE_BIDS = "0.20.0"\n',
+        'EXPECTED_MNE_BIDS = "0.20.0"\nEXPECTED_SCIKIT_LEARN = "1.7.2"\n',
+    )
+    source = source.replace(
+        "if mne.__version__ != EXPECTED_MNE or mne_bids.__version__ != EXPECTED_MNE_BIDS:",
+        "if (mne.__version__ != EXPECTED_MNE or mne_bids.__version__ != EXPECTED_MNE_BIDS "
+        "or sklearn.__version__ != EXPECTED_SCIKIT_LEARN):",
+    )
+    source = source.replace(
+        'f"mne-bids=={{EXPECTED_MNE_BIDS}} (found {{mne.__version__}}, "',
+        'f"mne-bids=={{EXPECTED_MNE_BIDS}} and scikit-learn=={{EXPECTED_SCIKIT_LEARN}} "'
+        'f"(found {{mne.__version__}}, "',
+    )
+    expected_fit = {
+        "channels": fit_channels,
+        "excluded_bad_channels": excluded_bad_channels,
+        "iterations": fit_iterations,
+        "fitted_components": component_count,
+    }
+    constants = (
+        f"ICA_SOURCE_CONTENT_IDENTITY = {source_identity!r}\n"
+        f"ICA_EXPECTED_SOURCE_FILES = {normalized_source_files!r}\n"
+        f"ICA_EXPECTED_FIT = {expected_fit!r}\n"
+    )
+    marker = "def parse_entities(stem: str, suffix: str) -> dict[str, str] | None:\n"
+    if source.count(marker) != 1:
+        raise CodeRenderError("The ICA renderer could not bind the source and fit identities.")
+    source = source.replace(marker, constants + "\n" + marker)
+    identity_guard = """\
+    before = snapshot(paths, dataset_root)
+    current_source_files = []
+    for relative, digest in sorted(before.items()):
+        current_source_files.append(
+            {
+                "path": relative,
+                "byte_size": (dataset_root / relative).stat().st_size,
+                "sha256": digest,
+            }
+        )
+    if current_source_files != ICA_EXPECTED_SOURCE_FILES:
+        raise SystemExit(
+            "This recording differs from the source approved for this ICA decision. "
+            "Request a new review."
+        )
+    identity_payload = {
+        "schema_version": "bids-eeg-input-1.1",
+        "recording_path": recording_relative.as_posix(),
+        "files": current_source_files,
+    }
+    identity_json = json.dumps(
+        identity_payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    identity_prefix = b"brainlearn-v1:artifact:"
+    current_source_identity = (
+        identity_prefix.decode()
+        + hashlib.sha256(identity_prefix + identity_json).hexdigest()
+    )
+    if current_source_identity != ICA_SOURCE_CONTENT_IDENTITY:
+        raise SystemExit(
+            "This recording does not match the source identity approved for this ICA decision. "
+            "Request a new review."
+        )
+"""
+    source = source.replace("    before = snapshot(paths, dataset_root)\n", identity_guard)
+    if "current_source_identity != ICA_SOURCE_CONTENT_IDENTITY" not in source:
+        raise CodeRenderError("The ICA source identity guard could not be added to the export.")
     insertion = """    ica = mne.preprocessing.ICA(
         n_components=None,
         method="fastica",
@@ -684,16 +840,49 @@ def render_eeg_ica_python(
         filtered.save(str(fit_path), fmt="single", overwrite=False, verbose="ERROR")
         fit_raw = mne.io.read_raw_fif(fit_path, preload=True, verbose="ERROR")
         try:
-            ica.fit(
-                fit_raw.copy().pick("eeg"),
-                picks="eeg",
-                reject_by_annotation=False,
-                decim=1,
-                verbose="ERROR",
-            )
+            bads = set(fit_raw.info["bads"])
+            fit_channel_types = fit_raw.get_channel_types()
+            ica_channels = [
+                name for name, kind in zip(fit_raw.ch_names, fit_channel_types, strict=True)
+                if kind == "eeg" and name not in bads
+            ]
+            excluded_bad_channels = [
+                name for name, kind in zip(fit_raw.ch_names, fit_channel_types, strict=True)
+                if kind == "eeg" and name in bads
+            ]
+            if not ica_channels:
+                raise SystemExit("The approved ICA input has no usable EEG channels.")
+            with warnings.catch_warnings(record=True) as fit_warnings:
+                warnings.simplefilter("always", ConvergenceWarning)
+                ica.fit(
+                    fit_raw.copy(),
+                    picks=ica_channels,
+                    reject_by_annotation=False,
+                    decim=1,
+                    verbose="ERROR",
+                )
         finally:
             fit_raw.close()
     component_count = int(ica.n_components_)
+    if any(issubclass(item.category, ConvergenceWarning) for item in fit_warnings):
+        filtered.close()
+        raise SystemExit(
+            "FastICA did not converge within 1000 iterations; "
+            "no reviewed output was written."
+        )
+    fit_iterations = int(ica.n_iter_)
+    if (
+        not 1 <= fit_iterations < 1000
+        or list(ica.ch_names) != ICA_EXPECTED_FIT["channels"]
+        or component_count != ICA_EXPECTED_FIT["fitted_components"]
+        or fit_iterations != ICA_EXPECTED_FIT["iterations"]
+        or excluded_bad_channels != ICA_EXPECTED_FIT["excluded_bad_channels"]
+    ):
+        filtered.close()
+        raise SystemExit(
+            "The refitted ICA model differs from the approved model; "
+            "request a new review."
+        )
     if any(index >= component_count for index in ICA_EXCLUDED_COMPONENTS):
         filtered.close()
         raise SystemExit("Saved component choices do not match the fitted ICA model.")
@@ -706,6 +895,11 @@ def render_eeg_ica_python(
         "max_iter": 1000,
         "reject_by_annotation": False,
         "decim": 1,
+        "source_content_identity": ICA_SOURCE_CONTENT_IDENTITY,
+        "channels": list(ica.ch_names),
+        "excluded_bad_channels": excluded_bad_channels,
+        "converged": True,
+        "iterations": fit_iterations,
         "exclusions_applied": True,
     })
 """
@@ -723,6 +917,11 @@ def render_eeg_ica_python(
         f'"renderer": "{ICA_CODE_RENDERER_ID}@{ICA_CODE_RENDERER_VERSION}",',
     )
     source = source.replace(
+        '        "source_file_sha256": before,',
+        '        "source_file_sha256": before,\n'
+        '        "source_content_identity": ICA_SOURCE_CONTENT_IDENTITY,',
+    )
+    source = source.replace(
         '        "output_path": str(output_path),',
         '        "ica_review": ica_review_provenance,\n        "output_path": str(output_path),',
     )
@@ -733,7 +932,8 @@ def render_eeg_ica_python(
         "decision": review.decision,
         "excluded_components": excluded,
         "note": review.note,
-        "source_content_identity": review.source_content_identity,
+        "source_content_identity": source_identity,
+        "source_files": normalized_source_files,
         "input_artifact_identities": {
             identity.port_id: identity.artifact_id for identity in review.input_artifact_identities
         },
@@ -752,6 +952,6 @@ def render_eeg_ica_python(
         renderer_id=ICA_CODE_RENDERER_ID,
         renderer_version=ICA_CODE_RENDERER_VERSION,
         filename="brainlearn_eeg_ica.py",
-        dependencies=base.dependencies,
+        dependencies=[*base.dependencies, "scikit-learn==1.7.2"],
         source=source,
     )

@@ -4,9 +4,12 @@ import { parseEEGICAComponentDiagnostics } from "./icaDiagnostics";
 
 function diagnostics() {
   return {
-    schema_version: "1.0",
+    schema_version: "1.1",
     sampling_frequency_hz: 250,
     channels: ["Cz", "Pz"],
+    excluded_bad_channels: ["Fz"],
+    fit_converged: true,
+    fit_iterations: 17,
     component_count: 2,
     component_maps: [
       { component: 0, channel_weights: [0.5, -0.5] },
@@ -45,6 +48,17 @@ test("accepts bounded ICA diagnostics for the component viewer", () => {
   const parsed = parseEEGICAComponentDiagnostics(diagnostics());
   expect(parsed.component_count).toBe(2);
   expect(parsed.channels).toEqual(["Cz", "Pz"]);
+  expect(parsed.excluded_bad_channels).toEqual(["Fz"]);
+  expect(parsed.fit_iterations).toBe(17);
+});
+
+test("rejects ICA diagnostics without convergence or channel provenance", () => {
+  expect(() =>
+    parseEEGICAComponentDiagnostics({
+      ...diagnostics(),
+      fit_converged: false,
+    }),
+  ).toThrow("convergence or channel provenance");
 });
 
 test("rejects malformed or oversized ICA component series", () => {

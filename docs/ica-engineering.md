@@ -26,15 +26,19 @@ reference](https://mne.tools/stable/generated/mne.preprocessing.ICA.html) and
 The adapter uses pinned MNE-Python 1.13.2 and scikit-learn 1.7.2. It fits
 `mne.preprocessing.ICA` with `method="fastica"`, `n_components=None`,
 `max_iter=1000`, `fit_params=None`, `allow_ref_meg=False`, and the run's unsigned
-32-bit seed as `random_state`. It selects EEG channels, disables annotation
-rejection, and uses every sample (`decim=1`). Fits are limited to 256 EEG
+32-bit seed as `random_state`. It selects EEG channels not marked bad by MNE,
+disables annotation rejection, and uses every sample (`decim=1`). The exact
+fitted channel list and automatically excluded bad EEG channels are stored in
+the diagnostics and provenance. Fits are limited to 256 usable EEG
 channels and 25,000,000 channel-samples. These are product safeguards, not
 recommended scientific settings for every recording.
 
 MNE performs its own pre-whitening and PCA before ICA. The fitted component
-count and input channel names are stored in the fit provenance. Researchers
-should inspect data rank, reference, bad-channel handling, annotations,
-filtering, and convergence for their experiment. This initial implementation
+count, exact channel names, and convergence iteration count are stored in the
+fit provenance. A scikit-learn `ConvergenceWarning` or an invalid iteration
+count fails the fit before any model can be reviewed. Researchers should
+inspect data rank, reference, bad-channel handling, annotations, and filtering
+for their experiment. This initial implementation
 does not estimate rank, interpolate channels, reject bad spans, fit reference
 channels, or infer component labels. FastICA is based on the fixed-point ICA
 algorithm described by Hyvärinen ([1999](https://doi.org/10.1109/72.761722)).
@@ -71,11 +75,14 @@ reused. Rejection is persisted and ends that workflow run without emitting
 reviewed EEG.
 
 The standalone Python renderer is
-`brainlearn.eeg.mne-ica.python@0.1.0`. It is available for the supported five
+`brainlearn.eeg.mne-ica.python@0.2.0`. It is available for the supported five
 node topology only: BIDS EEG, Inspect Signal, Band-pass Filter, Fit ICA, and ICA
 Component Review. It includes the saved reviewer choice and decision metadata
 in the script and output provenance. The generated script is executed in the
-engineering fixture acceptance test; it is not a general arbitrary-workflow
+engineering fixture acceptance test. It embeds the reviewed BIDS source-file
+identity and the fitted channel, component, and convergence record. It refuses
+to run the saved component choice if the selected BIDS files or refitted ICA
+model differ from the reviewed run. It is not a general arbitrary-workflow
 exporter.
 
 ## Numerical engineering check

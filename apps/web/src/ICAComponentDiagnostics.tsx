@@ -102,6 +102,13 @@ export function ICAComponentDiagnostics({
         </button>
       </div>
       <p className="ica-diagnostics-note">
+        {diagnostics.fit_converged === true &&
+        diagnostics.fit_iterations !== undefined
+          ? `FastICA converged in ${diagnostics.fit_iterations} of 1000 iterations. `
+          : null}
+        {diagnostics.excluded_bad_channels?.length
+          ? `MNE excluded EEG channels marked bad: ${diagnostics.excluded_bad_channels.join(", ")}. `
+          : null}
         Review components individually. BrainLearn applies no exclusions until a
         researcher saves a decision.
         {diagnostics.topography_available

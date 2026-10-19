@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 from importlib import import_module
@@ -10,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 ICA_DIAGNOSTICS_MEDIA_TYPE = "application/vnd.brainlearn.eeg-ica-diagnostics+json"
-ICA_PROVENANCE_SCHEMA = "1.0"
+ICA_PROVENANCE_SCHEMA = "1.1"
+ICA_MAX_ITERATIONS = 1000
 MAX_ICA_CHANNELS = 256
 MAX_ICA_CHANNEL_SAMPLES = 25_000_000
 MAX_COMPONENTS = 256
@@ -38,14 +40,29 @@ class MneIcaApplyResult:
 
 
 def _write_json(path: Path, value: dict[str, Any]) -> None:
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise MneIcaError(f"ICA output directory {path.parent.name!r} is unsafe.")
+    try:
+        with path.open("x", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2)
+                + "\n"
+            )
+    except FileExistsError as exc:
+        raise MneIcaError(
+            f"ICA output {path.name!r} already exists; refusing to overwrite it."
+        ) from exc
+    except OSError as exc:
+        raise MneIcaError(f"ICA output {path.name!r} could not be written safely.") from exc
 
 
 def _raw_bounds(raw: Any) -> tuple[list[str], float, int]:
-    channels = list(raw.copy().pick("eeg").ch_names)
+    bad_channels = set(raw.info.get("bads", ()))
+    channels = [
+        name
+        for name, kind in zip(raw.ch_names, raw.get_channel_types(), strict=True)
+        if kind == "eeg" and name not in bad_channels
+    ]
     sampling_frequency = float(raw.info["sfreq"])
     if not channels:
         raise MneIcaError("ICA fitting requires at least one EEG channel.")
@@ -58,6 +75,15 @@ def _raw_bounds(raw: Any) -> tuple[list[str], float, int]:
     if sampling_frequency <= 0:
         raise MneIcaError("The EEG sampling frequency must be positive.")
     return channels, sampling_frequency, int(raw.n_times)
+
+
+def _bad_eeg_channels(raw: Any) -> list[str]:
+    bad_channels = set(raw.info.get("bads", ()))
+    return [
+        name
+        for name, kind in zip(raw.ch_names, raw.get_channel_types(), strict=True)
+        if kind == "eeg" and name in bad_channels
+    ]
 
 
 def _locations(raw: Any, channel_names: list[str]) -> dict[str, list[float]]:
@@ -73,7 +99,14 @@ def _locations(raw: Any, channel_names: list[str]) -> dict[str, list[float]]:
     return result
 
 
-def _component_diagnostics(raw: Any, ica: Any, np: Any) -> dict[str, Any]:
+def _component_diagnostics(
+    raw: Any,
+    ica: Any,
+    np: Any,
+    *,
+    fit_iterations: int,
+    excluded_bad_channels: list[str],
+) -> dict[str, Any]:
     channel_names = list(ica.ch_names)
     sfreq = float(raw.info["sfreq"])
     sample_count = min(raw.n_times, max(8, int(ICA_PREVIEW_SECONDS * sfreq)))
@@ -131,9 +164,12 @@ def _component_diagnostics(raw: Any, ica: Any, np: Any) -> dict[str, Any]:
         raise MneIcaError("MNE returned an invalid component spectrum.")
 
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "sampling_frequency_hz": sfreq,
         "channels": channel_names,
+        "excluded_bad_channels": excluded_bad_channels,
+        "fit_converged": True,
+        "fit_iterations": fit_iterations,
         "component_count": int(ica.n_components_),
         "component_maps": [
             {
@@ -177,36 +213,77 @@ def fit_ica(
     """Fit deterministic FastICA and save the unreviewed model and diagnostics."""
 
     channels, _sfreq, sample_count = _raw_bounds(raw)
+    excluded_bad_channels = _bad_eeg_channels(raw)
     if not 0 <= random_state <= 2**32 - 1:
         raise MneIcaError("The run seed must fit MNE's unsigned 32-bit random-state range.")
     mne = import_module("mne")
     np = import_module("numpy")
+    if staging_dir.is_symlink():
+        raise MneIcaError("ICA staging directory cannot be a symlink.")
     staging_dir.mkdir(parents=True, exist_ok=True)
+    if staging_dir.is_symlink() or not staging_dir.is_dir():
+        raise MneIcaError("ICA staging directory is unsafe.")
+    model_path = staging_dir / "ica-model-ica.fif"
+    diagnostics_path = staging_dir / "ica-diagnostics.json"
+    provenance_path = staging_dir / "ica-fit-provenance.json"
+    for output_path in (model_path, diagnostics_path, provenance_path):
+        if output_path.is_symlink() or output_path.exists():
+            raise MneIcaError(
+                f"ICA output {output_path.name!r} already exists or is unsafe; "
+                "refusing to overwrite it."
+            )
     cancel_check()
     ica = mne.preprocessing.ICA(
         n_components=None,
         method="fastica",
         random_state=random_state,
-        max_iter=1000,
+        max_iter=ICA_MAX_ITERATIONS,
         fit_params=None,
         allow_ref_meg=False,
         verbose="ERROR",
     )
+    from sklearn.exceptions import ConvergenceWarning  # type: ignore[import-untyped]
+
     try:
-        ica.fit(raw.copy(), picks="eeg", reject_by_annotation=False, decim=1, verbose="ERROR")
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always", ConvergenceWarning)
+            ica.fit(
+                raw.copy(),
+                picks=channels,
+                reject_by_annotation=False,
+                decim=1,
+                verbose="ERROR",
+            )
     except Exception as exc:
         raise MneIcaError(f"MNE could not fit ICA to this recording: {exc}") from exc
+    if any(issubclass(item.category, ConvergenceWarning) for item in captured):
+        raise MneIcaError(
+            f"FastICA did not converge within {ICA_MAX_ITERATIONS} iterations. "
+            "No reviewable model was saved. Review channel selection, data rank, filtering, "
+            "and recording quality before retrying."
+        )
+    fit_iterations_value = getattr(ica, "n_iter_", None)
+    if type(fit_iterations_value) is not int or not 1 <= fit_iterations_value < ICA_MAX_ITERATIONS:
+        raise MneIcaError(
+            "MNE did not report a converged FastICA iteration count. No reviewable model was saved."
+        )
+    fit_iterations = fit_iterations_value
+    if list(ica.ch_names) != channels:
+        raise MneIcaError("MNE fitted a channel set that differs from the recorded ICA inputs.")
     cancel_check()
     component_count = int(ica.n_components_)
     if component_count < 1 or component_count > MAX_COMPONENTS:
         raise MneIcaError(f"MNE produced an unsupported component count ({component_count}).")
 
-    model_path = staging_dir / "ica-model-ica.fif"
-    diagnostics_path = staging_dir / "ica-diagnostics.json"
-    provenance_path = staging_dir / "ica-fit-provenance.json"
     try:
         ica.save(str(model_path), overwrite=False, verbose="ERROR")
-        diagnostics = _component_diagnostics(raw, ica, np)
+        diagnostics = _component_diagnostics(
+            raw,
+            ica,
+            np,
+            fit_iterations=fit_iterations,
+            excluded_bad_channels=excluded_bad_channels,
+        )
     except MneIcaError:
         raise
     except Exception as exc:
@@ -223,11 +300,14 @@ def fit_ica(
             "n_components": None,
             "fitted_components": component_count,
             "random_state": random_state,
-            "max_iter": 1000,
+            "max_iter": ICA_MAX_ITERATIONS,
             "reject_by_annotation": False,
             "decim": 1,
-            "picks": "eeg",
-            "channels": channels,
+            "picks": channels,
+            "channels": list(ica.ch_names),
+            "excluded_bad_channels": excluded_bad_channels,
+            "converged": True,
+            "iterations": fit_iterations,
             "sample_count": sample_count,
             "excluded_components": [],
             "exclusions_applied": False,
@@ -250,7 +330,11 @@ def apply_ica(
     """Apply only the persisted researcher exclusions to a copy of the raw data."""
 
     mne = import_module("mne")
+    if staging_dir.is_symlink():
+        raise MneIcaError("ICA staging directory cannot be a symlink.")
     staging_dir.mkdir(parents=True, exist_ok=True)
+    if staging_dir.is_symlink() or not staging_dir.is_dir():
+        raise MneIcaError("ICA staging directory is unsafe.")
     cancel_check()
     try:
         ica = mne.preprocessing.read_ica(str(ica_path), verbose="ERROR")
@@ -263,14 +347,20 @@ def apply_ica(
     ):
         raise MneIcaError("One or more selected ICA components are outside the fitted model.")
     reviewed = raw.copy()
+    reviewed_path = staging_dir / "reviewed-raw.fif"
+    provenance_path = staging_dir / "ica-review-provenance.json"
+    for output_path in (reviewed_path, provenance_path):
+        if output_path.is_symlink() or output_path.exists():
+            raise MneIcaError(
+                f"ICA output {output_path.name!r} already exists or is unsafe; "
+                "refusing to overwrite it."
+            )
     try:
         ica.apply(reviewed, exclude=sorted(excluded_components), verbose="ERROR")
         cancel_check()
-        reviewed_path = staging_dir / "reviewed-raw.fif"
         reviewed.save(str(reviewed_path), overwrite=False, verbose="ERROR")
     except Exception as exc:
         raise MneIcaError(f"MNE could not apply the reviewed ICA exclusions: {exc}") from exc
-    provenance_path = staging_dir / "ica-review-provenance.json"
     _write_json(
         provenance_path,
         {
