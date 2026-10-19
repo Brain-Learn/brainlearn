@@ -31,7 +31,7 @@ def test_registry_manifests_round_trip_and_have_unique_identity() -> None:
     restored = [NodeManifest.model_validate_json(item.model_dump_json()) for item in NODE_REGISTRY]
 
     assert restored == list(NODE_REGISTRY)
-    assert len({item.id for item in restored}) == len(restored) == 13
+    assert len({item.id for item in restored}) == len(restored) == 14
 
 
 def test_eeg_manifests_record_upstream_dependency_metadata() -> None:
@@ -45,7 +45,7 @@ def test_eeg_manifests_record_upstream_dependency_metadata() -> None:
             continue
         dependencies = {item.package_name: item for item in manifest.software_dependencies}
         assert "mne" in dependencies
-        if node_id in {"input.bids_eeg", "eeg.inspect", "eeg.filter"}:
+        if node_id in {"input.bids_eeg", "eeg.inspect", "eeg.bad_channel_review", "eeg.filter"}:
             assert "mne-bids" in dependencies
         for dependency in dependencies.values():
             assert dependency.version == (

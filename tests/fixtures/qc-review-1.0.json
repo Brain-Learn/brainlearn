@@ -11,6 +11,7 @@
       "content_identity": "brainlearn-v1:node:a18463b1cbce1c2c32e9a9f60dece71b35a60435fb17e845c2a6c51a4497b2b1"
     }
   ],
+  "source_content_identity": "brainlearn-v1:artifact:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
   "reviewer": "researcher-001",
   "decision": "approved",
   "excluded_channel_names": ["Fp1"],

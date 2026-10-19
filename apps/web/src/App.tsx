@@ -84,6 +84,7 @@ import type {
   NodePresentation,
   EEGFilterComparisonPreview,
   ParameterSchema,
+  QCReviewRecord,
   ValidationIssue,
   ValidationResult,
   Workflow,
@@ -695,6 +696,7 @@ function App() {
   const [draftNotice, setDraftNotice] = useState<string | null>(null);
   const [leavingNodes, setLeavingNodes] = useState<WorkflowNode[]>([]);
   const [activeRun, setActiveRun] = useState<RunRecord | null>(null);
+  const [activeQcReviews, setActiveQcReviews] = useState<QCReviewRecord[]>([]);
   const [runPath, setRunPath] = useState("");
   const [launching, setLaunching] = useState(false);
   const [runMessage, setRunMessage] = useState<string | null>(null);
@@ -832,6 +834,10 @@ function App() {
   }, []);
 
   const mergeHistoryEntry = useCallback((response: RunResponse) => {
+    // A history response started before this run update is now stale. Keep it
+    // from replacing the newer in-memory record when that request completes.
+    ++historySeq.current;
+    setHistoryPending(false);
     setRunHistory((prev) => {
       const index = prev.findIndex(
         (entry) =>
@@ -913,10 +919,11 @@ function App() {
         if (cancelled || controller.signal.aborted) return null;
         if (sequence !== runRefreshSeq.current) return null;
         setActiveRun(response.run);
+        setActiveQcReviews(response.qc_reviews ?? []);
         const lastSeq = response.run.events.at(-1)?.seq ?? -1;
         advanceCursor(runId, lastSeq);
         if (RUN_TERMINAL.has(response.run.state)) {
-          mergeHistoryEntry({ path, run_id: runId, run: response.run });
+          mergeHistoryEntry(response);
         }
         return response.run;
       } catch {
@@ -1198,6 +1205,7 @@ function App() {
     ++historySeq.current;
     streamAbort.current?.abort();
     setActiveRun(null);
+    setActiveQcReviews([]);
     setRunPath("");
     setRunHistory([]);
     setHistoryError(null);
@@ -1426,6 +1434,7 @@ function App() {
   const applyRunResponse = (response: RunResponse) => {
     ++runRefreshSeq.current;
     setActiveRun(response.run);
+    setActiveQcReviews(response.qc_reviews ?? []);
     installCursor(response.run.id, response.run.events.at(-1)?.seq ?? -1);
     mergeHistoryEntry(response);
     if (RUN_TERMINAL.has(response.run.state)) {
@@ -1499,6 +1508,7 @@ function App() {
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
+    qc?: { reviewer: string; excludedChannelNames: string[] },
   ) => {
     const id = activeRunRef.current?.id;
     const path = runPathRef.current;
@@ -1513,6 +1523,7 @@ function App() {
         decision,
         note,
         sessionTokenRef.current,
+        qc,
       );
       if (sequence !== runActionSeq.current) return;
       applyRunResponse(response);
@@ -1952,10 +1963,11 @@ function App() {
         onCloseFilterPreview={() => setFilterPreview(null)}
         onOpenRun={(runId, path) => void handleOpenHistoryRun(runId, path)}
         onRecover={() => void handleRecoverRuns()}
-        onReview={(nodeRunId, decision, note) =>
-          void handleReview(nodeRunId, decision, note)
+        onReview={(nodeRunId, decision, note, qc) =>
+          void handleReview(nodeRunId, decision, note, qc)
         }
         projectOpen={activeProjectPath !== ""}
+        qcReviews={activeQcReviews}
         reducedMotion={reducedMotion}
         run={activeRun}
         runPath={runPath}

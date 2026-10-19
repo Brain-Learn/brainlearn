@@ -12,9 +12,10 @@ paths, and arbitrary Python are never accepted from payloads.
 
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from brainlearn_core import (
     NODE_TERMINAL_STATES,
@@ -29,6 +30,8 @@ from brainlearn_core import (
     NodeRunRecord,
     NodeRunState,
     PortDirection,
+    QCReviewInputIdentity,
+    QCReviewRecord,
     ReviewPauseRecord,
     RunEvent,
     RunEventKind,
@@ -818,8 +821,10 @@ class WorkerService:
         project: str,
         run_id: str,
         node_run_id: str,
-        decision: str,
+        decision: Literal["approved", "rejected"],
         note: str = "",
+        reviewer: str | None = None,
+        excluded_channel_names: tuple[str, ...] = (),
     ) -> RunRecord:
         """Apply an approval or rejection to a waiting node and resume driving."""
 
@@ -837,6 +842,43 @@ class WorkerService:
             ):
                 raise ReviewConflictError(
                     f"Node run {node_run_id!r} is not awaiting review in run {run_id!r}."
+                )
+            if node.node_type == "eeg.bad_channel_review":
+                if reviewer is None or not reviewer.strip():
+                    raise ReviewConflictError(
+                        "Enter the researcher who made the bad-channel review."
+                    )
+                source_content_identity, verify_source_identity = (
+                    self._validate_bad_channel_choices(
+                        project, record, node, excluded_channel_names
+                    )
+                )
+                qc_review = QCReviewRecord(
+                    id=node.review_pause.id,
+                    run_id=record.id,
+                    node_run_id=node.id,
+                    node_id=node.node_id,
+                    node_content_identity=node.content_identity,
+                    input_identities=tuple(
+                        QCReviewInputIdentity(port_id=port, content_identity=identity)
+                        for port, identity in sorted(node.inputs.items())
+                    ),
+                    source_content_identity=source_content_identity,
+                    reviewer=reviewer.strip(),
+                    decision=decision,
+                    excluded_channel_names=excluded_channel_names,
+                    note=note,
+                    created_at=utc_now_iso(),
+                )
+                # The review is durably saved before the run can resume or fail.
+                self.runs.save_qc_review(
+                    project,
+                    qc_review,
+                    verify_source_identity=verify_source_identity,
+                )
+            elif reviewer is not None or excluded_channel_names:
+                raise ReviewConflictError(
+                    "Researcher and channel exclusions are available only for bad-channel review."
                 )
             timestamp = utc_now_iso()
             if decision == "approved":
@@ -888,6 +930,83 @@ class WorkerService:
             return self.runs.save_run(
                 project, _fail_run(record, node_run_id, failure, timestamp, decided)
             )
+
+    def _validate_bad_channel_choices(
+        self,
+        project: str,
+        record: RunRecord,
+        node: NodeRunRecord,
+        excluded_channel_names: tuple[str, ...],
+    ) -> tuple[str, Callable[[], str]]:
+        """Bind channel choices to a fresh BIDS identity and EEG channel inventory."""
+
+        import json
+
+        from brainlearn_server.bids_eeg import (
+            BidsDatasetPathError,
+            BidsEegDiscoveryService,
+            BidsIdentityResourceLimit,
+            BidsSignalInspectionError,
+        )
+
+        inputs = self._resolve_inputs(project, record, node)
+        raw_reference_path = inputs.get("raw")
+        if raw_reference_path is None:
+            raise ReviewConflictError("Bad-channel review has no connected inspected EEG input.")
+        try:
+            reference = json.loads(raw_reference_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ReviewConflictError("The inspected EEG reference cannot be read.") from exc
+        if (
+            not isinstance(reference, dict)
+            or reference.get("schema_version") != "1.0"
+            or not isinstance(reference.get("dataset_path"), str)
+            or not isinstance(reference.get("recording_path"), str)
+            or not isinstance(reference.get("source_content_identity"), str)
+        ):
+            raise ReviewConflictError("The inspected EEG reference is invalid.")
+        service = BidsEegDiscoveryService(self.runs.projects)
+        try:
+            inventory = service.channel_inventory(
+                project, reference["dataset_path"], reference["recording_path"]
+            )
+        except (BidsDatasetPathError, BidsSignalInspectionError, OSError) as exc:
+            raise ReviewConflictError(f"Unable to verify EEG channel names: {exc}") from exc
+        if inventory.source_content_identity != reference["source_content_identity"]:
+            raise ReviewConflictError(
+                "The EEG recording changed after inspection. Re-run Inspect Signal before saving."
+            )
+        eeg_names = {
+            channel.name for channel in inventory.channels if channel.channel_type == "eeg"
+        }
+        invalid = [name for name in excluded_channel_names if name not in eeg_names]
+        if invalid:
+            raise ReviewConflictError(
+                f"{invalid[0]!r} is not an EEG channel in the current recording."
+            )
+
+        def verify_current_source_identity() -> str:
+            try:
+                current = service.identify(
+                    project, reference["dataset_path"], reference["recording_path"]
+                )
+            except (
+                BidsDatasetPathError,
+                BidsIdentityResourceLimit,
+                BidsSignalInspectionError,
+                OSError,
+            ) as exc:
+                raise ReviewConflictError(
+                    f"Unable to recheck the EEG recording before saving the review: {exc}"
+                ) from exc
+            if current.status != "ready" or current.content_identity is None:
+                raise ReviewConflictError(
+                    current.message
+                    or "Unable to recheck the EEG recording before saving the review."
+                )
+            return current.content_identity
+
+        return inventory.source_content_identity, verify_current_source_identity
 
     # -- driver ----------------------------------------------------------
     def _ensure_driver(self, project: str, run_id: str) -> None:

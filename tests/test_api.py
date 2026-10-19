@@ -54,7 +54,7 @@ def test_registry_lists_versioned_manifests() -> None:
 
     assert response.status_code == 200
     manifests = response.json()
-    assert len(manifests) == 13
+    assert len(manifests) == 14
     assert {manifest["id"] for manifest in manifests} == {manifest.id for manifest in NODE_REGISTRY}
     assert {"demo.copy", "demo.delay", "demo.fail", "demo.review", "demo.relay"} <= {
         manifest["id"] for manifest in manifests
@@ -64,6 +64,7 @@ def test_registry_lists_versioned_manifests() -> None:
     assert {node_id for node_id, status in statuses.items() if status == "experimental"} == {
         "input.bids_eeg",
         "eeg.inspect",
+        "eeg.bad_channel_review",
         "eeg.filter",
     }
     assert all(

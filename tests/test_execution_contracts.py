@@ -165,6 +165,7 @@ def test_qc_review_record_is_immutable_and_bound_to_its_run_inputs() -> None:
         ("reviewer", "   ", "identify the researcher"),
         ("created_at", "2026-09-12T09:09:00", "timezone offset"),
         ("excluded_channel_names", ("Cz", "Cz"), "must not contain duplicates"),
+        ("source_content_identity", None, "source content identity"),
         ("excluded_ica_components", (1, 1), "must not contain duplicates"),
         ("excluded_ica_components", (True,), "valid integer"),
     ],

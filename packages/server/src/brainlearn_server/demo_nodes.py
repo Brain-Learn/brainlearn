@@ -239,6 +239,53 @@ def eeg_inspection_adapter(ctx: NodeContext) -> list[StagedOutput]:
     ]
 
 
+def eeg_bad_channel_review_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Pause for an explicit channel decision bound to a fresh BIDS recording."""
+
+    from brainlearn_server.bids_eeg import (
+        BidsDatasetPathError,
+        BidsEegDiscoveryService,
+        BidsSignalInspectionError,
+    )
+
+    _require_cancel(ctx)
+    if ctx.project_path is None or ctx.project_store is None:
+        raise ControlledFailure("Bad-channel review requires an open BrainLearn project.")
+    try:
+        reference = json.loads(ctx.inputs["raw"].read_text(encoding="utf-8"))
+    except (KeyError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ControlledFailure("The upstream inspected EEG reference is invalid.") from exc
+    if (
+        not isinstance(reference, dict)
+        or reference.get("schema_version") != "1.0"
+        or not isinstance(reference.get("dataset_path"), str)
+        or not isinstance(reference.get("recording_path"), str)
+        or not isinstance(reference.get("source_content_identity"), str)
+    ):
+        raise ControlledFailure("The upstream inspected EEG reference is invalid.")
+    service = BidsEegDiscoveryService(ctx.project_store)
+    try:
+        identity = service.identify(
+            ctx.project_path, reference["dataset_path"], reference["recording_path"]
+        )
+    except BidsDatasetPathError as exc:
+        raise ControlledFailure(str(exc)) from exc
+    except BidsSignalInspectionError as exc:
+        raise ControlledFailure(str(exc)) from exc
+    if (
+        identity.status != "ready"
+        or identity.content_identity != reference["source_content_identity"]
+    ):
+        raise ControlledFailure(
+            "The EEG recording changed after inspection. Run Inspect Signal again before review."
+        )
+    _require_cancel(ctx)
+    raise ReviewPauseRequested(
+        "Review the EEG channel list and explicitly record channels to exclude. "
+        "BrainLearn will verify the names against the current recording and save the decision."
+    )
+
+
 def eeg_filter_adapter(ctx: NodeContext) -> list[StagedOutput]:
     """Apply the allowlisted MNE EEG band-pass and optional notch to inspected BIDS data."""
 
@@ -382,6 +429,13 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
                 description="Path to one discovered recording, relative to its dataset root.",
             )
         },
+        cacheable=False,
+    ),
+    "eeg.bad_channel_review": DemoNodeManifest(
+        version="0.1.0",
+        inputs={"raw": True},
+        outputs={},
+        handler=eeg_bad_channel_review_adapter,
         cacheable=False,
     ),
     "eeg.filter": DemoNodeManifest(

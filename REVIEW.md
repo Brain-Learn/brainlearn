@@ -854,3 +854,85 @@ annotation behavior, ICA fitting or application, GUI, or export path is
 included. The first Step 7 checklist leaf is complete; Step 7's parent and
 scientific-review gate remain unchecked, and bad-channel review with
 annotation persistence remains the next assignment.
+
+## Step 7 bad-channel review and QC persistence
+
+Review date: 2026-10-19
+
+Scope: PR #34 final code head `14ed393f33e84eadf47eb2de4e5a01a5a0f46510`,
+compared with main `f6b5c6be6ac2bbf9ff2058a68bb1d90366459969`.
+
+Status: **approved for explicit bad-channel annotation persistence only.** The
+review is bound to its run, graph node, node run, input identities, and current
+BIDS source identity. Channel names are checked against the live EEG channel
+inventory. The researcher can approve or reject explicitly; rejected decisions
+are persisted and fail the run. Opening a run restores its saved decision. The
+node records annotations only: it does not alter the source recording or apply
+the exclusions to downstream processing.
+
+The first review reproduced two blockers. A source mutation immediately after
+channel inventory returned could produce a stale approved decision, and a
+symlinked QC review directory made opening a run return HTTP 500. On the same
+PR, the persistence boundary now rechecks the current BIDS identity before the
+atomic save, and run responses translate unsafe or invalid QC storage into a
+controlled client error. Deterministic regressions prove the race returns 409
+with no decision saved, and the symlink returns 409 without reading or writing
+outside the project.
+
+Focused bad-channel, QC scope, and symlink tests passed 7 (192 deselected).
+The full clean-checkout gate passed: `uv sync --locked --all-packages --group
+eeg`; Ruff; formatting (87 files); scoped mypy (32 source files); strict mypy
+(34 source files); pytest (816 passed, 3 skipped, 2 upstream deprecation
+warnings in 37.86 seconds); ESLint; Prettier; Vitest (177 tests in 19 files);
+production build (1,848 modules, with the existing chunk-size advisory);
+production dependency audit (0 vulnerabilities); `uv lock --check`; and
+`git diff --check origin/main...HEAD`. Both hosted jobs passed on code head
+`14ed393` in Actions run `39237012948`. Required CI must pass again on this
+review-documentation update.
+
+This is an engineering approval for saving a researcher's explicit channel
+annotations. It does not validate bad-channel criteria or downstream signal
+effects. Step 7's bad-channel review leaf is complete; the Step 7 parent and
+scientific-review gate remain unchecked. No ICA work was started. The wider
+EEG workflow remains experimental pending a sample-bearing public reference and
+independent EEG methods review.
+
+## Step 7 final hosted re-review
+
+Review date: 2026-10-19
+
+Scope: PR #34 final head `7220365b98e4abdd052248fe4bfe46f60bbbe0a6`,
+compared with main `f6b5c6be6ac2bbf9ff2058a68bb1d90366459969`.
+
+Status: **approved for explicit bad-channel annotation persistence only.** The
+source identity is checked both when the pause is created and at the QC record
+save boundary; invalid channel names are rejected; decisions are immutable and
+run/node/input/source bound; approval and rejection persist across reopening;
+and rejected decisions fail the run. The source is unchanged, and the review
+does not apply exclusions downstream.
+
+Two unrelated asynchronous test races surfaced on the monitor-documentation
+updates and were repaired on this same PR. The branched-workflow test now waits
+for the exact cached trunk-node states before comparing identities. A stale
+run-history response could replace a newer run entry; `mergeHistoryEntry` now
+invalidates older list requests, and a regression holds an empty list response
+until after a run appears and confirms it stays visible. I reviewed both
+repairs in the final diff.
+
+On the final clean checkout, focused bad-channel/QC-scope/symlink checks passed
+12 (187 deselected), and the cache-reuse synchronization regression passed 1.
+The complete gate passed: locked EEG sync; Ruff; formatting (87 files); scoped
+mypy (32 source files); strict mypy (34 source files); pytest (816 passed, 3
+skipped, 2 upstream deprecation warnings in 37.96 seconds); ESLint; Prettier;
+Vitest (177 tests in 19 files); production build (1,848 modules, with the
+existing chunk-size advisory); production dependency audit (0 vulnerabilities);
+`uv lock --check`; and `git diff --check origin/main...HEAD`. Both hosted jobs
+passed on final head `7220365` in Actions run `39239172052` (Python 1m22s;
+frontend 30s).
+
+This approval covers persistence of a researcher's explicit channel
+annotations. It does not validate bad-channel criteria, downstream signal
+effects, or scientific suitability. Step 7's bad-channel review leaf is
+complete; the Step 7 parent and scientific-review gate remain unchecked, and
+ICA was not started. The wider EEG workflow remains experimental pending a
+sample-bearing public reference and independent EEG methods review.
