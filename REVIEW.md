@@ -816,3 +816,41 @@ performed for Step 6.
 
 Step 6 is checked for its experimental filter and code-generation completion
 gate. Step 7 remains the next assignment and was not started in this review.
+
+## Step 7 immutable QC review record contract
+
+Review date: 2026-10-19
+
+Scope: PR #33 head `55fdb63d3903ab0e0735dcae9fb83478ef215bf1`, compared with
+main `2949d7ffed093be49f69539706541eac4caf009e`.
+
+Status: **approved for the immutable QC review record contract only.** The
+record stores an explicit decision, reviewer, timestamp, exclusions, run and
+node-run IDs, node ID, node content identity, and the complete input-port
+identity set. Both the parent record and nested input identity models are
+frozen; the decision collections are tuples of immutable values. Its scope
+validator accepts the matching run fixture and rejects a different run,
+node, node-run, node content identity, or input identity mapping. Duplicate
+ports and exclusions, blank reviewer names, naive timestamps, boolean or
+negative ICA indices, and unsupported schema versions are rejected.
+
+In a clean managed checkout, the focused QC tests passed 7 (140 deselected).
+Additional probes confirmed assignment to outer fields, nested identity
+fields, and the input/channel/ICA tuples fails; a matching run scope succeeds,
+and each run/node/node-run/node-content/input mismatch is rejected. The full
+local gate passed: `uv sync --locked --all-packages --group eeg`; Ruff;
+formatting (86 files); scoped mypy (32 source files); strict mypy (34 source
+files); pytest (810 passed, 3 skipped, 2 upstream deprecation warnings in
+43.01 seconds); ESLint; Prettier; Vitest (176 tests in 19 files); production
+build (1,848 modules, with the existing chunk-size advisory); production
+dependency audit (0 vulnerabilities); `uv lock --check`; and
+`git diff --check origin/main...HEAD`. Both hosted jobs passed on the reviewed
+code/evidence head `55fdb63` in Actions run `39232312768`. CI must pass again
+on this final review-documentation update.
+
+This is a data-contract approval, not a scientific-method approval. The
+contract is not yet persisted or consumed by a workflow. No bad-channel
+annotation behavior, ICA fitting or application, GUI, or export path is
+included. The first Step 7 checklist leaf is complete; Step 7's parent and
+scientific-review gate remain unchecked, and bad-channel review with
+annotation persistence remains the next assignment.

@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from brainlearn_core.identity import environment_identity as _compute_environment_identity
 from brainlearn_core.identity import node_content_identity as _compute_node_identity
@@ -366,6 +366,95 @@ class ReviewPauseRecord(BaseModel):
             raise ValueError("A decided review must record decided_at.")
         _require_chronology(self.requested_at, self.decided_at, "requested_at", "decided_at")
         return self
+
+
+class QCReviewInputIdentity(BaseModel):
+    """Immutable content identity for one input port of a reviewed node."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    port_id: str = Field(min_length=1, max_length=128)
+    content_identity: str = Field(min_length=1, pattern=_IDENTITY_PATTERN)
+
+
+class QCReviewRecord(BaseModel):
+    """Immutable researcher decision bound to one run, node, and input set.
+
+    This record captures the decision contract only. Processing nodes may use
+    it later to persist bad-channel and ICA choices, but this type never
+    approves itself or changes the run lifecycle.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = EXECUTION_SCHEMA_VERSION
+    id: str = Field(min_length=1, max_length=128)
+    run_id: str = Field(min_length=1, max_length=128)
+    node_run_id: str = Field(min_length=1, max_length=128)
+    node_id: str = Field(min_length=1, max_length=128)
+    node_content_identity: str = Field(min_length=1, pattern=_NODE_IDENTITY_PATTERN)
+    input_identities: tuple[QCReviewInputIdentity, ...] = Field(min_length=1, max_length=128)
+    reviewer: str = Field(min_length=1, max_length=200)
+    decision: Literal["approved", "rejected"]
+    excluded_channel_names: tuple[str, ...] = Field(default=(), max_length=512)
+    excluded_ica_components: tuple[StrictInt, ...] = Field(default=(), max_length=4096)
+    note: str = Field(default="", max_length=4000)
+    created_at: str = Field(min_length=1)
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_must_be_iso(cls, value: str) -> str:
+        return _ensure_iso_timestamp(value, "created_at") or value
+
+    @field_validator("reviewer")
+    @classmethod
+    def _reviewer_must_not_be_whitespace(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("A QC review must identify the researcher who made the decision.")
+        return value
+
+    @model_validator(mode="after")
+    def _decision_fields_must_be_unambiguous(self) -> "QCReviewRecord":
+        ports = [item.port_id for item in self.input_identities]
+        if len(set(ports)) != len(ports):
+            raise ValueError("QC review input port identities must not contain duplicates.")
+        if any(not name.strip() or len(name) > 512 for name in self.excluded_channel_names):
+            raise ValueError("Excluded channel names must be non-empty and at most 512 characters.")
+        if len(set(self.excluded_channel_names)) != len(self.excluded_channel_names):
+            raise ValueError("Excluded channel names must not contain duplicates.")
+        if any(type(index) is not int or index < 0 for index in self.excluded_ica_components):
+            raise ValueError("Excluded ICA component indices must be non-negative integers.")
+        if len(set(self.excluded_ica_components)) != len(self.excluded_ica_components):
+            raise ValueError("Excluded ICA component indices must not contain duplicates.")
+        return self
+
+    def validate_scope(self, run: "RunRecord") -> None:
+        """Raise when this decision does not match the persisted run snapshot."""
+
+        if run.id != self.run_id:
+            raise ValueError(
+                f"QC review {self.id!r} references run {self.run_id!r}, not {run.id!r}."
+            )
+        node_run = next((item for item in run.node_runs if item.id == self.node_run_id), None)
+        if node_run is None:
+            raise ValueError(
+                f"QC review {self.id!r} references unknown node run {self.node_run_id!r}."
+            )
+        if node_run.node_id != self.node_id:
+            raise ValueError(
+                f"QC review {self.id!r} references node {self.node_id!r}, "
+                f"but the run records {node_run.node_id!r}."
+            )
+        if node_run.content_identity != self.node_content_identity:
+            raise ValueError(
+                f"QC review {self.id!r} is bound to a different node content identity."
+            )
+        reviewed_inputs = {item.port_id: item.content_identity for item in self.input_identities}
+        if reviewed_inputs != node_run.inputs:
+            raise ValueError(
+                f"QC review {self.id!r} input identities do not match node run "
+                f"{self.node_run_id!r}."
+            )
 
 
 class RunEventKind(StrEnum):
@@ -743,6 +832,12 @@ def migrate_review_pause_dict(data: dict[str, Any]) -> dict[str, Any]:
     """Migrate a raw review-pause record dict to the current execution schema."""
 
     return _check_version(data, "schema_version", "review-pause records")
+
+
+def migrate_qc_review_dict(data: dict[str, Any]) -> dict[str, Any]:
+    """Migrate a raw immutable QC review record to its supported schema."""
+
+    return _check_version(data, "schema_version", "QC review records")
 
 
 def migrate_cache_entry_dict(data: dict[str, Any]) -> dict[str, Any]:

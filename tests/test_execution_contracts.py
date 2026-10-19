@@ -14,6 +14,7 @@ from brainlearn_core import (
     FailureRecord,
     NodeRunRecord,
     NodeRunState,
+    QCReviewRecord,
     ReviewPauseRecord,
     RunEvent,
     RunRecord,
@@ -25,6 +26,7 @@ from brainlearn_core import (
     migrate_event_dict,
     migrate_failure_dict,
     migrate_node_run_dict,
+    migrate_qc_review_dict,
     migrate_review_pause_dict,
     migrate_run_dict,
     node_content_identity,
@@ -101,6 +103,7 @@ def _bare_node(node_id: str, state: str = "succeeded") -> dict[str, Any]:
         ("environment-1.0.json", EnvironmentRecord),
         ("run-event-1.0.json", RunEvent),
         ("failure-1.0.json", FailureRecord),
+        ("qc-review-1.0.json", QCReviewRecord),
         ("review-pause-1.0.json", ReviewPauseRecord),
         ("cache-entry-1.0.json", CacheEntry),
     ],
@@ -110,6 +113,67 @@ def test_execution_fixtures_round_trip(fixture: str, model: Any) -> None:
     record = model.model_validate(raw)
     assert record.schema_version == "1.0"
     assert model.model_validate_json(record.model_dump_json()) == record
+
+
+def test_qc_review_record_is_immutable_and_bound_to_its_run_inputs() -> None:
+    run = RunRecord.model_validate(_load("run-1.0.json"))
+    review = QCReviewRecord.model_validate(_load("qc-review-1.0.json"))
+
+    review.validate_scope(run)
+
+    with pytest.raises(ValidationError, match="frozen"):
+        review.decision = "rejected"
+    with pytest.raises(ValidationError, match="frozen"):
+        review.input_identities[0].content_identity = "brainlearn-v1:node:" + "0" * 64
+    with pytest.raises(TypeError):
+        review.input_identities[0] = review.input_identities[0]
+
+    changed_node = review.model_copy(
+        update={"node_content_identity": "brainlearn-v1:node:" + "0" * 64}
+    )
+    with pytest.raises(ValueError, match="different node content identity"):
+        changed_node.validate_scope(run)
+
+    wrong_node = review.model_copy(update={"node_id": "different-node"})
+    with pytest.raises(ValueError, match="references node"):
+        wrong_node.validate_scope(run)
+
+    wrong_node_run = review.model_copy(update={"node_run_id": "missing-node-run"})
+    with pytest.raises(ValueError, match="unknown node run"):
+        wrong_node_run.validate_scope(run)
+
+    wrong_run = run.model_copy(update={"id": "different-run"})
+    with pytest.raises(ValueError, match="references run"):
+        review.validate_scope(wrong_run)
+
+    changed_input = review.model_copy(
+        update={
+            "input_identities": (
+                review.input_identities[0].model_copy(
+                    update={"content_identity": "brainlearn-v1:artifact:" + "0" * 64}
+                ),
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="input identities do not match"):
+        changed_input.validate_scope(run)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("reviewer", "   ", "identify the researcher"),
+        ("created_at", "2026-09-12T09:09:00", "timezone offset"),
+        ("excluded_channel_names", ("Cz", "Cz"), "must not contain duplicates"),
+        ("excluded_ica_components", (1, 1), "must not contain duplicates"),
+        ("excluded_ica_components", (True,), "valid integer"),
+    ],
+)
+def test_qc_review_record_rejects_ambiguous_decisions(field: str, value: Any, message: str) -> None:
+    raw = _load("qc-review-1.0.json")
+    raw[field] = value
+    with pytest.raises(ValidationError, match=message):
+        QCReviewRecord.model_validate(raw)
 
 
 # -- migrations --------------------------------------------------------
@@ -124,6 +188,7 @@ def test_execution_fixtures_round_trip(fixture: str, model: Any) -> None:
         migrate_environment_dict,
         migrate_event_dict,
         migrate_failure_dict,
+        migrate_qc_review_dict,
         migrate_review_pause_dict,
         migrate_cache_entry_dict,
     ],
