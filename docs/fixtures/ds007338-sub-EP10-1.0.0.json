@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.0",
+  "provider": "OpenNeuro",
+  "dataset_id": "ds007338",
+  "snapshot": "1.0.0",
+  "title": "EEGEyeNet Dataset",
+  "modality": "eeg",
+  "bids_version": "1.7.0",
+  "snapshot_landing_page": "https://openneuro.org/datasets/ds007338/versions/1.0.0",
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "spdx": "CC0-1.0",
+    "evidence": [
+      {
+        "url": "https://openneuro.org/crn/datasets/ds007338/objects/205e70cee32b48500418fefd52437516ec3317d8?filename=dataset_description.json",
+        "claim": "The exact OpenNeuro snapshot dataset_description.json declares License=CC0 and DOI 10.18112/openneuro.ds007338.v1.0.0."
+      }
+    ]
+  },
+  "citations": [
+    {
+      "kind": "dataset",
+      "text": "Płomecka, M. B., Kastrati, A., & Langer, N. (2026). EEGEyeNet Dataset. OpenNeuro, ds007338, version 1.0.0.",
+      "doi": "10.18112/openneuro.ds007338.v1.0.0",
+      "url": "https://openneuro.org/datasets/ds007338/versions/1.0.0"
+    },
+    {
+      "kind": "associated_publication",
+      "text": "Kastrati, A., Płomecka, M. B., Pascual, D., Wolf, L., Gillioz, V., Wattenhofer, R., & Langer, N. (2021). EEGEyeNet: A Simultaneous Electroencephalography and Eye-tracking Dataset and Benchmark for Eye Movement Prediction (Version 2). arXiv.",
+      "doi": "10.48550/ARXIV.2111.05100",
+      "url": "https://doi.org/10.48550/ARXIV.2111.05100"
+    }
+  ],
+  "fixture": {
+    "description": "One 129-channel raw EDF recording and its BIDS metadata/sidecars. EEG bytes are downloaded and checksum-verified; no sample data are stored in this repository.",
+    "expected_total_bytes": 41877563,
+    "subject": "EP10",
+    "session": "01",
+    "task": "dots",
+    "run": "01",
+    "recording_path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_eeg.edf",
+    "files": [
+      {
+        "path": "dataset_description.json",
+        "byte_size": 1757,
+        "sha256": "ed05ab8b8b268aea92748f3a186b56cd69dca21c92f9ba455cc0aa570af55bf0",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/205e70cee32b48500418fefd52437516ec3317d8?filename=dataset_description.json"
+      },
+      {
+        "path": "README",
+        "byte_size": 1102,
+        "sha256": "03ef39e5626e2034912e44d9358bad1242089134bb66be2d85283f5c7168763f",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/c29106980cb35c84a95d9f5586798cfcbd3ab425?filename=README"
+      },
+      {
+        "path": "participants.json",
+        "byte_size": 756,
+        "sha256": "4b8aeb7120262dc2ff8cb93d218fdcc09062a65f0ec300afa2e67bb6c81d95dc",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/c802b68778cf21a1fe791c4fa64e92f41d377e19?filename=participants.json"
+      },
+      {
+        "path": "participants.tsv",
+        "byte_size": 71,
+        "sha256": "c4f351e28cf015779b78831ab20655449ffb83a3522f4b08ff7c9b547fe70359",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/ec227d7f4c55233d464c1ec0ce1b9caa7597e891?filename=participants.tsv"
+      },
+      {
+        "path": "sub-EP10/ses-01/sub-EP10_ses-01_scans.tsv",
+        "byte_size": 67,
+        "sha256": "9f95d2338223504f6b5d8f805c5b29e54a650e29cdcb548e68eb7a11cbbc7ee3",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/32a523b099bde7b77ac2794bf3b9a34b39957e44?filename=sub-EP10_ses-01_scans.tsv"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_space-CapTrak_coordsystem.json",
+        "byte_size": 964,
+        "sha256": "e4abc8a2c30e241f16c930d065976b8de3432109c6fadd34438d15c5d529d527",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/3858c23c5491a3c0e6852057b15fa20c2d588208?filename=sub-EP10_ses-01_space-CapTrak_coordsystem.json"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_space-CapTrak_electrodes.tsv",
+        "byte_size": 8337,
+        "sha256": "f0a0479a996879dd242ec46641aebbfabce89ea00d4c2c2400670a4f1fb84379",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/c19966c3a09ad99d53d06697643d7b2e2fd2bb52?filename=sub-EP10_ses-01_space-CapTrak_electrodes.tsv"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_channels.tsv",
+        "byte_size": 7339,
+        "sha256": "39bfebeca3eaec5f134cdc04686c8dba9ddc142ed7df1fcb48601cd091a0483c",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/ad229d7b9dcc5c500e43a4af1099c75f52255330?filename=sub-EP10_ses-01_task-dots_run-01_channels.tsv"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_eeg.edf",
+        "byte_size": 41847680,
+        "sha256": "e30c0eb22c323977d8af03f242ebeef2ec2f8c90119e191b46f4e7a0d37e07f4",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/SHA256E-s41847680--e30c0eb22c323977d8af03f242ebeef2ec2f8c90119e191b46f4e7a0d37e07f4.edf?filename=sub-EP10_ses-01_task-dots_run-01_eeg.edf"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_eeg.json",
+        "byte_size": 1266,
+        "sha256": "a92bd21dd5fdef1c6ea3c4601949b0583ec07b68f46953aa9cc58f8de53a0554",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/38c252c7bbcb0a448234abc4b639b77ff98262d9?filename=sub-EP10_ses-01_task-dots_run-01_eeg.json"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_events.json",
+        "byte_size": 1189,
+        "sha256": "2a296238f65448b0df846651ce9d60179708f23705d4bc1671d478e1e2156858",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/c825995c2928abef32b4681b338e72f2fe58ed6e?filename=sub-EP10_ses-01_task-dots_run-01_events.json"
+      },
+      {
+        "path": "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_events.tsv",
+        "byte_size": 7035,
+        "sha256": "ec399b0e27a0b19382385d2e9cdda6e47c6e9a7d77fb9bf7afa671a969bb52df",
+        "source_url": "https://openneuro.org/crn/datasets/ds007338/objects/4875186a280aeae609e96e5237626e98597c9d35?filename=sub-EP10_ses-01_task-dots_run-01_events.tsv"
+      }
+    ]
+  },
+  "limitations": [
+    "The BIDS release contains one participant and one recording; it cannot support cohort or population-level conclusions.",
+    "The EEG sidecar reports 323.464 seconds, while the EDF stores 162,000 samples at 500 Hz (324 seconds). The fixture preserves both source records and does not reinterpret the discrepancy.",
+    "This fixture supports engineering comparison on public real-valued samples; it does not establish that the selected filter, ICA model, or component decision is scientifically suitable for another experiment.",
+    "The dataset is for research software testing only; do not use it for diagnosis, treatment, participant scoring, or clinical claims."
+  ]
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -39,6 +40,11 @@ from fastapi.testclient import TestClient
 FIXTURE = Path(__file__).parents[1] / "examples" / "synthetic-eeg-bids"
 FILTER_WORKFLOW = Path(__file__).parents[1] / "examples" / "eeg-filter-demo.workflow.json"
 RECORDING_RELATIVE = "sub-01/eeg/sub-01_task-Demo_eeg.vhdr"
+PUBLIC_FIXTURE_MANIFEST = (
+    Path(__file__).parents[1] / "docs" / "fixtures" / "ds007338-sub-EP10-1.0.0.json"
+)
+PUBLIC_RECORDING_RELATIVE = "sub-EP10/ses-01/eeg/sub-EP10_ses-01_task-dots_run-01_eeg.edf"
+PUBLIC_FIXTURE_ENV = "BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE"
 TEST_TOKEN = "step7-ica-test-token-0123456789"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
 MAX_ABSOLUTE_DIFFERENCE_UV = 3e-5
@@ -61,13 +67,28 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def _ica_workflow() -> Workflow:
+def _ica_workflow(
+    *,
+    dataset_root: str = "synthetic/example-bids",
+    recording_path: str = RECORDING_RELATIVE,
+    high_hz: float = 40.0,
+) -> Workflow:
     payload = json.loads(FILTER_WORKFLOW.read_text(encoding="utf-8"))
+    bids = next(node for node in payload["nodes"] if node["id"] == "bids")
+    dataset_parameter = next(
+        parameter for parameter in bids["parameters"] if parameter["id"] == "root"
+    )
+    dataset_parameter["value"] = dataset_root
     inspect = next(node for node in payload["nodes"] if node["id"] == "inspect")
     recording_parameter = next(
         parameter for parameter in inspect["parameters"] if parameter["id"] == "recording_path"
     )
-    recording_parameter["value"] = RECORDING_RELATIVE
+    recording_parameter["value"] = recording_path
+    filter_node = next(node for node in payload["nodes"] if node["id"] == "filter")
+    high_parameter = next(
+        parameter for parameter in filter_node["parameters"] if parameter["id"] == "high_hz"
+    )
+    high_parameter["value"] = high_hz
     fit = instantiate_registered_node("eeg.ica_fit", "ica-fit", CanvasPosition(x=850, y=80))
     review = instantiate_registered_node(
         "eeg.ica_review", "ica-review", CanvasPosition(x=1050, y=180)
@@ -95,8 +116,15 @@ def _ica_workflow() -> Workflow:
     return Workflow.model_validate(payload)
 
 
-def _create_project(client: TestClient, path: Path) -> Path:
-    workflow = _ica_workflow()
+def _create_project(
+    client: TestClient,
+    path: Path,
+    *,
+    dataset_source: Path = FIXTURE,
+    dataset_root: str = "synthetic/example-bids",
+    workflow: Workflow | None = None,
+) -> Path:
+    workflow = workflow or _ica_workflow(dataset_root=dataset_root)
     response = client.post(
         "/api/projects/create",
         json={
@@ -107,9 +135,9 @@ def _create_project(client: TestClient, path: Path) -> Path:
         headers=AUTH_HEADERS,
     )
     assert response.status_code == 200, response.text
-    dataset = path / "synthetic" / "example-bids"
+    dataset = path / dataset_root
     dataset.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(FIXTURE, dataset)
+    shutil.copytree(dataset_source, dataset)
     return path
 
 
@@ -386,10 +414,17 @@ def test_ica_verified_copy_refuses_symlinked_work_directory(tmp_path: Path, work
     assert list(outside.iterdir()) == [sentinel]
 
 
-def _direct_mne_reviewed_values(dataset: Path, scratch: Path, excluded: list[int]) -> np.ndarray:
+def _direct_mne_reviewed_values(
+    dataset: Path,
+    scratch: Path,
+    excluded: list[int],
+    *,
+    recording_path: str = RECORDING_RELATIVE,
+    high_hz: float = 40.0,
+) -> np.ndarray:
     from mne_bids import get_bids_path_from_fname, read_raw_bids
 
-    recording = dataset / RECORDING_RELATIVE
+    recording = dataset / recording_path
     bids_path = get_bids_path_from_fname(recording, check=False)
     bids_path.root = dataset
     raw = read_raw_bids(bids_path, verbose="ERROR", extra_params={"preload": False})
@@ -403,7 +438,7 @@ def _direct_mne_reviewed_values(dataset: Path, scratch: Path, excluded: list[int
     ]
     filtered.filter(
         l_freq=1.0,
-        h_freq=40.0,
+        h_freq=high_hz,
         picks=eeg_names,
         method="fir",
         phase="zero",
@@ -623,6 +658,171 @@ def test_ica_pauses_persists_review_and_matches_direct_mne_and_export(
     assert "differs from the source approved" in changed_run.stderr
     assert not changed_output.exists()
     assert not changed_output.with_suffix(".provenance.json").exists()
+    assert _source_snapshot(dataset) == before
+
+
+@pytest.mark.skipif(
+    not os.environ.get(PUBLIC_FIXTURE_ENV),
+    reason="set BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE to run the pinned public-data comparison",
+)
+def test_public_bids_eeg_ica_matches_direct_mne_and_generated_export(
+    client: TestClient, tmp_path: Path
+) -> None:
+    fixture_root = Path(os.environ[PUBLIC_FIXTURE_ENV]).expanduser().resolve(strict=True)
+    manifest = json.loads(PUBLIC_FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+    dataset_relative = "datasets/public-eegeyenet"
+    workflow = _ica_workflow(
+        dataset_root=dataset_relative,
+        recording_path=PUBLIC_RECORDING_RELATIVE,
+        high_hz=40.0,
+    )
+    project = _create_project(
+        client,
+        tmp_path / "public-eegeyenet-project",
+        dataset_source=fixture_root,
+        dataset_root=dataset_relative,
+        workflow=workflow,
+    )
+    dataset = project / dataset_relative
+    before = _source_snapshot(dataset)
+    assert len(before) == len(manifest["fixture"]["files"])
+
+    started = client.post(
+        "/api/runs/start",
+        json={"path": str(project), "workflow": workflow.model_dump(mode="json"), "seed": 0},
+        headers=AUTH_HEADERS,
+    )
+    assert started.status_code == 200, started.text
+    run_id = started.json()["run_id"]
+    parked = _wait_for_state(client, project, run_id, {"waiting_for_review"}, timeout=180.0)
+    assert parked["state"] == "waiting_for_review", parked
+    _wait_for_worker_idle(project, run_id)
+    by_type = {node["node_type"]: node for node in parked["node_runs"]}
+    fit = by_type["eeg.ica_fit"]
+    review = by_type["eeg.ica_review"]
+    assert fit["state"] == "succeeded"
+    diagnostics_artifact = next(
+        item for item in fit["artifacts"] if item["port_id"] == "diagnostics"
+    )
+    provenance_artifact = next(item for item in fit["artifacts"] if item["port_id"] == "provenance")
+    diagnostics = json.loads((project / diagnostics_artifact["path"]).read_text("utf-8"))
+    fit_provenance = json.loads((project / provenance_artifact["path"]).read_text("utf-8"))
+    assert len(diagnostics["channels"]) == 129
+    assert diagnostics["fit_converged"] is True
+    assert diagnostics["fit_iterations"] < 1000
+    assert fit_provenance["channels"] == diagnostics["channels"]
+    assert len(fit_provenance["channels"]) == 129
+    assert fit_provenance["converged"] is True
+    assert not any(item["port_id"] == "reviewed" for item in review["artifacts"])
+
+    decision = client.post(
+        "/api/runs/review",
+        json={
+            "path": str(project),
+            "run_id": run_id,
+            "node_run_id": review["id"],
+            "decision": "approved",
+            "reviewer": "Engineering fixture review",
+            "excluded_ica_components": [],
+            "note": (
+                "Explicit keep-all decision for numerical engineering comparison; "
+                "no component interpretation is asserted."
+            ),
+        },
+        headers=AUTH_HEADERS,
+    )
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["qc_reviews"][0]["excluded_ica_components"] == []
+    finished = _wait_for_state(client, project, run_id, {"succeeded"}, timeout=180.0)
+    assert finished["state"] == "succeeded", [
+        (node["id"], node["state"], node["failure"])
+        for node in finished["node_runs"]
+        if node["failure"] is not None
+    ]
+    review = next(node for node in finished["node_runs"] if node["node_type"] == "eeg.ica_review")
+    reviewed_artifact = next(item for item in review["artifacts"] if item["port_id"] == "reviewed")
+    brainlearn = mne.io.read_raw_fif(
+        project / reviewed_artifact["path"], preload=True, verbose="ERROR"
+    )
+    brainlearn_values = brainlearn.get_data(units="uV")
+    brainlearn.close()
+
+    direct_output = tmp_path / "public-direct-mne-raw.fif"
+    reference_script = Path(__file__).parents[1] / "scripts" / "reference_public_eeg_mne.py"
+    direct = subprocess.run(
+        [sys.executable, str(reference_script), str(dataset), str(direct_output)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert direct.returncode == 0, direct.stderr
+    summary_start = direct.stdout.find("{")
+    assert summary_start >= 0, direct.stdout
+    direct_summary = json.loads(direct.stdout[summary_start:])
+    assert direct_summary["method"]["sampling_frequency_hz"] == 500.0
+    assert direct_summary["method"]["sample_count"] == 162000
+    assert direct_summary["method"]["ica"]["converged"] is True
+    assert direct_summary["method"]["ica"]["excluded_components"] == []
+    direct_raw = mne.io.read_raw_fif(direct_output, preload=True, verbose="ERROR")
+    direct_values = direct_raw.get_data(units="uV")
+    direct_raw.close()
+    np.testing.assert_allclose(
+        brainlearn_values,
+        direct_values,
+        rtol=1e-6,
+        atol=MAX_ABSOLUTE_DIFFERENCE_UV,
+    )
+
+    rendered = client.post(
+        "/api/runs/render/python",
+        json={
+            "path": str(project),
+            "run_id": run_id,
+            "node_run_id": review["id"],
+            "workflow": workflow.model_dump(mode="json"),
+        },
+        headers=AUTH_HEADERS,
+    )
+    assert rendered.status_code == 200, rendered.text
+    payload = rendered.json()
+    assert payload["renderer_id"] == "brainlearn.eeg.mne-ica.python"
+    assert "ICA_EXCLUDED_COMPONENTS = []" in payload["source"]
+    compile(payload["source"], payload["filename"], "exec")
+    script = tmp_path / payload["filename"]
+    script.write_text(payload["source"], encoding="utf-8")
+    generated_path = tmp_path / "public-generated-raw.fif"
+    generated = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--dataset-root",
+            str(dataset),
+            "--recording-path",
+            PUBLIC_RECORDING_RELATIVE,
+            "--output",
+            str(generated_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert generated.returncode == 0, generated.stderr
+    exported = mne.io.read_raw_fif(generated_path, preload=True, verbose="ERROR")
+    exported_values = exported.get_data(units="uV")
+    exported.close()
+    np.testing.assert_allclose(
+        brainlearn_values,
+        exported_values,
+        rtol=1e-6,
+        atol=MAX_ABSOLUTE_DIFFERENCE_UV,
+    )
+    exported_provenance = json.loads(
+        generated_path.with_suffix(".provenance.json").read_text("utf-8")
+    )
+    assert exported_provenance["ica_review"]["excluded_components"] == []
+    assert exported_provenance["source_content_identity"]
     assert _source_snapshot(dataset) == before
 
 

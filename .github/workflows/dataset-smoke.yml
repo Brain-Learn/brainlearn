@@ -51,6 +51,19 @@ jobs:
         env:
           BRAINLEARN_BIDS_EEG_FIXTURE: ${{ runner.temp }}/ds002181-fixture
 
+      - name: Retrieve sample-bearing public EEG reference
+        run: >-
+          uv run python scripts/fetch_bids_eeg_fixture.py
+          "$RUNNER_TEMP/ds007338-eegeyenet"
+          --manifest docs/fixtures/ds007338-sub-EP10-1.0.0.json
+
+      - name: Compare BrainLearn, direct MNE, and Python export on public samples
+        run: >-
+          uv run --group eeg pytest -q
+          tests/test_eeg_ica.py::test_public_bids_eeg_ica_matches_direct_mne_and_generated_export
+        env:
+          BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE: ${{ runner.temp }}/ds007338-eegeyenet
+
       - name: Upload diagnostic drift log on failure
         if: failure()
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

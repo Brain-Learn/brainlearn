@@ -171,6 +171,7 @@ Scientific review required before checking this step.
 - [x] Invalidate an old decision when its input or fitted ICA artifact changes.
 - [x] Export the reviewed component choices to Python code and provenance.
 - [x] Add resume, rejection, and stale-decision tests.
+- [x] Compare BrainLearn, direct MNE, and generated Python output on a pinned, sample-bearing public BIDS recording.
 
 Completion gate: the workflow pauses for review, resumes only after a persisted decision, invalidates that decision after an upstream change, and reproduces the reviewed output in exported Python.
 
@@ -511,6 +512,8 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-19 | Step 7 ICA final monitored gate | Complete | Independent clean-checkout review of PR #35 final head `3af4115b98878b9f1a8b04c3118912be0ea5b72b` against main `8df8c8d8dd16208c857c3d77a3baa3d70d6670ef` confirmed fail-closed convergence, exact fitted/good versus excluded/bad channel provenance, current schema-1.1 convergence validation at decision and apply boundaries, source inventory/hash/content-identity and fit-signature checks in generated Python, symlink/pre-existing target rejection, and the all-EEG-channel pre-load sample bound (25M) alongside the 256 usable-channel fit cap. Legacy convergence records are view-only; legacy no-edges filter migration preserves existing settings. Focused ICA tests: 12 passed. Complete clean-checkout gate: locked EEG sync, Ruff, formatting (91 files), strict mypy (36 files), pytest (829 passed, 3 skipped, 2 upstream Starlette/AnyIO warnings), ESLint, Prettier, Vitest (183 tests in 21 files), production build (1,850 modules; existing chunk-size advisory), production npm audit (0 vulnerabilities), `uv lock --check`, and `git diff --check` all passed. BrainLearn, direct MNE, and generated Python agreed on the pinned synthetic BIDS fixture at `rtol=1e-6`, `atol=3e-5 µV`, with source files unchanged. Both hosted checks passed on final head `3af4115` in Actions run `39247940198` (Python 1m54s; frontend 46s). This approves the ICA engineering implementation only. The fixture has no sensor locations and there is no sample-bearing public validation or independent EEG methods review; keep the Step 7 parent and scientific-review gate unchecked and do not begin Step 8. | Monitor review complete on PR #35 |
 
+| 2026-10-19 | Step 7 sample-bearing public EEG engineering reference | Verified; monitoring pending | Added a pinned 12-file, 41,877,563-byte subset of OpenNeuro ds007338 snapshot 1.0.0 (CC0-1.0) with version, source URLs, sizes, SHA-256 digests, citations, and limitations recorded; no sample data are stored in Git. The fixture retriever now accepts an explicit manifest. A separate direct-MNE reference and opt-in integration test run the BrainLearn workflow, direct MNE, and generated Python export on the 129-channel, 500 Hz, 162,000-sample recording; all three agree at `rtol=1e-6`, `atol=3e-5 µV`, and all 12 source files remain unchanged. The test persists an explicit empty ICA exclusion decision for engineering comparison only. The manifest preserves the 323.464-second BIDS sidecar versus 324-second EDF sample-duration discrepancy. `uv sync --locked --all-packages --group eeg`, `uv run --frozen ruff check .`, format check (93 files), mypy (36 source files), full `BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE=/tmp/brainlearn-ds007338-reference uv run --frozen pytest` (830 passed, 3 skipped, 2 upstream deprecation warnings; 89.02s), frontend ESLint, Prettier, Vitest (183 tests in 21 files), production build (1,850 modules; existing chunk-size warning), production npm audit (0 vulnerabilities), `uv lock --check`, and `git diff --check` passed. The fetcher independently verified all 12 downloads against SHA-256. This extends engineering validation to one real recording; it does not establish scientifically suitable parameters or component decisions. Step 7 parent and scientific-review gate remain unchecked pending independent monitoring and EEG methods review. | PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
@@ -518,9 +521,10 @@ Preserve every completion-log row.
 
 ### Step 7 — independent monitoring and scientific review
 
-The ICA engineering checklist is implemented on the current scoped PR. The
-monitor must independently review the diff, reproduce the full gate, and record
+The ICA engineering checklist and sample-bearing public-data engineering
+comparison are implemented on the current scoped PR. The monitor must
+independently review the complete diff, reproduce the full gate, and record
 hosted CI evidence before merging. Keep Step 7's parent unchecked until an EEG
-methods reviewer evaluates the workflow against a sample-bearing public BIDS
-recording. The present synthetic fixture establishes engineering agreement
-only. Do not begin Step 8 before those review gates pass.
+methods reviewer evaluates the workflow and assumptions against the pinned
+public BIDS recording. The public comparison is engineering evidence, not
+scientific approval. Do not begin Step 8 before those review gates pass.
