@@ -232,6 +232,34 @@ def _wait_for_run(
     raise AssertionError(f"Run {run_id} never reached {states}; last: {body.get('state')}")
 
 
+def _wait_for_node_states(
+    client: TestClient,
+    project: Path,
+    run_id: str,
+    expected: dict[str, str],
+    timeout: float = 30.0,
+) -> dict:
+    import time
+
+    deadline = time.monotonic() + timeout
+    body: dict = {}
+    while time.monotonic() < deadline:
+        response = client.post(
+            "/api/runs/open",
+            json={"path": str(project), "run_id": run_id},
+            headers=AUTH_HEADERS,
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()["run"]
+        by_id = {node["id"]: node for node in body["node_runs"]}
+        if all(by_id[name]["state"] == state for name, state in expected.items()):
+            return body
+        time.sleep(0.05)
+    by_id = {node["id"]: node for node in body.get("node_runs", [])}
+    last = {name: by_id[name]["state"] for name in expected if name in by_id}
+    raise AssertionError(f"Run {run_id} never reached node states {expected}; last: {last}")
+
+
 def _approve_gate(client: TestClient, project: Path, run_id: str) -> None:
     response = client.post(
         "/api/runs/review",
@@ -263,7 +291,17 @@ def test_two_runs_reuse_trunk_and_reexecute_zero_output_nodes(
     first_identities = {name: by_id[name]["content_identity"] for name in by_id}
 
     second = _start(client, project)
-    parked = _wait_for_run(client, project, second["run_id"], {"waiting_for_review"})
+    parked = _wait_for_node_states(
+        client,
+        project,
+        second["run_id"],
+        {
+            "source": "cache_reused",
+            "bridge": "cache_reused",
+            "sink": "cache_reused",
+            "gate": "waiting_for_review",
+        },
+    )
     rerun = {node["id"]: node for node in parked["node_runs"]}
     for name in ("source", "bridge", "sink"):
         assert rerun[name]["state"] == "cache_reused"
