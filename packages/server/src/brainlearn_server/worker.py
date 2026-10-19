@@ -1089,6 +1089,7 @@ class WorkerService:
         from brainlearn_server.mne_ica import (
             _REFERENCE_MEDIA_TYPE,
             ICA_MODEL_MEDIA_TYPE,
+            is_current_converged_fit_provenance,
         )
 
         inputs = self._resolve_input_artifacts(project, record, node)
@@ -1155,16 +1156,12 @@ class WorkerService:
                 provenance = json.load(source)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             raise ReviewConflictError("The fitted ICA provenance cannot be verified.") from exc
-        if (
-            not isinstance(provenance, dict)
-            or provenance.get("operation") != "fit_ica"
-            or provenance.get("input_artifact_id") != raw_artifact.artifact_id
-            or type(provenance.get("fitted_components")) is not int
-            or provenance["fitted_components"] < 1
-        ):
+        if not is_current_converged_fit_provenance(provenance, raw_artifact.artifact_id):
             raise ReviewConflictError(
-                "The fitted ICA model does not match this exact raw input and fit record."
+                "The fitted ICA provenance is legacy, non-converged, or invalid; "
+                "refit ICA before saving a review."
             )
+        assert isinstance(provenance, dict)
         component_count = provenance["fitted_components"]
         if len(set(excluded_components)) != len(excluded_components):
             raise ReviewConflictError("ICA component choices must not contain duplicates.")

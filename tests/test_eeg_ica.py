@@ -27,7 +27,11 @@ from brainlearn_server import project_store as store_module
 from brainlearn_server.app import app, runs, store, workers
 from brainlearn_server.auth import reset_session_token_for_tests
 from brainlearn_server.demo_nodes import ControlledFailure, NodeContext
-from brainlearn_server.mne_ica import _verified_copy
+from brainlearn_server.mne_ica import (
+    _verified_copy,
+    apply_reviewed_ica_eeg,
+    is_current_converged_fit_provenance,
+)
 from brainlearn_server.python_export import render_eeg_ica_python
 from brainlearn_server.registry import instantiate_registered_node
 from fastapi.testclient import TestClient
@@ -130,6 +134,46 @@ def _wait_for_state(
     raise AssertionError(f"Run {run_id} did not reach {states}; last: {body.get('state')}")
 
 
+def _wait_for_worker_idle(project: Path, run_id: str) -> None:
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        with workers._guard:
+            thread = workers._threads.get((str(project), run_id))
+        if thread is None or not thread.is_alive():
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"Worker for {run_id} did not become idle.")
+
+
+def _replace_fit_provenance_with_legacy_record(project: Path, run_id: str) -> Any:
+    record = runs.get_run(str(project), run_id)
+    fit = next(item for item in record.node_runs if item.node_type == "eeg.ica_fit")
+    provenance_artifact = next(item for item in fit.artifacts if item.port_id == "provenance")
+    provenance_path = project / provenance_artifact.path
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["schema_version"] = "1.0"
+    provenance["converged"] = False
+    encoded = json.dumps(provenance, ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+    data = encoded.encode("utf-8")
+    provenance_path.write_bytes(data)
+    updated_artifact = provenance_artifact.model_copy(
+        update={"byte_size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+    )
+    updated_fit = fit.model_copy(
+        update={
+            "artifacts": [
+                updated_artifact if item.port_id == "provenance" else item for item in fit.artifacts
+            ]
+        }
+    )
+    updated_record = record.model_copy(
+        update={
+            "node_runs": [updated_fit if item.id == fit.id else item for item in record.node_runs]
+        }
+    )
+    return runs.save_run(str(project), updated_record)
+
+
 def _source_snapshot(root: Path) -> dict[str, tuple[int, str]]:
     return {
         path.relative_to(root).as_posix(): (
@@ -198,6 +242,85 @@ def test_ica_fit_fails_closed_on_nonconvergence_and_preexisting_outputs(
     raw.close()
     assert outside.read_text(encoding="utf-8") == "leave this file alone"
     assert not (staging / "ica-model-ica.fif").exists()
+
+
+def test_ica_provenance_requires_current_schema_and_convergence() -> None:
+    valid = {
+        "schema_version": "1.1",
+        "operation": "fit_ica",
+        "input_artifact_id": "raw-artifact",
+        "method": "fastica",
+        "converged": True,
+        "max_iter": 1000,
+        "iterations": 999,
+        "fitted_components": 2,
+        "channels": ["Cz", "Oz"],
+        "picks": ["Cz", "Oz"],
+        "excluded_bad_channels": ["Pz"],
+    }
+    assert is_current_converged_fit_provenance(valid, "raw-artifact")
+    for field, invalid_value in (
+        ("schema_version", "1.0"),
+        ("converged", False),
+        ("iterations", 0),
+        ("iterations", 1000),
+        ("iterations", True),
+    ):
+        invalid = {**valid, field: invalid_value}
+        assert not is_current_converged_fit_provenance(invalid, "raw-artifact")
+
+
+def test_ica_input_sample_limit_counts_bad_channels_before_preload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import brainlearn_server.mne_ica as adapter_module
+
+    class LargeRaw:
+        ch_names = [f"EEG{index:03}" for index in range(512)]
+        n_times = 49_000
+        info = {"bads": ch_names[2:]}
+        loaded = False
+
+        def copy(self) -> LargeRaw:
+            return self
+
+        def pick(self, picks: str) -> LargeRaw:
+            assert picks == "eeg"
+            return self
+
+        def get_channel_types(self) -> list[str]:
+            return ["eeg"] * len(self.ch_names)
+
+        def load_data(self, *, verbose: str) -> LargeRaw:
+            self.loaded = True
+            raise AssertionError(f"load_data must not run under the sample-limit guard: {verbose}")
+
+        def close(self) -> None:
+            return None
+
+    raw = LargeRaw()
+    monkeypatch.setattr(adapter_module, "_load_raw", lambda *_args: (raw, None))
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    artifact = ArtifactRecord(
+        artifact_id="brainlearn-v1:artifact:" + "a" * 64,
+        path="runs/run/artifacts/source/raw.fif",
+        byte_size=1,
+        sha256="b" * 64,
+        produced_by_node="source",
+        port_id="raw",
+    )
+    context = NodeContext(
+        node_id="ica-fit",
+        node_type="eeg.ica_fit",
+        parameters={},
+        inputs={},
+        staging_dir=staging,
+        input_artifacts={"raw": artifact},
+    )
+    with pytest.raises(ControlledFailure, match="bounded ICA input sample limit"):
+        adapter_module.fit_ica_eeg(context)
+    assert not raw.loaded
 
 
 def test_ica_fit_records_only_good_eeg_channels_and_explicit_bad_exclusions(
@@ -501,6 +624,62 @@ def test_ica_pauses_persists_review_and_matches_direct_mne_and_export(
     assert not changed_output.exists()
     assert not changed_output.with_suffix(".provenance.json").exists()
     assert _source_snapshot(dataset) == before
+
+
+def test_legacy_nonconverged_fit_cannot_be_reviewed_or_applied(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project = _create_project(client, tmp_path / "legacy-ica-project")
+    response = client.post(
+        "/api/runs/start",
+        json={"path": str(project), "workflow": _ica_workflow().model_dump(mode="json"), "seed": 0},
+        headers=AUTH_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    run_id = response.json()["run_id"]
+    parked = _wait_for_state(client, project, run_id, {"waiting_for_review"})
+    assert parked["state"] == "waiting_for_review", parked
+    _wait_for_worker_idle(project, run_id)
+
+    record = _replace_fit_provenance_with_legacy_record(project, run_id)
+    review = next(item for item in record.node_runs if item.node_type == "eeg.ica_review")
+    decision = client.post(
+        "/api/runs/review",
+        json={
+            "path": str(project),
+            "run_id": run_id,
+            "node_run_id": review.id,
+            "decision": "approved",
+            "reviewer": "Researcher A",
+            "excluded_ica_components": [0],
+        },
+        headers=AUTH_HEADERS,
+    )
+    assert decision.status_code == 409
+    assert "legacy, non-converged, or invalid" in decision.json()["detail"]
+    assert runs.list_qc_reviews(str(project), run_id) == []
+
+    context = NodeContext(
+        node_id=review.node_id,
+        node_type=review.node_type,
+        parameters=review.parameters,
+        inputs={},
+        staging_dir=tmp_path / "legacy-ica-apply-staging",
+        input_artifacts=workers._resolve_input_artifacts(str(project), record, review),
+        project_path=str(project),
+        project_store=store,
+        run_store=runs,
+        run_id=run_id,
+        node_run_id=review.id,
+        run_seed=record.seed,
+    )
+    context.staging_dir.mkdir()
+    with pytest.raises(ControlledFailure, match="legacy, non-converged, or invalid"):
+        apply_reviewed_ica_eeg(context)
+    assert runs.list_qc_reviews(str(project), run_id) == []
+    review_after = runs.get_run(str(project), run_id).node_runs
+    review_after = next(item for item in review_after if item.id == review.id)
+    assert not any(item.port_id == "reviewed" for item in review_after.artifacts)
 
 
 def test_ica_rejection_persists_decision_and_never_emits_reviewed_eeg(

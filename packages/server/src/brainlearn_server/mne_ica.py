@@ -6,7 +6,7 @@ import json
 import shutil
 from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 from brainlearn_server.demo_nodes import (
     ControlledFailure,
@@ -21,6 +21,46 @@ ICA_FIT_PROVENANCE_MEDIA_TYPE = "application/vnd.brainlearn.eeg-ica-fit-provenan
 ICA_REVIEW_PROVENANCE_MEDIA_TYPE = "application/vnd.brainlearn.eeg-ica-review-provenance+json"
 ICA_MODEL_MEDIA_TYPE = "application/vnd.brainlearn.eeg-ica-model+fif"
 _REFERENCE_MEDIA_TYPE = "application/vnd.brainlearn.artifact-reference+json"
+ICA_FIT_PROVENANCE_SCHEMA = "1.1"
+ICA_FIT_MAX_ITERATIONS = 1000
+
+
+def is_current_converged_fit_provenance(
+    payload: object, raw_artifact_id: str
+) -> TypeGuard[dict[str, Any]]:
+    """Require complete current-schema evidence before ICA decisions or application."""
+
+    if not isinstance(payload, dict):
+        return False
+    channels = payload.get("channels")
+    excluded_bad_channels = payload.get("excluded_bad_channels")
+    fitted_components = payload.get("fitted_components")
+    iterations = payload.get("iterations")
+    if (
+        payload.get("schema_version") != ICA_FIT_PROVENANCE_SCHEMA
+        or payload.get("operation") != "fit_ica"
+        or payload.get("input_artifact_id") != raw_artifact_id
+        or payload.get("method") != "fastica"
+        or payload.get("converged") is not True
+        or type(payload.get("max_iter")) is not int
+        or payload.get("max_iter") != ICA_FIT_MAX_ITERATIONS
+        or type(fitted_components) is not int
+        or fitted_components < 1
+        or not isinstance(channels, list)
+        or not channels
+        or not all(isinstance(item, str) and item for item in channels)
+        or len(set(channels)) != len(channels)
+        or fitted_components > len(channels)
+        or payload.get("picks") != channels
+        or not isinstance(excluded_bad_channels, list)
+        or not all(isinstance(item, str) and item for item in excluded_bad_channels)
+        or len(set(excluded_bad_channels)) != len(excluded_bad_channels)
+        or any(item in channels for item in excluded_bad_channels)
+        or type(iterations) is not int
+        or not 1 <= iterations < ICA_FIT_MAX_ITERATIONS
+    ):
+        return False
+    return True
 
 
 def _verified_copy(ctx: NodeContext, port: str, target: Path) -> Any:
@@ -173,15 +213,9 @@ def fit_ica_eeg(ctx: NodeContext) -> list[StagedOutput]:
         raw, reference = _load_raw(ctx, "raw", work_dir)
 
         eeg_raw = raw.copy().pick("eeg")
-        bad_channels = set(eeg_raw.info.get("bads", ()))
-        usable_eeg_channels = [
-            name
-            for name, kind in zip(eeg_raw.ch_names, eeg_raw.get_channel_types(), strict=True)
-            if kind == "eeg" and name not in bad_channels
-        ]
-        n_samples = len(usable_eeg_channels) * int(eeg_raw.n_times)
+        n_samples = len(eeg_raw.ch_names) * int(eeg_raw.n_times)
         if n_samples > 25_000_000:
-            raise ControlledFailure("The recording exceeds the bounded ICA fitting sample limit.")
+            raise ControlledFailure("The EEG data exceeds the bounded ICA input sample limit.")
         eeg_raw.load_data(verbose="ERROR")
         from brainlearn_mne.ica import (
             ICA_DIAGNOSTICS_MEDIA_TYPE as _PLUGIN_DIAGNOSTICS_MEDIA_TYPE,
@@ -261,14 +295,11 @@ def _matching_fit_provenance(ctx: NodeContext) -> dict[str, Any]:
             payload = json.load(source)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         raise ControlledFailure("The fitted ICA provenance could not be verified.") from exc
-    if (
-        not isinstance(payload, dict)
-        or payload.get("operation") != "fit_ica"
-        or payload.get("input_artifact_id") != raw_artifact.artifact_id
-        or type(payload.get("fitted_components")) is not int
-        or payload["fitted_components"] < 1
-    ):
-        raise ControlledFailure("The fitted ICA model was computed from a different EEG input.")
+    if not is_current_converged_fit_provenance(payload, raw_artifact.artifact_id):
+        raise ControlledFailure(
+            "The fitted ICA provenance is legacy, non-converged, or invalid; "
+            "refit ICA before review or application."
+        )
     return payload
 
 
