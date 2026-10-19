@@ -48,6 +48,7 @@ function renderDrawer(
     history: [],
     historyError: null,
     historyPending: false,
+    qcReviews: [],
     onCancel: vi.fn(),
     onReview: vi.fn(),
     onRecover: vi.fn(),
@@ -259,6 +260,58 @@ test("shows approve/reject controls for a waiting review node", () => {
   expect(props.onReview).toHaveBeenCalledWith("gate", "rejected", "");
 });
 
+test("collects researcher and bad-channel exclusions for EEG review", () => {
+  const run = runFixture({
+    state: "waiting_for_review",
+    node_runs: [
+      {
+        schema_version: "1.0",
+        id: "bad-channels",
+        node_id: "bad-channels",
+        node_type: "eeg.bad_channel_review",
+        node_version: "0.1.0",
+        dependencies: ["inspect"],
+        attempt: 1,
+        state: "waiting_for_review",
+        started_at: "2026-09-13T00:00:01+00:00",
+        finished_at: null,
+        inputs: { raw: "brainlearn-v1:node:" + "d".repeat(64) },
+        parameters: {},
+        environment_identity: "brainlearn-v1:environment:" + "b".repeat(64),
+        seed: 0,
+        settings: {},
+        content_identity: "brainlearn-v1:node:" + "c".repeat(64),
+        artifacts: [],
+        failure: null,
+        review_pause: {
+          schema_version: "1.0",
+          id: "review-bad-channels-1",
+          node_run_id: "bad-channels",
+          input_identity: "brainlearn-v1:node:" + "c".repeat(64),
+          requested_at: "2026-09-13T00:00:01+00:00",
+          decided_at: null,
+          decision: null,
+          note: "Record channels to exclude.",
+        },
+      },
+    ],
+  });
+  const props = renderDrawer(run);
+  const approve = screen.getByRole("button", { name: "Approve" });
+  expect(approve).toBeDisabled();
+  fireEvent.change(screen.getByLabelText("Researcher for bad-channels"), {
+    target: { value: "Researcher A" },
+  });
+  fireEvent.change(screen.getByLabelText("Bad EEG channels for bad-channels"), {
+    target: { value: "Fp1, Cz" },
+  });
+  fireEvent.click(approve);
+  expect(props.onReview).toHaveBeenCalledWith("bad-channels", "approved", "", {
+    reviewer: "Researcher A",
+    excludedChannelNames: ["Fp1", "Cz"],
+  });
+});
+
 test("offers cancel only for non-terminal runs and honors reduced motion", () => {
   const props = renderDrawer(runFixture({ state: "running" }));
   expect(screen.getByRole("button", { name: /Cancel/ })).toBeInTheDocument();
@@ -277,6 +330,7 @@ test("offers cancel only for non-terminal runs and honors reduced motion", () =>
       history={[]}
       historyError={null}
       historyPending={false}
+      qcReviews={[]}
       launching={false}
       message={null}
       onCancel={() => {}}

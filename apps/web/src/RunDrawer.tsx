@@ -6,6 +6,7 @@ import type {
   ArtifactRecord,
   EEGFilterComparisonPreview as EEGFilterComparisonPreviewData,
   NodeRunRecord,
+  QCReviewRecord,
   RunRecord,
   RunResponse,
   RunState,
@@ -48,11 +49,63 @@ function ReviewControls({
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
+    qc?: { reviewer: string; excludedChannelNames: string[] },
   ) => void;
 }) {
   const [note, setNote] = useState("");
+  const [reviewer, setReviewer] = useState("");
+  const [excludedChannels, setExcludedChannels] = useState("");
+  const requiresQc = node.node_type === "eeg.bad_channel_review";
+  const save = (decision: "approved" | "rejected") => {
+    const names = excludedChannels
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (requiresQc) {
+      onReview(node.id, decision, note, {
+        reviewer: reviewer.trim(),
+        excludedChannelNames: names,
+      });
+      return;
+    }
+    onReview(node.id, decision, note);
+  };
   return (
     <div className="review-controls">
+      {requiresQc && (
+        <>
+          <p
+            id={`bad-channel-review-help-${node.node_id}`}
+            className="project-message"
+          >
+            Use EEG channel names from the signal preview. BrainLearn checks
+            each name against the current recording and saves this decision with
+            the run and input identities. The source signal is unchanged. Enter
+            a researcher name to enable either decision.
+          </p>
+          <label>
+            Researcher
+            <input
+              aria-label={`Researcher for ${node.node_id}`}
+              aria-describedby={`bad-channel-review-help-${node.node_id}`}
+              maxLength={200}
+              onChange={(event) => setReviewer(event.target.value)}
+              required
+              value={reviewer}
+            />
+          </label>
+          <label>
+            Bad EEG channels to exclude (comma-separated)
+            <input
+              aria-label={`Bad EEG channels for ${node.node_id}`}
+              maxLength={4096}
+              onChange={(event) => setExcludedChannels(event.target.value)}
+              placeholder="Fp1, Cz"
+              value={excludedChannels}
+            />
+          </label>
+        </>
+      )}
       <input
         aria-label={`Review note for ${node.node_id}`}
         onChange={(event) => setNote(event.target.value)}
@@ -61,15 +114,15 @@ function ReviewControls({
         value={note}
       />
       <button
-        disabled={disabled}
-        onClick={() => onReview(node.id, "approved", note)}
+        disabled={disabled || (requiresQc && !reviewer.trim())}
+        onClick={() => save("approved")}
       >
         Approve
       </button>
       <button
         className="review-reject"
-        disabled={disabled}
-        onClick={() => onReview(node.id, "rejected", note)}
+        disabled={disabled || (requiresQc && !reviewer.trim())}
+        onClick={() => save("rejected")}
       >
         Reject
       </button>
@@ -89,6 +142,7 @@ export function RunDrawer({
   history,
   historyError,
   historyPending,
+  qcReviews,
   onCancel,
   onReview,
   onRecover,
@@ -109,11 +163,13 @@ export function RunDrawer({
   history: RunResponse[];
   historyError: string | null;
   historyPending: boolean;
+  qcReviews: QCReviewRecord[];
   onCancel: () => void;
   onReview: (
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
+    qc?: { reviewer: string; excludedChannelNames: string[] },
   ) => void;
   onRecover: () => void;
   onOpenRun: (runId: string, path: string) => void;
@@ -234,6 +290,24 @@ export function RunDrawer({
                     onReview={onReview}
                   />
                 </div>
+              ))}
+            </div>
+          )}
+
+          {qcReviews.length > 0 && (
+            <div
+              className="run-qc-reviews"
+              aria-label="Saved EEG review decisions"
+            >
+              <h4>Saved bad-channel decisions</h4>
+              {qcReviews.map((review) => (
+                <p key={review.id}>
+                  {review.decision} · {review.reviewer} · {review.node_id}
+                  {review.excluded_channel_names.length > 0
+                    ? ` · Excluded: ${review.excluded_channel_names.join(", ")}`
+                    : " · No channels selected"}
+                  {review.note ? ` · ${review.note}` : ""}
+                </p>
               ))}
             </div>
           )}

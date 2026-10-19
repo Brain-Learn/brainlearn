@@ -210,6 +210,16 @@ class BidsEegPreviewChannel(BaseModel):
     marked_bad: bool
 
 
+class BidsEegChannelInventory(BaseModel):
+    """Header-only EEG channel choices bound to the current source identity."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["1.0"] = "1.0"
+    source_content_identity: str = Field(pattern=r"^brainlearn-v1:artifact:[0-9a-f]{64}$")
+    channels: tuple[BidsEegPreviewChannel, ...] = Field(min_length=1, max_length=MAX_CHANNEL_NAMES)
+
+
 class BidsEegTraceBin(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -1294,6 +1304,60 @@ class BidsEegDiscoveryService:
             ) from exc
         finally:
             raw.close()
+
+    def channel_inventory(
+        self,
+        raw_project_path: str,
+        relative_dataset_path: str,
+        recording_path: str,
+    ) -> BidsEegChannelInventory:
+        """Read channel names and bad flags without loading or changing samples."""
+
+        identity_before = self.identify(raw_project_path, relative_dataset_path, recording_path)
+        if identity_before.status != "ready" or identity_before.content_identity is None:
+            raise BidsIdentityResourceLimit(
+                identity_before.message or "The recording input identity is unavailable."
+            )
+        root, recording_relative, recording = self._resolve_signal_recording(
+            raw_project_path, relative_dataset_path, recording_path
+        )
+        raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
+        try:
+            names = list(raw.ch_names)
+            types = list(raw.get_channel_types())
+            if not names or len(names) != len(types) or len(names) > MAX_CHANNEL_NAMES:
+                raise BidsSignalInspectionError(
+                    f"Bad-channel review supports at most {MAX_CHANNEL_NAMES} recording channels."
+                )
+            bads = set(raw.info["bads"])
+            channels = tuple(
+                BidsEegPreviewChannel(
+                    name=name,
+                    channel_type=channel_type,
+                    marked_bad=name in bads,
+                )
+                for name, channel_type in zip(names, types, strict=True)
+            )
+        except BidsSignalInspectionError:
+            raise
+        except Exception as exc:
+            raise BidsSignalInspectionError(
+                f"MNE could not read channel names for this {recording.format} EEG recording: {exc}"
+            ) from exc
+        finally:
+            raw.close()
+        identity_after = self.identify(raw_project_path, relative_dataset_path, recording_path)
+        if (
+            identity_after.status != "ready"
+            or identity_after.content_identity != identity_before.content_identity
+        ):
+            raise BidsSignalInspectionError(
+                "The recording changed while its channels were being reviewed. Re-identify it."
+            )
+        return BidsEegChannelInventory(
+            source_content_identity=identity_before.content_identity,
+            channels=channels,
+        )
 
     def preview_signal(
         self,

@@ -394,6 +394,7 @@ class QCReviewRecord(BaseModel):
     node_id: str = Field(min_length=1, max_length=128)
     node_content_identity: str = Field(min_length=1, pattern=_NODE_IDENTITY_PATTERN)
     input_identities: tuple[QCReviewInputIdentity, ...] = Field(min_length=1, max_length=128)
+    source_content_identity: str | None = Field(default=None, pattern=_IDENTITY_PATTERN)
     reviewer: str = Field(min_length=1, max_length=200)
     decision: Literal["approved", "rejected"]
     excluded_channel_names: tuple[str, ...] = Field(default=(), max_length=512)
@@ -422,6 +423,8 @@ class QCReviewRecord(BaseModel):
             raise ValueError("Excluded channel names must be non-empty and at most 512 characters.")
         if len(set(self.excluded_channel_names)) != len(self.excluded_channel_names):
             raise ValueError("Excluded channel names must not contain duplicates.")
+        if self.excluded_channel_names and self.source_content_identity is None:
+            raise ValueError("Bad-channel exclusions must record their source content identity.")
         if any(type(index) is not int or index < 0 for index in self.excluded_ica_components):
             raise ValueError("Excluded ICA component indices must be non-negative integers.")
         if len(set(self.excluded_ica_components)) != len(self.excluded_ica_components):

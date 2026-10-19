@@ -313,6 +313,23 @@ export interface RunResponse {
   path: string;
   run_id: string;
   run: RunRecord;
+  qc_reviews?: QCReviewRecord[];
+}
+
+export interface QCReviewRecord {
+  schema_version: "1.0";
+  id: string;
+  run_id: string;
+  node_run_id: string;
+  node_id: string;
+  node_content_identity: string;
+  input_identities: Array<{ port_id: string; content_identity: string }>;
+  reviewer: string;
+  decision: "approved" | "rejected";
+  excluded_channel_names: string[];
+  excluded_ica_components: number[];
+  note: string;
+  created_at: string;
 }
 
 export type DownloadState =

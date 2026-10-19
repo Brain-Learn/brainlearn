@@ -29,10 +29,12 @@ from brainlearn_core import (
     ArtifactRecord,
     NodeRunRecord,
     NodeRunState,
+    QCReviewRecord,
     RunEvent,
     RunEventKind,
     RunRecord,
     RunState,
+    migrate_qc_review_dict,
     migrate_run_dict,
     validate_media_type,
 )
@@ -47,6 +49,7 @@ from brainlearn_server.project_store import ProjectStore, atomic_write_json
 
 RUNS_DIRNAME = "runs"
 RUN_FILENAME = "run.json"
+QC_REVIEWS_DIRNAME = "qc-reviews"
 _RUN_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
 # Largest single read when verifying or serving an artifact, so artifacts of
 # any recorded size stream through bounded memory.
@@ -187,6 +190,83 @@ class RunStore:
                 )
             atomic_write_json(target, record.model_dump(mode="json"))
         return record
+
+    def save_qc_review(self, raw_path: str, record: QCReviewRecord) -> QCReviewRecord:
+        """Persist one immutable review only while its EEG review node is waiting."""
+
+        import hashlib
+
+        project = self._project_dir(raw_path)
+        run_file = self._run_file(project, record.run_id)
+        run_dir = run_file.parent
+        target_dir = run_dir / QC_REVIEWS_DIRNAME
+        target = target_dir / f"{hashlib.sha256(record.id.encode('utf-8')).hexdigest()}.json"
+        self.projects.require_allowed(target.resolve(strict=False))
+        with _run_lock(project, record.run_id):
+            current = self.get_run(str(project), record.run_id)
+            record.validate_scope(current)
+            node = next(item for item in current.node_runs if item.id == record.node_run_id)
+            if (
+                node.node_type != "eeg.bad_channel_review"
+                or node.state != NodeRunState.WAITING_FOR_REVIEW
+                or node.review_pause is None
+                or node.review_pause.decided_at is not None
+                or node.review_pause.id != record.id
+                or record.source_content_identity is None
+            ):
+                raise ValueError("The QC review must match a pending bad-channel review node.")
+            for component in (project / RUNS_DIRNAME, run_dir, target_dir):
+                if component.is_symlink():
+                    raise OSError("QC review storage is blocked by a symlink.")
+            if not run_dir.is_dir() or run_file.is_symlink() or not run_file.is_file():
+                raise FileNotFoundError(f"Run {record.run_id!r} was not found.")
+            if target_dir.exists() and not target_dir.is_dir():
+                raise OSError("QC review storage is not a directory.")
+            if target.is_symlink() or (target.exists() and not target.is_file()):
+                raise OSError("QC review record path is not a regular file.")
+            if target.is_file():
+                try:
+                    saved = QCReviewRecord.model_validate(
+                        migrate_qc_review_dict(_read_json(target))
+                    )
+                except (OSError, ValueError) as exc:
+                    raise OSError("The saved QC review is unreadable or invalid.") from exc
+                requested = record.model_dump(mode="json", exclude={"created_at"})
+                existing = saved.model_dump(mode="json", exclude={"created_at"})
+                if requested != existing:
+                    raise ValueError("A different QC decision is already saved for this review.")
+                return saved
+            atomic_write_json(target, record.model_dump(mode="json"))
+        return record
+
+    def list_qc_reviews(self, raw_path: str, run_id: str) -> list[QCReviewRecord]:
+        """Read immutable QC review records after rechecking their run scope."""
+
+        project = self._project_dir(raw_path)
+        run = self.get_run(str(project), run_id)
+        run_dir = self._run_file(project, run_id).parent
+        target_dir = run_dir / QC_REVIEWS_DIRNAME
+        if target_dir.is_symlink():
+            raise OSError("QC review storage is blocked by a symlink.")
+        if not target_dir.exists():
+            return []
+        if not target_dir.is_dir():
+            raise OSError("QC review storage is not a directory.")
+        records: list[QCReviewRecord] = []
+        for target in sorted(target_dir.iterdir()):
+            if target.is_symlink():
+                continue
+            if not target.is_file() or target.suffix != ".json":
+                continue
+            try:
+                item = QCReviewRecord.model_validate(migrate_qc_review_dict(_read_json(target)))
+                item.validate_scope(run)
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"QC review file '{target}' is invalid: {exc}") from exc
+            if item.run_id != run_id:
+                raise ValueError(f"QC review file '{target}' belongs to another run.")
+            records.append(item)
+        return records
 
     def list_runs(self, raw_path: str) -> list[RunRecord]:
         """List every persisted run, surfacing corrupt run files.

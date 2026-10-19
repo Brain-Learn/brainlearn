@@ -23,6 +23,7 @@ from brainlearn_core import (
     ProviderMalformed,
     ProviderNotFound,
     ProviderTimeout,
+    QCReviewRecord,
     RunRecord,
     ValidationResult,
     Workflow,
@@ -229,6 +230,7 @@ class RunResponse(BaseModel):
     path: str
     run_id: str
     run: RunRecord
+    qc_reviews: list[QCReviewRecord] = Field(default_factory=list)
 
 
 store = ProjectStore()
@@ -238,6 +240,16 @@ downloads = DownloadService(store)
 local_imports = LocalImportService(store)
 bids_eeg = BidsEegDiscoveryService(store)
 researcher_decisions = ResearcherDecisionStore(store)
+
+
+def _run_response(path: str, record: RunRecord) -> RunResponse:
+    return RunResponse(
+        path=path,
+        run_id=record.id,
+        run=record,
+        qc_reviews=runs.list_qc_reviews(path, record.id),
+    )
+
 
 app = FastAPI(
     title="BrainLearn local API",
@@ -1081,7 +1093,7 @@ def create_run(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=record.id, run=record)
+    return _run_response(payload.path, record)
 
 
 @app.post("/api/runs/open", response_model=RunResponse)
@@ -1094,7 +1106,7 @@ def open_run(payload: RunOpenRequest, _auth: None = Depends(require_session_toke
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=record.id, run=record)
+    return _run_response(payload.path, record)
 
 
 @app.post("/api/runs/save", response_model=RunResponse)
@@ -1107,7 +1119,7 @@ def save_run(payload: RunSaveRequest, _auth: None = Depends(require_session_toke
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=record.id, run=record)
+    return _run_response(payload.path, record)
 
 
 @app.get("/api/runs/list", response_model=list[RunResponse])
@@ -1120,7 +1132,7 @@ def list_runs(path: str, _auth: None = Depends(require_session_token)) -> list[R
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return [RunResponse(path=path, run_id=record.id, run=record) for record in records]
+    return [_run_response(path, record) for record in records]
 
 
 def content_disposition(filename: str) -> str:
@@ -1187,6 +1199,8 @@ def recover_runs(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Recovery immediately resumes interrupted work. Avoid an additional QC
+    # storage scan here so the response returns before new staging starts.
     return [RunResponse(path=payload.path, run_id=record.id, run=record) for record in records]
 
 
@@ -1213,7 +1227,17 @@ class RunReviewRequest(BaseModel):
     run_id: str = Field(min_length=1)
     node_run_id: str = Field(min_length=1)
     decision: Literal["approved", "rejected"]
-    note: str = ""
+    note: str = Field(default="", max_length=4000)
+    reviewer: str | None = Field(default=None, max_length=200)
+    excluded_channel_names: list[str] = Field(default_factory=list, max_length=512)
+
+    @model_validator(mode="after")
+    def validate_excluded_channels(self) -> "RunReviewRequest":
+        if any(not name.strip() or len(name) > 512 for name in self.excluded_channel_names):
+            raise ValueError("Channel names must be non-empty and at most 512 characters.")
+        if len(set(self.excluded_channel_names)) != len(self.excluded_channel_names):
+            raise ValueError("Excluded EEG channel names must be unique.")
+        return self
 
 
 @app.post("/api/runs/start", response_model=RunResponse)
@@ -1241,7 +1265,7 @@ def start_run(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=started.id, run=started)
+    return _run_response(payload.path, started)
 
 
 @app.post("/api/runs/cancel", response_model=RunResponse)
@@ -1256,7 +1280,7 @@ def cancel_run(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=record.id, run=record)
+    return _run_response(payload.path, record)
 
 
 @app.post("/api/runs/review", response_model=RunResponse)
@@ -1265,7 +1289,13 @@ def review_run(
 ) -> RunResponse:
     try:
         record = workers.review_node(
-            payload.path, payload.run_id, payload.node_run_id, payload.decision, payload.note
+            payload.path,
+            payload.run_id,
+            payload.node_run_id,
+            payload.decision,
+            payload.note,
+            payload.reviewer,
+            tuple(payload.excluded_channel_names),
         )
     except ReviewConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -1273,9 +1303,11 @@ def review_run(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return RunResponse(path=payload.path, run_id=record.id, run=record)
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _run_response(payload.path, record)
 
 
 @app.get("/api/runs/events")

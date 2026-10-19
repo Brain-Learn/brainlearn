@@ -218,10 +218,23 @@ export async function reviewRun(
   decision: "approved" | "rejected",
   note: string,
   token: string,
+  qc?: { reviewer: string; excludedChannelNames: string[] },
 ): Promise<RunResponse> {
   return postRun(
     "/api/runs/review",
-    { path, run_id: runId, node_run_id: nodeRunId, decision, note },
+    {
+      path,
+      run_id: runId,
+      node_run_id: nodeRunId,
+      decision,
+      note,
+      ...(qc
+        ? {
+            reviewer: qc.reviewer,
+            excluded_channel_names: qc.excludedChannelNames,
+          }
+        : {}),
+    },
     token,
     "Review decision failed",
   );

@@ -180,6 +180,23 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
         software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
     ),
     NodeManifest(
+        id="eeg.bad_channel_review",
+        node_version="0.1.0",
+        label="Bad Channel Review",
+        description=(
+            "Pause for a researcher to record EEG channels for exclusion. The decision is saved "
+            "with run, node, input, and source identities; the source recording is not modified."
+        ),
+        category="Quality control",
+        status="experimental",
+        ports=[
+            _port("raw", "Raw EEG", PortDirection.INPUT, ScientificType.RAW_EEG),
+        ],
+        review_behavior="required",
+        license=EXAMPLE_LICENSE,
+        software_dependencies=_software_dependencies(_MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY),
+    ),
+    NodeManifest(
         id="eeg.filter",
         node_version="1.1.0",
         label="Band-pass Filter",
