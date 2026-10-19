@@ -120,6 +120,22 @@ def test_project_migration_preserves_customized_filter_when_upgrading_legacy_ica
     assert any(node["type"] == "eeg.ica_fit" for node in migrated["nodes"])
 
 
+def test_filter_migration_still_runs_when_legacy_workflow_omits_edges() -> None:
+    workflow = _example_workflow()
+    workflow.pop("edges")
+
+    migrated = migrate_project_workflow_dict(workflow)
+    filter_node = next(node for node in migrated["nodes"] if node["type"] == "eeg.filter")
+
+    assert {port["id"] for port in filter_node["ports"]} == {
+        "raw",
+        "filtered",
+        "preview",
+        "provenance",
+    }
+    assert "edges" not in migrated
+
+
 def test_canonicalize_rejects_relative_paths() -> None:
     with pytest.raises(ValueError, match="must be absolute"):
         canonicalize_project_path("relative/projects/demo")

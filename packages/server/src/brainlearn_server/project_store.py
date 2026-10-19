@@ -42,9 +42,10 @@ def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
     migrated = migrate_workflow_dict(data)
     nodes = migrated.get("nodes")
     edges = migrated.get("edges")
-    if not isinstance(nodes, list) or not isinstance(edges, list):
+    if not isinstance(nodes, list):
         return migrated
-    legacy_ica_sources = _legacy_ica_review_sources(nodes, edges)
+    edge_list = edges if isinstance(edges, list) else []
+    legacy_ica_sources = _legacy_ica_review_sources(nodes, edge_list)
     migrated_nodes = [
         _migrate_legacy_filter_node(node)
         if not _is_legacy_ica_review_node(node)
@@ -54,7 +55,7 @@ def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
         for node in nodes
     ]
     additions: list[dict[str, Any]] = []
-    migrated_edges = list(edges)
+    migrated_edges = list(edge_list)
     used_node_ids = {
         node.get("id")
         for node in nodes
@@ -108,7 +109,8 @@ def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
         return migrated
     result = dict(migrated)
     result["nodes"] = [*migrated_nodes, *additions]
-    result["edges"] = migrated_edges
+    if isinstance(edges, list):
+        result["edges"] = migrated_edges
     return result
 
 
