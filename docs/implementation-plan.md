@@ -142,7 +142,7 @@ Completion gate: the GUI discovers a curated public EEG dataset, shows its licen
 
 Scientific review required before checking this step.
 
-## [ ] Step 6 — First processing node and code-generation contract
+## [x] Step 6 — First processing node and code-generation contract
 
 Goal: execute a real filter and prove that the same graph can produce readable Python.
 
@@ -488,17 +488,18 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-19 | Step 6 repair hosted CI | Verified; monitoring pending | Both required GitHub Actions checks passed on repair head `4c5834e` in run `39228258244`: Python quality and tests (1m30s) and Frontend quality, tests, and build (46s). The two review threads have implementation responses; the Step 6 top-level and scientific-review gates remain unchecked pending independent re-review. | PR #31 |
 | 2026-10-19 | Step 6 no-overwrite publication race repair | Verified; monitoring pending | Fixed the second PR #31 review finding. The generated script now publishes staged FIF and provenance with atomic create-if-absent hard links when `--overwrite` is omitted; a destination appearing during filtering causes a clear failure and remains byte-for-byte intact. If the second destination is taken, the script removes only its own first link and preserves the racing file. Explicit `--overwrite` retains the paired backup/rollback path. Renderer version advanced to 1.2.1. Two subprocess regressions create sentinel files during MNE save, separately targeting FIF and provenance; both prove the script refuses publication, preserves the sentinel, and removes all temporary/partial outputs. Full `uv run --frozen pytest -q` passed 802, 3 skipped, and 2 upstream Starlette/AnyIO warnings in 37.75 seconds. Ruff passed; format check passed (86 files); strict mypy passed (32 source files); `uv lock --check` and `git diff --check` passed. ESLint and Prettier passed; Vitest passed 176 tests in 19 files; production Vite build passed (1,848 modules; existing 500 kB chunk advisory); production dependency audit found 0 vulnerabilities. Three-path adapter/direct-MNE/generated-script agreement remains within `rtol=1e-6`, `atol=2e-5 µV`. Step 6 and scientific-review approval remain unchecked pending hosted CI and independent re-review. | PR #31 repair pending |
 | 2026-10-19 | Step 6 no-overwrite repair hosted CI | Verified; monitoring pending | Both required hosted jobs passed on repair head `6fbd513` in Actions run `39229818044`: Python quality and tests (1m30s) and Frontend quality, tests, and build (39s). The reviewer response is posted. Step 6 and scientific-review approval remain unchecked pending independent re-review. | PR #31 |
+| 2026-10-19 | Step 6 final independent monitoring review | Complete | Independent review of PR #31 final evidence head `5466ab954006ee83cb7a04d15577f0fc2606b18a` (code fix `6fbd513e99cb925573497b81361c72e1d5438c04`) against main `084695a6c7230244846d3696883b76fe8cd2679c` confirmed the MNE-BIDS source identities cover dataset description, participant/session tables, and every applicable inherited EEG, channels/events, electrodes, and coordinate-system sidecar. The generated script's no-overwrite path now publishes with atomic create-if-absent hard links; focused subprocess tests targeted both FIF and provenance collisions created during filtering, and confirmed the sentinel remains intact, the other output is absent, and temporary/partial files are removed. Explicit `--overwrite` behavior remains covered. Focused subprocess/parity/mutation checks passed 4 tests; full local gate: `uv sync --locked --all-packages --group eeg`, Ruff, format (86 files), strict mypy (32 files), pytest 802 passed/3 skipped/2 upstream warnings (42.06s), ESLint, Prettier, Vitest 176 tests/19 files, Vite build (1,848 modules; existing chunk-size advisory), production audit (0 vulnerabilities), `uv lock --check`, and `git diff --check` passed. The internal adapter, separately written direct-MNE call, and generated script agree within `rtol=1e-6`, `atol=2e-5 µV` on the sample-bearing CC0 synthetic fixture. Both hosted jobs passed on `5466ab9` in Actions run `39230094615`. Step 6 is approved as an experimental engineering demo and code-generation contract only. The public `ds002181:1.0.0` fixture still lacks its `.fdt` payload; this review makes no signal-level scientific validation or suitability claim. Preserve the experimental label and obtain external methods review plus a sample-bearing public reference before claiming a scientifically validated EEG workflow. | Monitor review complete on PR #31 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 6 — independent implementation and scientific review
+### Step 7 — explicit quality control and ICA review
 
-Review the Step 6 implementation PR, reproduce the full gate and the direct-MNE
-comparison, inspect the generated script and source-preservation behavior, and
-assess the documented filter assumptions. Keep Step 6's top-level checkbox
-unchecked until the independent review is complete. Do not begin Step 7 in the
-review work unit. The synthetic fixture supports engineering agreement only;
-the public fixture still lacks sample payload for scientific validation.
+The next unchecked item is to define immutable QC review records linked to
+input and node identities. Continue in checklist order, keep fitting ICA
+separate from applying exclusions, and invalidate decisions when their inputs
+change. Step 6 is approved for the experimental synthetic-data demo only; the
+public sample-payload and external methods-review requirements remain before
+any claim of scientific validation.
