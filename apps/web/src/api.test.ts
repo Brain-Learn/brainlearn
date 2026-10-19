@@ -43,7 +43,7 @@ test("renders current workflow through the authenticated versioned Python API", 
         json: async () => ({
           schema_version: "1.0",
           renderer_id: "brainlearn.eeg.mne-filter.python",
-          renderer_version: "1.2.0",
+          renderer_version: "1.2.1",
           language: "python",
           filename: "brainlearn_eeg_filter.py",
           dependencies: ["mne==1.13.2", "mne-bids==0.20.0"],
@@ -73,7 +73,7 @@ test("renders current workflow through the authenticated versioned Python API", 
     "/api/workflows/render/python",
     expect.objectContaining({ body: JSON.stringify(workflow) }),
   );
-  expect(result.renderer_version).toBe("1.2.0");
+  expect(result.renderer_version).toBe("1.2.1");
   expect(result.source).toContain("filter");
   vi.unstubAllGlobals();
 });

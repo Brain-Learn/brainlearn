@@ -254,7 +254,7 @@ def test_adapter_direct_mne_and_generated_script_agree_and_preserve_source(
     _set_filter_parameters(workflow, low_hz=1.0, high_hz=70.0, notch_hz="50", notch_width_hz=2.0)
     rendered = render_eeg_filter_python(workflow)
     assert rendered.schema_version == "1.0"
-    assert rendered.renderer_version == "1.2.0"
+    assert rendered.renderer_version == "1.2.1"
     assert "NOTCH_HZ = [50.0]" in rendered.source
     assert "filtered.notch_filter(" in rendered.source
     assert rendered.dependencies == ["mne==1.13.2", "mne-bids==0.20.0"]
@@ -471,6 +471,65 @@ def test_generated_script_refuses_participant_metadata_changed_after_mne_read(
     assert not output_path.with_suffix(".provenance.json").exists()
 
 
+@pytest.mark.parametrize("race_target", ["output", "provenance"])
+def test_generated_script_preserves_destination_created_during_filtering(
+    client: TestClient, tmp_path: Path, race_target: str
+) -> None:
+    project = _create_project(client, tmp_path / "project")
+    dataset = project / "synthetic" / "example-bids"
+    script_path = tmp_path / "generated-filter.py"
+    script_path.write_text(render_eeg_filter_python(_workflow()).source, encoding="utf-8")
+    patch_directory = tmp_path / "python-patch"
+    patch_directory.mkdir()
+    (patch_directory / "sitecustomize.py").write_text(
+        "import os\n"
+        "from pathlib import Path\n"
+        "import mne\n"
+        "_save = mne.io.BaseRaw.save\n"
+        "def _save_then_create_destination(self, fname, *args, **kwargs):\n"
+        "    result = _save(self, fname, *args, **kwargs)\n"
+        "    Path(os.environ['BRAINLEARN_RACE_PATH']).write_bytes(b'race sentinel')\n"
+        "    return result\n"
+        "mne.io.BaseRaw.save = _save_then_create_destination\n",
+        encoding="utf-8",
+    )
+    output_path = tmp_path / "raced-filtered-raw.fif"
+    provenance_path = output_path.with_suffix(".provenance.json")
+    raced_path = output_path if race_target == "output" else provenance_path
+    environment = os.environ.copy()
+    environment["BRAINLEARN_RACE_PATH"] = str(raced_path)
+    environment["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(patch_directory), environment.get("PYTHONPATH", "")])
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(script_path),
+            "--dataset-root",
+            str(dataset),
+            "--recording-path",
+            RECORDING_RELATIVE,
+            "--output",
+            str(output_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=environment,
+    )
+
+    assert completed.returncode != 0
+    assert "An output appeared during filtering" in completed.stderr
+    assert raced_path.read_bytes() == b"race sentinel"
+    other_path = provenance_path if raced_path == output_path else output_path
+    assert not other_path.exists()
+    assert not list(tmp_path.glob(".brainlearn-filter-*"))
+    assert not list(tmp_path.glob(".brainlearn-provenance-*"))
+    assert not list(tmp_path.glob(".*.backup"))
+
+
 def test_python_renderer_uses_current_parameters_and_escapes_literals() -> None:
     workflow = _workflow()
     workflow.nodes[0].parameters[0].value = "synthetic/quoted'\\dataset"
@@ -567,6 +626,6 @@ def test_python_export_route_requires_auth_and_returns_versioned_code(client: Te
     payload: dict[str, Any] = response.json()
     assert payload["schema_version"] == "1.0"
     assert payload["renderer_id"] == "brainlearn.eeg.mne-filter.python"
-    assert payload["renderer_version"] == "1.2.0"
+    assert payload["renderer_version"] == "1.2.1"
     assert payload["filename"] == "brainlearn_eeg_filter.py"
     assert "filtered.filter(" in payload["source"]

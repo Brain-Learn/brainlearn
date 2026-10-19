@@ -53,7 +53,7 @@ outputs are preserved unless `--overwrite` is explicitly supplied.
 ## Filter and preview conventions
 
 The node registry advertises the `brainlearn.eeg.mne-filter.python` renderer
-(`1.2.0`, Python) on the filter node. The renderer response envelope is schema
+(`1.2.1`, Python) on the filter node. The renderer response envelope is schema
 `1.0`; it includes the renderer version, pinned dependencies, citations, and
 generated source.
 
