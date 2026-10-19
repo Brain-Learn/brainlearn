@@ -78,6 +78,7 @@ def test_migrations_reject_unknown_versions() -> None:
 def test_legacy_filter_node_migrates_without_mutating_saved_workflow() -> None:
     original = _example_workflow()
     legacy_filter = next(node for node in original["nodes"] if node["type"] == "eeg.filter")  # type: ignore[index]
+    legacy_ica = next(node for node in original["nodes"] if node["type"] == "eeg.ica_review")  # type: ignore[index]
     legacy_filter["parameters"][1]["value"] = 55.0  # type: ignore[index]
 
     migrated = migrate_project_workflow_dict(original)
@@ -92,17 +93,31 @@ def test_legacy_filter_node_migrates_without_mutating_saved_workflow() -> None:
         "notch_hz": "",
         "notch_width_hz": 1.0,
     }
+    assert len(legacy_filter["ports"]) == 2  # type: ignore[index]
+    assert len(legacy_ica["ports"]) == 2  # type: ignore[index]
+    fit = next(node for node in workflow.nodes if node.type == "eeg.ica_fit")
+    migrated_ica = next(node for node in workflow.nodes if node.id == "ica")
+    assert {port.id for port in migrated_ica.ports} == {"raw", "fit", "reviewed", "provenance"}
+    assert any(
+        edge.source.node_id == fit.id
+        and edge.source.port_id == "ica"
+        and edge.target.node_id == migrated_ica.id
+        and edge.target.port_id == "fit"
+        for edge in workflow.edges
+    )
     assert validate_workflow(workflow, NODE_REGISTRY_BY_ID).valid
 
 
-def test_project_migration_leaves_customized_filter_nodes_untouched() -> None:
+def test_project_migration_preserves_customized_filter_when_upgrading_legacy_ica() -> None:
     workflow = _example_workflow()
     legacy_filter = next(node for node in workflow["nodes"] if node["type"] == "eeg.filter")  # type: ignore[index]
     legacy_filter["description"] = "Researcher-authored note."  # type: ignore[index]
 
     migrated = migrate_project_workflow_dict(workflow)
 
-    assert migrated == workflow
+    migrated_filter = next(node for node in migrated["nodes"] if node["id"] == "filter")
+    assert migrated_filter == legacy_filter
+    assert any(node["type"] == "eeg.ica_fit" for node in migrated["nodes"])
 
 
 def test_canonicalize_rejects_relative_paths() -> None:

@@ -1,4 +1,10 @@
-import type { RunEvent, RunRecord, RunResponse } from "./types";
+import type {
+  RenderedCode,
+  RunEvent,
+  RunRecord,
+  RunResponse,
+  Workflow,
+} from "./types";
 
 function authHeaders(token: string): Record<string, string> {
   return {
@@ -218,7 +224,11 @@ export async function reviewRun(
   decision: "approved" | "rejected",
   note: string,
   token: string,
-  qc?: { reviewer: string; excludedChannelNames: string[] },
+  qc?: {
+    reviewer: string;
+    excludedChannelNames: string[];
+    excludedIcaComponents: number[];
+  },
 ): Promise<RunResponse> {
   return postRun(
     "/api/runs/review",
@@ -232,12 +242,35 @@ export async function reviewRun(
         ? {
             reviewer: qc.reviewer,
             excluded_channel_names: qc.excludedChannelNames,
+            excluded_ica_components: qc.excludedIcaComponents,
           }
         : {}),
     },
     token,
     "Review decision failed",
   );
+}
+
+export async function renderReviewedIcaPython(
+  path: string,
+  runId: string,
+  nodeRunId: string,
+  workflow: Workflow,
+  token: string,
+): Promise<RenderedCode> {
+  requireToken(token);
+  const response = await fetch("/api/runs/render/python", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({
+      path,
+      run_id: runId,
+      node_run_id: nodeRunId,
+      workflow,
+    }),
+  });
+  if (!response.ok) throw await readError(response, "Python export failed");
+  return (await response.json()) as RenderedCode;
 }
 
 export interface RunEventStream {

@@ -30,6 +30,7 @@ from brainlearn_core import (
     NodeRunRecord,
     NodeRunState,
     PortDirection,
+    QCReviewArtifactIdentity,
     QCReviewInputIdentity,
     QCReviewRecord,
     ReviewPauseRecord,
@@ -825,6 +826,7 @@ class WorkerService:
         note: str = "",
         reviewer: str | None = None,
         excluded_channel_names: tuple[str, ...] = (),
+        excluded_ica_components: tuple[int, ...] = (),
     ) -> RunRecord:
         """Apply an approval or rejection to a waiting node and resume driving."""
 
@@ -847,6 +849,10 @@ class WorkerService:
                 if reviewer is None or not reviewer.strip():
                     raise ReviewConflictError(
                         "Enter the researcher who made the bad-channel review."
+                    )
+                if excluded_ica_components:
+                    raise ReviewConflictError(
+                        "ICA component exclusions are available only for ICA component review."
                     )
                 source_content_identity, verify_source_identity = (
                     self._validate_bad_channel_choices(
@@ -876,20 +882,80 @@ class WorkerService:
                     qc_review,
                     verify_source_identity=verify_source_identity,
                 )
+            elif node.node_type == "eeg.ica_review":
+                if reviewer is None or not reviewer.strip():
+                    raise ReviewConflictError("Enter the researcher who made the ICA review.")
+                if excluded_channel_names:
+                    raise ReviewConflictError(
+                        "Channel exclusions are available only for bad-channel review."
+                    )
+                (
+                    ica_source_content_identity,
+                    artifact_identities,
+                    ica_verify_source_identity,
+                ) = self._validate_ica_choices(project, record, node, excluded_ica_components)
+                qc_review = QCReviewRecord(
+                    id=node.review_pause.id,
+                    run_id=record.id,
+                    node_run_id=node.id,
+                    node_id=node.node_id,
+                    node_content_identity=node.content_identity,
+                    input_identities=tuple(
+                        QCReviewInputIdentity(port_id=port, content_identity=identity)
+                        for port, identity in sorted(node.inputs.items())
+                    ),
+                    input_artifact_identities=artifact_identities,
+                    source_content_identity=ica_source_content_identity,
+                    reviewer=reviewer.strip(),
+                    decision=decision,
+                    excluded_ica_components=excluded_ica_components,
+                    note=note,
+                    created_at=utc_now_iso(),
+                )
+                self.runs.save_qc_review(
+                    project,
+                    qc_review,
+                    verify_source_identity=ica_verify_source_identity,
+                )
             elif reviewer is not None or excluded_channel_names:
                 raise ReviewConflictError(
                     "Researcher and channel exclusions are available only for bad-channel review."
+                )
+            elif excluded_ica_components:
+                raise ReviewConflictError(
+                    "ICA component exclusions are available only for ICA component review."
                 )
             timestamp = utc_now_iso()
             if decision == "approved":
                 decided = node.review_pause.model_copy(
                     update={"decided_at": timestamp, "decision": "approved", "note": note}
                 )
+                apply_reviewed_ica = node.node_type == "eeg.ica_review"
+                queued_event = RunEvent(
+                    schema_version="1.0",
+                    seq=len(record.events) + 1,
+                    at=timestamp,
+                    kind=RunEventKind.NODE_QUEUED,
+                    node_run_id=node_run_id,
+                    attempt=0,
+                    message=(
+                        "Applying the persisted ICA component decision."
+                        if apply_reviewed_ica
+                        else ""
+                    ),
+                )
                 nodes = [
                     item.model_copy(
                         update={
-                            "state": NodeRunState.SUCCEEDED,
-                            "finished_at": timestamp,
+                            "state": (
+                                NodeRunState.QUEUED
+                                if apply_reviewed_ica
+                                else NodeRunState.SUCCEEDED
+                            ),
+                            "attempt": 0 if apply_reviewed_ica else item.attempt,
+                            "started_at": None if apply_reviewed_ica else item.started_at,
+                            "finished_at": None if apply_reviewed_ica else timestamp,
+                            "artifacts": [] if apply_reviewed_ica else item.artifacts,
                             "review_pause": decided,
                         }
                     )
@@ -908,6 +974,7 @@ class WorkerService:
                         attempt=node.attempt,
                         message=note or "Review approved.",
                     ),
+                    *([queued_event] if apply_reviewed_ica else []),
                 ]
                 repaired = record.model_copy(
                     update={"state": RunState.RUNNING, "node_runs": nodes, "events": events}
@@ -1007,6 +1074,147 @@ class WorkerService:
             return current.content_identity
 
         return inventory.source_content_identity, verify_current_source_identity
+
+    def _validate_ica_choices(
+        self,
+        project: str,
+        record: RunRecord,
+        node: NodeRunRecord,
+        excluded_components: tuple[int, ...],
+    ) -> tuple[str | None, tuple[QCReviewArtifactIdentity, ...], Callable[[], str] | None]:
+        """Bind selected components to verified raw and fitted-model artifacts."""
+
+        import json
+
+        from brainlearn_server.mne_ica import (
+            _REFERENCE_MEDIA_TYPE,
+            ICA_MODEL_MEDIA_TYPE,
+        )
+
+        inputs = self._resolve_input_artifacts(project, record, node)
+        raw_artifact = inputs.get("raw")
+        fit_artifact = inputs.get("fit")
+        if raw_artifact is None or fit_artifact is None:
+            raise ReviewConflictError(
+                "ICA review requires current raw data and a fitted ICA model."
+            )
+        if fit_artifact.media_type != ICA_MODEL_MEDIA_TYPE:
+            raise ReviewConflictError("The ICA review input is not a fitted MNE ICA model.")
+        input_identities = tuple(
+            QCReviewArtifactIdentity(port_id=port, artifact_id=artifact.artifact_id)
+            for port, artifact in sorted(inputs.items())
+        )
+
+        source_identity: str | None = None
+        source_reference: dict[str, str] | None = None
+        if raw_artifact.media_type == _REFERENCE_MEDIA_TYPE:
+            try:
+                with self.runs.open_artifact_stream(project, record.id, raw_artifact.artifact_id)[
+                    0
+                ] as source:
+                    reference = json.load(source)
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise ReviewConflictError(
+                    "The inspected EEG reference cannot be verified."
+                ) from exc
+            if (
+                not isinstance(reference, dict)
+                or reference.get("schema_version") != "1.0"
+                or not isinstance(reference.get("dataset_path"), str)
+                or not isinstance(reference.get("recording_path"), str)
+                or not isinstance(reference.get("source_content_identity"), str)
+            ):
+                raise ReviewConflictError("The inspected EEG reference is invalid.")
+            source_reference = {
+                "dataset_path": reference["dataset_path"],
+                "recording_path": reference["recording_path"],
+                "source_content_identity": reference["source_content_identity"],
+            }
+            source_identity = source_reference["source_content_identity"]
+        elif not raw_artifact.path.lower().endswith(".fif"):
+            raise ReviewConflictError("ICA review raw input must be a BIDS reference or FIF file.")
+
+        sources = node.settings.get("input_sources", {})
+        fit_source_id = (
+            sources.get("fit", {}).get("node")
+            if isinstance(sources, dict) and isinstance(sources.get("fit"), dict)
+            else None
+        )
+        fit_node = next((item for item in record.node_runs if item.node_id == fit_source_id), None)
+        provenance_artifact = (
+            next((item for item in fit_node.artifacts if item.port_id == "provenance"), None)
+            if fit_node is not None
+            else None
+        )
+        if provenance_artifact is None:
+            raise ReviewConflictError("The fitted ICA model is missing its provenance artifact.")
+        try:
+            with self.runs.open_artifact_stream(
+                project, record.id, provenance_artifact.artifact_id
+            )[0] as source:
+                provenance = json.load(source)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise ReviewConflictError("The fitted ICA provenance cannot be verified.") from exc
+        if (
+            not isinstance(provenance, dict)
+            or provenance.get("operation") != "fit_ica"
+            or provenance.get("input_artifact_id") != raw_artifact.artifact_id
+            or type(provenance.get("fitted_components")) is not int
+            or provenance["fitted_components"] < 1
+        ):
+            raise ReviewConflictError(
+                "The fitted ICA model does not match this exact raw input and fit record."
+            )
+        component_count = provenance["fitted_components"]
+        if len(set(excluded_components)) != len(excluded_components):
+            raise ReviewConflictError("ICA component choices must not contain duplicates.")
+        if any(
+            type(index) is not int or index < 0 or index >= component_count
+            for index in excluded_components
+        ):
+            raise ReviewConflictError(
+                f"Select component indices from 0 through {component_count - 1}."
+            )
+
+        verify_source_identity: Callable[[], str] | None = None
+        if source_reference is not None:
+            from brainlearn_server.bids_eeg import (
+                BidsDatasetPathError,
+                BidsEegDiscoveryService,
+                BidsIdentityResourceLimit,
+                BidsSignalInspectionError,
+            )
+
+            service = BidsEegDiscoveryService(self.runs.projects)
+
+            def verify_current_source_identity() -> str:
+                try:
+                    current = service.identify(
+                        project,
+                        source_reference["dataset_path"],
+                        source_reference["recording_path"],
+                    )
+                except (
+                    BidsDatasetPathError,
+                    BidsIdentityResourceLimit,
+                    BidsSignalInspectionError,
+                    OSError,
+                ) as exc:
+                    raise ReviewConflictError(
+                        f"Unable to recheck the recording before saving the ICA decision: {exc}"
+                    ) from exc
+                if current.status != "ready" or current.content_identity is None:
+                    raise ReviewConflictError(
+                        current.message or "Unable to recheck the EEG recording before review."
+                    )
+                return current.content_identity
+
+            if verify_current_source_identity() != source_identity:
+                raise ReviewConflictError(
+                    "The EEG recording changed after ICA fitting. Re-run ICA fit before review."
+                )
+            verify_source_identity = verify_current_source_identity
+        return source_identity, input_identities, verify_source_identity
 
     # -- driver ----------------------------------------------------------
     def _ensure_driver(self, project: str, run_id: str) -> None:
@@ -1268,9 +1476,15 @@ class WorkerService:
                     parameters=dict(node.parameters),
                     inputs=ctx_inputs,
                     staging_dir=staging,
+                    input_artifacts=self._resolve_input_artifacts(project, fresh, node),
                     cancel=self._cancel_flag(project, fresh.id),
                     project_path=project,
                     project_store=self.runs.projects,
+                    run_store=self.runs,
+                    run_id=fresh.id,
+                    node_run_id=node.id,
+                    run_seed=fresh.seed,
+                    qc_reviews=self.runs.list_qc_reviews(project, fresh.id),
                 )
             )
             if self._cancel_flag(project, fresh.id).is_set():
@@ -1377,6 +1591,29 @@ class WorkerService:
                     candidate = _contained_child(project_root, artifact.path)
                     if candidate is not None and candidate.is_file():
                         resolved[target_port] = candidate
+        return resolved
+
+    def _resolve_input_artifacts(
+        self, project: str, record: RunRecord, node: NodeRunRecord
+    ) -> dict[str, ArtifactRecord]:
+        """Resolve persisted input artifacts using the node's graph snapshot."""
+
+        sources = node.settings.get("input_sources", {})
+        if not isinstance(sources, dict):
+            return {}
+        by_id = {item.node_id: item for item in record.node_runs}
+        resolved: dict[str, ArtifactRecord] = {}
+        for target_port, source in sources.items():
+            if not isinstance(source, dict):
+                continue
+            upstream = by_id.get(source.get("node", ""))
+            if upstream is None:
+                continue
+            artifact = next(
+                (item for item in upstream.artifacts if item.port_id == source.get("port")), None
+            )
+            if artifact is not None:
+                resolved[target_port] = artifact
         return resolved
 
     # -- content-addressed cache (Step 4D) -----------------------------------

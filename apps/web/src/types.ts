@@ -1,6 +1,7 @@
 export type ScientificType =
   | "bids_dataset"
   | "raw_eeg"
+  | "ica_fit"
   | "reviewed_eeg"
   | "epochs"
   | "evoked"
@@ -232,6 +233,34 @@ export interface EEGFilterComparisonPreview {
   note: string;
 }
 
+export interface EEGICAComponentDiagnostics {
+  schema_version: "1.0";
+  sampling_frequency_hz: number;
+  channels: string[];
+  component_count: number;
+  component_maps: Array<{
+    component: number;
+    channel_weights: number[];
+  }>;
+  channel_locations_m: Record<string, [number, number, number]>;
+  topography_available: boolean;
+  time_course_unit: string;
+  time_courses: Array<{
+    component: number;
+    points: Array<{ time_seconds: number; minimum: number; maximum: number }>;
+  }>;
+  spectrum_unit: string;
+  spectrum_method: string;
+  spectrum_n_fft: number;
+  spectrum_n_per_seg: number;
+  spectrum_n_overlap: number;
+  frequencies_hz: number[];
+  spectra: Array<{ component: number; power: number[] }>;
+  preview_sample_count: number;
+  preview_duration_seconds: number;
+  note: string;
+}
+
 export interface RenderedCode {
   schema_version: "1.0";
   renderer_id: string;
@@ -324,6 +353,8 @@ export interface QCReviewRecord {
   node_id: string;
   node_content_identity: string;
   input_identities: Array<{ port_id: string; content_identity: string }>;
+  input_artifact_identities?: Array<{ port_id: string; artifact_id: string }>;
+  source_content_identity?: string | null;
   reviewer: string;
   decision: "approved" | "rejected";
   excluded_channel_names: string[];

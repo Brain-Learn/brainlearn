@@ -2,9 +2,11 @@ import { CircleAlert, RotateCcw, Square } from "lucide-react";
 import { useState } from "react";
 
 import { EEGFilterComparisonPreview } from "./EEGFilterComparisonPreview";
+import { ICAComponentDiagnostics } from "./ICAComponentDiagnostics";
 import type {
   ArtifactRecord,
   EEGFilterComparisonPreview as EEGFilterComparisonPreviewData,
+  EEGICAComponentDiagnostics as EEGICAComponentDiagnosticsData,
   NodeRunRecord,
   QCReviewRecord,
   RunRecord,
@@ -49,22 +51,51 @@ function ReviewControls({
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
-    qc?: { reviewer: string; excludedChannelNames: string[] },
+    qc?: {
+      reviewer: string;
+      excludedChannelNames: string[];
+      excludedIcaComponents: number[];
+    },
   ) => void;
 }) {
   const [note, setNote] = useState("");
   const [reviewer, setReviewer] = useState("");
   const [excludedChannels, setExcludedChannels] = useState("");
-  const requiresQc = node.node_type === "eeg.bad_channel_review";
+  const [excludedComponents, setExcludedComponents] = useState("");
+  const [componentError, setComponentError] = useState<string | null>(null);
+  const requiresBadChannelQc = node.node_type === "eeg.bad_channel_review";
+  const requiresIcaQc = node.node_type === "eeg.ica_review";
+  const requiresQc = requiresBadChannelQc || requiresIcaQc;
   const save = (decision: "approved" | "rejected") => {
     const names = excludedChannels
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean);
-    if (requiresQc) {
+    if (requiresIcaQc) {
+      const entries = excludedComponents
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+      const oneBased = entries.map(Number);
+      if (oneBased.some((index) => !Number.isInteger(index) || index < 1)) {
+        setComponentError(
+          "Enter component numbers starting at 1, separated by commas.",
+        );
+        return;
+      }
+      setComponentError(null);
+      onReview(node.id, decision, note, {
+        reviewer: reviewer.trim(),
+        excludedChannelNames: [],
+        excludedIcaComponents: oneBased.map((index) => index - 1),
+      });
+      return;
+    }
+    if (requiresBadChannelQc) {
       onReview(node.id, decision, note, {
         reviewer: reviewer.trim(),
         excludedChannelNames: names,
+        excludedIcaComponents: [],
       });
       return;
     }
@@ -72,7 +103,7 @@ function ReviewControls({
   };
   return (
     <div className="review-controls">
-      {requiresQc && (
+      {requiresBadChannelQc && (
         <>
           <p
             id={`bad-channel-review-help-${node.node_id}`}
@@ -104,6 +135,40 @@ function ReviewControls({
               value={excludedChannels}
             />
           </label>
+        </>
+      )}
+      {requiresIcaQc && (
+        <>
+          <p className="project-message">
+            Review the fitted components above. Enter one-based component
+            numbers to exclude, such as 1, 3. The decision is saved with the
+            exact raw and fitted artifacts before MNE applies it.
+          </p>
+          <label>
+            Researcher
+            <input
+              aria-label={`Researcher for ${node.node_id}`}
+              maxLength={200}
+              onChange={(event) => setReviewer(event.target.value)}
+              required
+              value={reviewer}
+            />
+          </label>
+          <label>
+            Components to exclude (one-based numbers, comma-separated)
+            <input
+              aria-label={`ICA components for ${node.node_id}`}
+              inputMode="numeric"
+              maxLength={4096}
+              onChange={(event) => {
+                setExcludedComponents(event.target.value);
+                setComponentError(null);
+              }}
+              placeholder="1, 3"
+              value={excludedComponents}
+            />
+          </label>
+          {componentError && <p role="alert">{componentError}</p>}
         </>
       )}
       <input
@@ -150,6 +215,8 @@ export function RunDrawer({
   onOpenArtifact,
   filterPreview,
   onCloseFilterPreview,
+  icaDiagnostics,
+  onCloseIcaDiagnostics,
   actionPending,
 }: {
   run: RunRecord | null;
@@ -169,13 +236,19 @@ export function RunDrawer({
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
-    qc?: { reviewer: string; excludedChannelNames: string[] },
+    qc?: {
+      reviewer: string;
+      excludedChannelNames: string[];
+      excludedIcaComponents: number[];
+    },
   ) => void;
   onRecover: () => void;
   onOpenRun: (runId: string, path: string) => void;
   onOpenArtifact: (artifact: ArtifactRecord) => void;
   filterPreview: EEGFilterComparisonPreviewData | null;
   onCloseFilterPreview: () => void;
+  icaDiagnostics: EEGICAComponentDiagnosticsData | null;
+  onCloseIcaDiagnostics: () => void;
   actionPending: boolean;
 }) {
   const terminal = run
@@ -364,7 +437,10 @@ export function RunDrawer({
                       {artifact.media_type ===
                       "application/vnd.brainlearn.eeg-filter-preview+json"
                         ? "View comparison"
-                        : "Open"}
+                        : artifact.media_type ===
+                            "application/vnd.brainlearn.eeg-ica-diagnostics+json"
+                          ? "View components"
+                          : "Open"}
                     </button>
                   </div>
                 )),
@@ -376,6 +452,12 @@ export function RunDrawer({
             <EEGFilterComparisonPreview
               onClose={onCloseFilterPreview}
               preview={filterPreview}
+            />
+          )}
+          {icaDiagnostics && (
+            <ICAComponentDiagnostics
+              diagnostics={icaDiagnostics}
+              onClose={onCloseIcaDiagnostics}
             />
           )}
 

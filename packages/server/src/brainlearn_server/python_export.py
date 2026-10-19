@@ -6,13 +6,15 @@ import json
 import math
 from typing import Literal
 
-from brainlearn_core import NodeInstance, Workflow
+from brainlearn_core import NodeInstance, QCReviewRecord, Workflow
 from pydantic import BaseModel, ConfigDict, Field
 
 CODE_RENDERER_SCHEMA_VERSION: Literal["1.0"] = "1.0"
 CODE_RENDERER_ID = "brainlearn.eeg.mne-filter.python"
 CODE_RENDERER_VERSION = "1.2.1"
 _EXPECTED_NODE_TYPES = {"input.bids_eeg", "eeg.inspect", "eeg.filter"}
+ICA_CODE_RENDERER_ID = "brainlearn.eeg.mne-ica.python"
+ICA_CODE_RENDERER_VERSION = "0.1.0"
 
 
 class RenderedCode(BaseModel):
@@ -579,5 +581,177 @@ if __name__ == "__main__":
 '''
     return RenderedCode(
         dependencies=["mne==1.13.2", "mne-bids==0.20.0"],
+        source=source,
+    )
+
+
+def _assert_supported_ica_topology(workflow: Workflow) -> tuple[Workflow, NodeInstance]:
+    by_type = {node.type: node for node in workflow.nodes}
+    expected_types = {
+        "input.bids_eeg",
+        "eeg.inspect",
+        "eeg.filter",
+        "eeg.ica_fit",
+        "eeg.ica_review",
+    }
+    if len(workflow.nodes) != 5 or set(by_type) != expected_types:
+        raise CodeRenderError(
+            "ICA Python export supports one BIDS EEG → Inspect Signal → Band-pass Filter → "
+            "Fit ICA → ICA Component Review workflow."
+        )
+    bids, inspect, filter_node, fit, review = (
+        by_type[name]
+        for name in (
+            "input.bids_eeg",
+            "eeg.inspect",
+            "eeg.filter",
+            "eeg.ica_fit",
+            "eeg.ica_review",
+        )
+    )
+    expected_edges = {
+        (bids.id, "dataset", inspect.id, "dataset"),
+        (inspect.id, "raw", filter_node.id, "raw"),
+        (filter_node.id, "filtered", fit.id, "raw"),
+        (filter_node.id, "filtered", review.id, "raw"),
+        (fit.id, "ica", review.id, "fit"),
+    }
+    actual_edges = {
+        (edge.source.node_id, edge.source.port_id, edge.target.node_id, edge.target.port_id)
+        for edge in workflow.edges
+    }
+    if actual_edges != expected_edges or len(workflow.edges) != 5:
+        raise CodeRenderError(
+            "ICA Python export requires the filter output to feed both ICA fitting and review."
+        )
+    filter_workflow = workflow.model_copy(
+        update={
+            "nodes": [bids, inspect, filter_node],
+            "edges": [
+                edge
+                for edge in workflow.edges
+                if (
+                    edge.source.node_id,
+                    edge.source.port_id,
+                    edge.target.node_id,
+                    edge.target.port_id,
+                )
+                in {
+                    (bids.id, "dataset", inspect.id, "dataset"),
+                    (inspect.id, "raw", filter_node.id, "raw"),
+                }
+            ],
+        }
+    )
+    return filter_workflow, review
+
+
+def render_eeg_ica_python(
+    workflow: Workflow,
+    review: QCReviewRecord,
+    *,
+    seed: int,
+) -> RenderedCode:
+    """Render a supported filter/ICA workflow with a persisted, approved decision."""
+
+    filter_workflow, review_node = _assert_supported_ica_topology(workflow)
+    if review.node_id != review_node.id or review.decision != "approved":
+        raise CodeRenderError(
+            "Python export requires an approved decision for this ICA review node."
+        )
+    if not review.reviewer.strip() or review.excluded_channel_names:
+        raise CodeRenderError(
+            "The persisted ICA decision is incomplete or contains channel choices."
+        )
+    if not 0 <= seed <= 2**32 - 1:
+        raise CodeRenderError("The run seed must fit MNE's unsigned 32-bit random-state range.")
+    excluded = list(review.excluded_ica_components)
+    if len(set(excluded)) != len(excluded) or any(index < 0 for index in excluded):
+        raise CodeRenderError("The persisted ICA component list is invalid.")
+    base = render_eeg_filter_python(filter_workflow)
+    source = base.source
+    insertion = """    ica = mne.preprocessing.ICA(
+        n_components=None,
+        method="fastica",
+        random_state=ICA_RANDOM_STATE,
+        max_iter=1000,
+        fit_params=None,
+        allow_ref_meg=False,
+        verbose="ERROR",
+    )
+    with tempfile.TemporaryDirectory(prefix="brainlearn-ica-fit-") as fit_directory:
+        fit_path = Path(fit_directory) / "filtered-raw.fif"
+        filtered.save(str(fit_path), fmt="single", overwrite=False, verbose="ERROR")
+        fit_raw = mne.io.read_raw_fif(fit_path, preload=True, verbose="ERROR")
+        try:
+            ica.fit(
+                fit_raw.copy().pick("eeg"),
+                picks="eeg",
+                reject_by_annotation=False,
+                decim=1,
+                verbose="ERROR",
+            )
+        finally:
+            fit_raw.close()
+    component_count = int(ica.n_components_)
+    if any(index >= component_count for index in ICA_EXCLUDED_COMPONENTS):
+        filtered.close()
+        raise SystemExit("Saved component choices do not match the fitted ICA model.")
+    ica.apply(filtered, exclude=ICA_EXCLUDED_COMPONENTS, verbose="ERROR")
+    ica_review_provenance = json.loads(ICA_REVIEW_JSON)
+    ica_review_provenance.update({
+        "fitted_components": component_count,
+        "method": "fastica",
+        "random_state": ICA_RANDOM_STATE,
+        "max_iter": 1000,
+        "reject_by_annotation": False,
+        "decim": 1,
+        "exclusions_applied": True,
+    })
+"""
+    marker = "    output_path.parent.mkdir(parents=True, exist_ok=True)\n"
+    if source.count(marker) != 1:
+        raise CodeRenderError("The ICA renderer could not extend the versioned filter script.")
+    source = source.replace(marker, insertion + marker)
+    source = source.replace("brainlearn_filtered_raw.fif", "brainlearn_reviewed_raw.fif")
+    source = source.replace(
+        "It does not perform ICA, epoching, ERP, PSD analysis, or scientific QC approval.",
+        "It fits ICA and applies the explicitly approved component choices recorded below.",
+    )
+    source = source.replace(
+        f'"renderer": "{CODE_RENDERER_ID}@{CODE_RENDERER_VERSION}",',
+        f'"renderer": "{ICA_CODE_RENDERER_ID}@{ICA_CODE_RENDERER_VERSION}",',
+    )
+    source = source.replace(
+        '        "output_path": str(output_path),',
+        '        "ica_review": ica_review_provenance,\n        "output_path": str(output_path),',
+    )
+    review_metadata = {
+        "schema_version": "1.0",
+        "decision_id": review.id,
+        "reviewer": review.reviewer,
+        "decision": review.decision,
+        "excluded_components": excluded,
+        "note": review.note,
+        "source_content_identity": review.source_content_identity,
+        "input_artifact_identities": {
+            identity.port_id: identity.artifact_id for identity in review.input_artifact_identities
+        },
+    }
+    constants = (
+        f"ICA_RANDOM_STATE = {seed}\n"
+        f"ICA_EXCLUDED_COMPONENTS = {excluded!r}\n"
+        f"ICA_REVIEW_JSON = {_python_string(json.dumps(review_metadata, sort_keys=True))}\n"
+    )
+    marker = "def parse_entities(stem: str, suffix: str) -> dict[str, str] | None:\n"
+    if source.count(marker) != 1:
+        raise CodeRenderError("The ICA renderer could not add its persisted QC decision.")
+    source = source.replace(marker, constants + "\n" + marker)
+    source = source.replace("Filtered EEG written to", "ICA reviewed EEG written to")
+    return RenderedCode(
+        renderer_id=ICA_CODE_RENDERER_ID,
+        renderer_version=ICA_CODE_RENDERER_VERSION,
+        filename="brainlearn_eeg_ica.py",
+        dependencies=base.dependencies,
         source=source,
     )

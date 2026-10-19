@@ -33,7 +33,7 @@ from brainlearn_core import (
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from brainlearn_server.auth import get_session_token, require_session_token
 from brainlearn_server.bids_eeg import (
@@ -74,9 +74,12 @@ from brainlearn_server.project_store import ProjectStore, canonicalize_project_p
 from brainlearn_server.python_export import (
     CODE_RENDERER_ID,
     CODE_RENDERER_VERSION,
+    ICA_CODE_RENDERER_ID,
+    ICA_CODE_RENDERER_VERSION,
     CodeRenderError,
     RenderedCode,
     render_eeg_filter_python,
+    render_eeg_ica_python,
 )
 from brainlearn_server.registry import NODE_REGISTRY_BY_ID, get_node_manifest, list_node_manifests
 from brainlearn_server.researcher_decisions import (
@@ -87,7 +90,12 @@ from brainlearn_server.researcher_decisions import (
 )
 from brainlearn_server.run_store import RunStore
 from brainlearn_server.security import HostOriginValidationMiddleware
-from brainlearn_server.worker import ReviewConflictError, WorkerService, build_run_record
+from brainlearn_server.worker import (
+    ReviewConflictError,
+    WorkerService,
+    build_run_record,
+    workflow_identity,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[4]
 EXAMPLE_PATH = REPOSITORY_ROOT / "examples" / "eeg-first-look.workflow.json"
@@ -364,6 +372,91 @@ def render_workflow_python(
         return render_eeg_filter_python(workflow)
     except CodeRenderError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class RunPythonExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    run_id: str = Field(min_length=1)
+    node_run_id: str = Field(min_length=1)
+    workflow: Workflow
+
+
+@app.post("/api/runs/render/python", response_model=RenderedCode)
+def render_reviewed_run_python(
+    payload: RunPythonExportRequest, _auth: None = Depends(require_session_token)
+) -> RenderedCode:
+    """Export only the exact completed run and its persisted approved ICA decision."""
+
+    validation = validate_workflow(payload.workflow, NODE_REGISTRY_BY_ID)
+    if not validation.valid:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Correct workflow validation issues before exporting code.",
+                "issues": [issue.model_dump(mode="json") for issue in validation.issues],
+            },
+        )
+    try:
+        run = runs.get_run(payload.path, payload.run_id)
+        if run.state.value != "succeeded":
+            raise HTTPException(
+                status_code=409, detail="Complete the run before exporting ICA code."
+            )
+        if workflow_identity(payload.workflow) != run.workflow_identity:
+            raise HTTPException(
+                status_code=409,
+                detail="The edited workflow does not match this completed run.",
+            )
+        node = next((item for item in run.node_runs if item.id == payload.node_run_id), None)
+        if (
+            node is None
+            or node.node_type != "eeg.ica_review"
+            or node.state.value != "succeeded"
+            or node.review_pause is None
+            or node.review_pause.decision != "approved"
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Choose an approved ICA review from the completed run.",
+            )
+        manifest = NODE_REGISTRY_BY_ID.get("eeg.ica_review")
+        if manifest is None or not any(
+            renderer.id == ICA_CODE_RENDERER_ID and renderer.version == ICA_CODE_RENDERER_VERSION
+            for renderer in manifest.code_renderers
+        ):
+            raise HTTPException(
+                status_code=503,
+                detail="The ICA review node does not advertise this Python renderer version.",
+            )
+        review = next(
+            (
+                item
+                for item in runs.list_qc_reviews(payload.path, payload.run_id)
+                if item.node_run_id == node.id and item.decision == "approved"
+            ),
+            None,
+        )
+        if review is None:
+            raise HTTPException(
+                status_code=409,
+                detail="The run has no current persisted approval for this ICA review.",
+            )
+        for identity in review.input_artifact_identities:
+            with runs.open_artifact_stream(payload.path, payload.run_id, identity.artifact_id)[0]:
+                pass
+        return render_eeg_ica_python(payload.workflow, review, seed=run.seed or 0)
+    except HTTPException:
+        raise
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (ValueError, TypeError, CodeRenderError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 def _optional_search_text(value: str | None, *, field: str, max_length: int) -> str | None:
@@ -1238,6 +1331,7 @@ class RunReviewRequest(BaseModel):
     note: str = Field(default="", max_length=4000)
     reviewer: str | None = Field(default=None, max_length=200)
     excluded_channel_names: list[str] = Field(default_factory=list, max_length=512)
+    excluded_ica_components: list[StrictInt] = Field(default_factory=list, max_length=256)
 
     @model_validator(mode="after")
     def validate_excluded_channels(self) -> "RunReviewRequest":
@@ -1245,6 +1339,10 @@ class RunReviewRequest(BaseModel):
             raise ValueError("Channel names must be non-empty and at most 512 characters.")
         if len(set(self.excluded_channel_names)) != len(self.excluded_channel_names):
             raise ValueError("Excluded EEG channel names must be unique.")
+        if any(index < 0 for index in self.excluded_ica_components):
+            raise ValueError("ICA component indices must be non-negative.")
+        if len(set(self.excluded_ica_components)) != len(self.excluded_ica_components):
+            raise ValueError("Excluded ICA component indices must be unique.")
         return self
 
 
@@ -1304,6 +1402,7 @@ def review_run(
             payload.note,
             payload.reviewer,
             tuple(payload.excluded_channel_names),
+            tuple(payload.excluded_ica_components),
         )
     except ReviewConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

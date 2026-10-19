@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from brainlearn_core import ArtifactRecord, QCReviewRecord
+
 if TYPE_CHECKING:
     from brainlearn_server.project_store import ProjectStore
 
@@ -51,9 +53,15 @@ class NodeContext:
     parameters: dict[str, Any]
     inputs: dict[str, Path]
     staging_dir: Path
+    input_artifacts: dict[str, ArtifactRecord] = field(default_factory=dict)
     cancel: threading.Event = field(default_factory=threading.Event)
     project_path: str | None = None
     project_store: ProjectStore | None = None
+    run_store: Any = None
+    run_id: str | None = None
+    node_run_id: str | None = None
+    run_seed: int | None = None
+    qc_reviews: list[QCReviewRecord] = field(default_factory=list)
 
 
 DemoAdapter = Callable[[NodeContext], list[StagedOutput]]
@@ -294,6 +302,22 @@ def eeg_filter_adapter(ctx: NodeContext) -> list[StagedOutput]:
     return filter_bids_eeg(ctx)
 
 
+def eeg_ica_fit_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Fit an ICA model and publish diagnostics without excluding components."""
+
+    from brainlearn_server.mne_ica import fit_ica_eeg
+
+    return fit_ica_eeg(ctx)
+
+
+def eeg_ica_review_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Pause for a decision, then apply its saved ICA component exclusions."""
+
+    from brainlearn_server.mne_ica import apply_reviewed_ica_eeg
+
+    return apply_reviewed_ica_eeg(ctx)
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
 
@@ -486,6 +510,20 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
                 maximum=10.0,
             ),
         },
+        cacheable=False,
+    ),
+    "eeg.ica_fit": DemoNodeManifest(
+        version="0.1.0",
+        inputs={"raw": True},
+        outputs={"ica": True, "diagnostics": True, "provenance": True},
+        handler=eeg_ica_fit_adapter,
+        cacheable=False,
+    ),
+    "eeg.ica_review": DemoNodeManifest(
+        version="0.1.0",
+        inputs={"raw": True, "fit": True},
+        outputs={"reviewed": True, "provenance": True},
+        handler=eeg_ica_review_adapter,
         cacheable=False,
     ),
 }

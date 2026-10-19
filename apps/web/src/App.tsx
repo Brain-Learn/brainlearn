@@ -35,6 +35,7 @@ import {
 import type { ExampleInfo } from "./api";
 import { DatasetLibrary } from "./DatasetLibrary";
 import { parseEEGFilterPreview } from "./filterPreview";
+import { parseEEGICAComponentDiagnostics } from "./icaDiagnostics";
 import {
   NODE_REMOVAL_TRANSITION_MS,
   resolveFitViewDuration,
@@ -75,6 +76,7 @@ import {
   removeNodes,
   resetPresentation,
   supportsPythonFilterExport,
+  supportsPythonIcaExport,
   updateParameter,
   updatePresentation,
   type CanvasPosition,
@@ -103,6 +105,7 @@ import {
   openRun,
   recoverRuns,
   reviewRun,
+  renderReviewedIcaPython,
   startRun,
   subscribeRunEvents,
 } from "./runs";
@@ -712,6 +715,10 @@ function App() {
   const [filterPreview, setFilterPreview] = useState<{
     runId: string;
     preview: EEGFilterComparisonPreview;
+  } | null>(null);
+  const [icaDiagnostics, setIcaDiagnostics] = useState<{
+    runId: string;
+    diagnostics: ReturnType<typeof parseEEGICAComponentDiagnostics>;
   } | null>(null);
   const reducedMotion = usePrefersReducedMotion();
   const leavingTimer = useRef<number | null>(null);
@@ -1508,7 +1515,11 @@ function App() {
     nodeRunId: string,
     decision: "approved" | "rejected",
     note: string,
-    qc?: { reviewer: string; excludedChannelNames: string[] },
+    qc?: {
+      reviewer: string;
+      excludedChannelNames: string[];
+      excludedIcaComponents: number[];
+    },
   ) => {
     const id = activeRunRef.current?.id;
     const path = runPathRef.current;
@@ -1611,6 +1622,17 @@ function App() {
         setRunMessage("Before/after filter comparison opened.");
         return;
       }
+      if (
+        artifact.media_type ===
+        "application/vnd.brainlearn.eeg-ica-diagnostics+json"
+      ) {
+        const diagnostics = parseEEGICAComponentDiagnostics(
+          JSON.parse(await opened.blob.text()),
+        );
+        setIcaDiagnostics({ runId: run.id, diagnostics });
+        setRunMessage("ICA component diagnostics opened.");
+        return;
+      }
       if (artifactUrl.current) URL.revokeObjectURL(artifactUrl.current);
       const url = URL.createObjectURL(opened.blob);
       artifactUrl.current = url;
@@ -1647,10 +1669,32 @@ function App() {
   const handleExportPython = async () => {
     setExportingPython(true);
     try {
-      const rendered = await renderWorkflowPython(
-        workflow,
-        sessionTokenRef.current,
-      );
+      let rendered: Awaited<ReturnType<typeof renderWorkflowPython>>;
+      if (supportsPythonIcaExport(workflow)) {
+        const run = activeRunRef.current;
+        const path = runPathRef.current;
+        const review = run?.node_runs.find(
+          (node) =>
+            node.node_type === "eeg.ica_review" && node.state === "succeeded",
+        );
+        if (!run || run.state !== "succeeded" || !path || !review) {
+          throw new Error(
+            "Complete and approve the ICA review before exporting Python.",
+          );
+        }
+        rendered = await renderReviewedIcaPython(
+          path,
+          run.id,
+          review.id,
+          workflow,
+          sessionTokenRef.current,
+        );
+      } else {
+        rendered = await renderWorkflowPython(
+          workflow,
+          sessionTokenRef.current,
+        );
+      }
       const url = URL.createObjectURL(
         new Blob([rendered.source], { type: "text/x-python;charset=utf-8" }),
       );
@@ -1681,7 +1725,11 @@ function App() {
   const selectedIssues = validation.issues.filter(
     (issue) => issue.node_id === selectedId,
   );
-  const pythonExportSupported = supportsPythonFilterExport(workflow);
+  const pythonFilterExportSupported = supportsPythonFilterExport(workflow);
+  const pythonIcaExportSupported = supportsPythonIcaExport(workflow);
+  const pythonExportEnabled =
+    pythonFilterExportSupported ||
+    (pythonIcaExportSupported && activeRun?.state === "succeeded");
 
   return (
     <main className="app-shell">
@@ -1706,12 +1754,14 @@ function App() {
           </button>
           <button
             className="export-button"
-            disabled={exportingPython || !pythonExportSupported}
+            disabled={exportingPython || !pythonExportEnabled}
             onClick={() => void handleExportPython()}
             title={
-              pythonExportSupported
+              pythonFilterExportSupported
                 ? "Export this workflow as a standalone Python script"
-                : "Python export supports BIDS EEG → Inspect Signal → Band-pass Filter."
+                : pythonIcaExportSupported
+                  ? "Complete and approve the ICA review to export this workflow"
+                  : "Python export supports the BIDS inspection filter workflow and its ICA review path."
             }
           >
             <Code2 size={15} />{" "}
@@ -1961,6 +2011,12 @@ function App() {
             : null
         }
         onCloseFilterPreview={() => setFilterPreview(null)}
+        icaDiagnostics={
+          activeRun && icaDiagnostics?.runId === activeRun.id
+            ? icaDiagnostics.diagnostics
+            : null
+        }
+        onCloseIcaDiagnostics={() => setIcaDiagnostics(null)}
         onOpenRun={(runId, path) => void handleOpenHistoryRun(runId, path)}
         onRecover={() => void handleRecoverRuns()}
         onReview={(nodeRunId, decision, note, qc) =>

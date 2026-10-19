@@ -30,6 +30,7 @@ from brainlearn_core import (
     ArtifactRecord,
     NodeRunRecord,
     NodeRunState,
+    QCReviewArtifactIdentity,
     QCReviewRecord,
     RunEvent,
     RunEventKind,
@@ -197,7 +198,7 @@ class RunStore:
         raw_path: str,
         record: QCReviewRecord,
         *,
-        verify_source_identity: Callable[[], str],
+        verify_source_identity: Callable[[], str] | None = None,
     ) -> QCReviewRecord:
         """Persist one immutable review only while its EEG review node is waiting."""
 
@@ -213,16 +214,36 @@ class RunStore:
             current = self.get_run(str(project), record.run_id)
             record.validate_scope(current)
             node = next(item for item in current.node_runs if item.id == record.node_run_id)
+            is_bad_channel = node.node_type == "eeg.bad_channel_review"
+            is_ica = node.node_type == "eeg.ica_review"
             if (
-                node.node_type != "eeg.bad_channel_review"
+                not (is_bad_channel or is_ica)
                 or node.state != NodeRunState.WAITING_FOR_REVIEW
                 or node.review_pause is None
                 or node.review_pause.decided_at is not None
                 or node.review_pause.id != record.id
-                or record.source_content_identity is None
             ):
-                raise ValueError("The QC review must match a pending bad-channel review node.")
-            if verify_source_identity() != record.source_content_identity:
+                raise ValueError("The QC review must match a pending EEG review node.")
+            if is_bad_channel and record.source_content_identity is None:
+                raise ValueError("Bad-channel review must identify the current BIDS recording.")
+            if is_ica:
+                current_artifacts = self._current_input_artifact_identities(current, node)
+                if not current_artifacts or current_artifacts != record.input_artifact_identities:
+                    raise ValueError(
+                        "The ICA decision must match the current raw and fitted ICA artifacts."
+                    )
+                for identity in record.input_artifact_identities:
+                    with self.open_artifact_stream(
+                        str(project), record.run_id, identity.artifact_id
+                    )[0]:
+                        pass
+            if record.source_content_identity is not None and verify_source_identity is None:
+                raise ValueError("This QC decision requires a current source identity check.")
+            if (
+                record.source_content_identity is not None
+                and verify_source_identity is not None
+                and verify_source_identity() != record.source_content_identity
+            ):
                 raise ValueError(
                     "The EEG recording changed while the review decision was being saved. "
                     "Re-run Inspect Signal before reviewing it again."
@@ -248,6 +269,18 @@ class RunStore:
                 if requested != existing:
                     raise ValueError("A different QC decision is already saved for this review.")
                 return saved
+            if is_ica:
+                for identity in record.input_artifact_identities:
+                    with self.open_artifact_stream(
+                        str(project), record.run_id, identity.artifact_id
+                    )[0]:
+                        pass
+            if record.source_content_identity is not None and verify_source_identity is not None:
+                if verify_source_identity() != record.source_content_identity:
+                    raise ValueError(
+                        "The EEG recording changed while the review decision was being saved. "
+                        "Re-run Inspect Signal before reviewing it again."
+                    )
             atomic_write_json(target, record.model_dump(mode="json"))
         return record
 
@@ -277,8 +310,47 @@ class RunStore:
                 raise ValueError(f"QC review file '{target}' is invalid: {exc}") from exc
             if item.run_id != run_id:
                 raise ValueError(f"QC review file '{target}' belongs to another run.")
+            node = next(
+                (candidate for candidate in run.node_runs if candidate.id == item.node_run_id),
+                None,
+            )
+            if node is not None and node.node_type == "eeg.ica_review":
+                if (
+                    self._current_input_artifact_identities(run, node)
+                    != item.input_artifact_identities
+                ):
+                    # Keep the immutable historical JSON for audit, but never expose or reuse a
+                    # choice whose raw or fitted model artifact is no longer the current input.
+                    continue
             records.append(item)
         return records
+
+    @staticmethod
+    def _current_input_artifact_identities(
+        run: RunRecord, node: NodeRunRecord
+    ) -> tuple[QCReviewArtifactIdentity, ...]:
+        """Resolve current input-port artifact IDs from the persisted graph snapshot."""
+
+        sources = node.settings.get("input_sources", {})
+        if not isinstance(sources, dict):
+            return ()
+        by_id = {item.node_id: item for item in run.node_runs}
+        identities: list[QCReviewArtifactIdentity] = []
+        for target_port, source in sorted(sources.items(), key=lambda item: str(item[0])):
+            if not isinstance(source, dict):
+                return ()
+            upstream = by_id.get(source.get("node", ""))
+            if upstream is None:
+                return ()
+            artifact = next(
+                (item for item in upstream.artifacts if item.port_id == source.get("port")), None
+            )
+            if artifact is None:
+                return ()
+            identities.append(
+                QCReviewArtifactIdentity(port_id=target_port, artifact_id=artifact.artifact_id)
+            )
+        return tuple(identities)
 
     def list_runs(self, raw_path: str) -> list[RunRecord]:
         """List every persisted run, surfacing corrupt run files.

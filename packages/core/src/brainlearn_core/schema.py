@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class ScientificType(StrEnum):
     BIDS_DATASET = "bids_dataset"
     RAW_EEG = "raw_eeg"
+    ICA_FIT = "ica_fit"
     REVIEWED_EEG = "reviewed_eeg"
     EPOCHS = "epochs"
     EVOKED = "evoked"

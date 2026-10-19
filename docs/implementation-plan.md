@@ -165,12 +165,12 @@ Scientific review required before checking this step.
 
 - [x] Define immutable QC review records linked to input and node identities (independently monitored on PR #33).
 - [x] Implement bad-channel review and annotation persistence.
-- [ ] Implement ICA fitting as a separate operation from ICA component rejection.
-- [ ] Provide component maps, time courses, spectra, and relevant diagnostics.
-- [ ] Require an explicit researcher decision before applying exclusions.
-- [ ] Invalidate an old decision when its input or fitted ICA artifact changes.
-- [ ] Export the reviewed component choices to Python code and provenance.
-- [ ] Add resume, rejection, and stale-decision tests.
+- [x] Implement ICA fitting as a separate operation from ICA component rejection.
+- [x] Provide component maps, time courses, spectra, and relevant diagnostics.
+- [x] Require an explicit researcher decision before applying exclusions.
+- [x] Invalidate an old decision when its input or fitted ICA artifact changes.
+- [x] Export the reviewed component choices to Python code and provenance.
+- [x] Add resume, rejection, and stale-decision tests.
 
 Completion gate: the workflow pauses for review, resumes only after a persisted decision, invalidates that decision after an upstream change, and reproduces the reviewed output in exported Python.
 
@@ -503,16 +503,18 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-19 | Step 7 bad-channel review final re-review | Complete | Independent review of PR #34 final head `7220365b98e4abdd052248fe4bfe46f60bbbe0a6` against main `f6b5c6be6ac2bbf9ff2058a68bb1d90366459969` confirmed the original source-mutation and symlinked QC-storage findings are repaired, with deterministic API regressions for conflict responses, no persisted stale decision, and no outside read/write. The second hosted-test race fixes were reviewed: cache-reuse test waits for node states; in-flight run-history responses are invalidated when a newer run is merged and the frontend regression confirms a late empty response cannot hide it. Focused QC/symlink tests passed 12 (187 deselected); cache-reuse synchronization passed 1. Clean-checkout full gate: locked EEG sync; Ruff; format (87 files); scoped mypy (32 files); strict mypy (34 files); pytest 816 passed, 3 skipped, 2 upstream deprecation warnings (37.96s); ESLint and Prettier; Vitest 177 tests/19 files; production build (1,848 modules; existing chunk-size advisory); production audit (0 vulnerabilities); `uv lock --check`; and `git diff --check origin/main...HEAD`. Both required hosted jobs passed on this final head in Actions run `39239172052` (Python 1m22s; frontend 30s). Step 7's bad-channel review leaf is complete; the Step 7 parent and scientific-review gate remain unchecked, and ICA was not started. Approval covers annotation persistence only, not bad-channel criteria, downstream signal effects, or scientific suitability. The broader EEG workflow remains experimental pending a sample-bearing public reference and independent EEG methods review. | Monitor review complete on PR #34 |
 
+| 2026-10-19 | Step 7 ICA fit, explicit review, and export | Verified; independent monitoring pending | Added an experimental MNE FastICA fit node separate from review/application; the fit writes a model, bounded component channel weights, four-second source envelopes, Welch spectra, and provenance without exclusions. The UI presents diagnostics and one-based component choices. Approval is persisted against the run, graph node, input identities, and exact current raw/model artifact IDs; the worker rechecks fit provenance before applying exclusions. Rejection is persisted and emits no reviewed EEG. Historical decisions are hidden when either input artifact changes. The standalone `brainlearn.eeg.mne-ica.python@0.1.0` renderer includes the saved decision and run seed. Exact legacy placeholder workflows migrate by inserting a separate fit node while preserving user-edited settings. `docs/ica-engineering.md` records method, assumptions, limits, citations, and fixture-specific tolerance. Focused ICA integration passed 5 tests; legacy project migration passed 16; registry/API checks passed 17. Full gate: `uv sync --locked --all-packages --group eeg`; `uv run --frozen ruff check .`; formatting (91 files); strict mypy (36 source files); pytest 821 passed, 3 skipped, 2 upstream Starlette/AnyIO warnings (41.46s); ESLint; Prettier; Vitest 182 tests in 21 files; production build (1,850 modules; existing 500 kB chunk-size advisory); production npm audit (0 vulnerabilities); `uv lock --check`; and `git diff --check` passed. On the pinned synthetic BIDS fixture, BrainLearn, direct MNE, and generated Python output agree at `rtol=1e-6`, `atol=3e-5 µV`, and source files remain unchanged. This is engineering validation on one local arm64 environment, not scientific suitability; the synthetic fixture has no sensor locations and no sample-bearing public reference has been validated. Step 7 implementation leaves are checked locally; the parent and scientific-review gate remain unchecked pending independent monitoring, hosted CI, a sample-bearing public reference, and EEG methods review. | PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 7 — explicit quality control and ICA review
+### Step 7 — independent monitoring and scientific review
 
-The next unchecked item is to implement ICA fitting as a separate operation
-from ICA component rejection. Keep fitting separate from applying exclusions,
-persist explicit researcher decisions, and invalidate decisions when their
-inputs or fitted artifacts change. Step 6 is approved for the experimental
-synthetic-data demo only; the public sample-payload and external methods-review
-requirements remain before any claim of scientific validation.
+The ICA engineering checklist is implemented on the current scoped PR. The
+monitor must independently review the diff, reproduce the full gate, and record
+hosted CI evidence before merging. Keep Step 7's parent unchecked until an EEG
+methods reviewer evaluates the workflow against a sample-bearing public BIDS
+recording. The present synthetic fixture establishes engineering agreement
+only. Do not begin Step 8 before those review gates pass.

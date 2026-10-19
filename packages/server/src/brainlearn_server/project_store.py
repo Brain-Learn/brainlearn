@@ -14,6 +14,7 @@ from brainlearn_core import (
     PREVIOUS_WORKFLOW_FILENAME,
     PROJECT_MANIFEST_FILENAME,
     WORKFLOW_FILENAME,
+    CanvasPosition,
     GraphMetadata,
     ProjectManifest,
     Workflow,
@@ -24,11 +25,15 @@ from brainlearn_core import (
 )
 from brainlearn_core.validation import ValidationResult
 
-from brainlearn_server.registry import NODE_REGISTRY_BY_ID
+from brainlearn_server.registry import (
+    NODE_REGISTRY_BY_ID,
+    instantiate_registered_node,
+)
 
 RECENT_FILENAME = "recent.json"
 
 _LEGACY_FILTER_DESCRIPTION = "Configure a visible, provenance-tracked frequency filter."
+_LEGACY_ICA_REVIEW_DESCRIPTION = "Pause for a researcher to review proposed ICA components."
 
 
 def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -36,13 +41,152 @@ def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
 
     migrated = migrate_workflow_dict(data)
     nodes = migrated.get("nodes")
-    if not isinstance(nodes, list):
+    edges = migrated.get("edges")
+    if not isinstance(nodes, list) or not isinstance(edges, list):
         return migrated
-    migrated_nodes = [_migrate_legacy_filter_node(node) for node in nodes]
-    if all(before is after for before, after in zip(nodes, migrated_nodes, strict=True)):
+    legacy_ica_sources = _legacy_ica_review_sources(nodes, edges)
+    migrated_nodes = [
+        _migrate_legacy_filter_node(node)
+        if not _is_legacy_ica_review_node(node)
+        else _migrate_legacy_ica_review_node(node)
+        if isinstance(node, dict) and node.get("id") in legacy_ica_sources
+        else node
+        for node in nodes
+    ]
+    additions: list[dict[str, Any]] = []
+    migrated_edges = list(edges)
+    used_node_ids = {
+        node.get("id")
+        for node in nodes
+        if isinstance(node, dict) and isinstance(node.get("id"), str)
+    }
+    for index, (review_node_id, (source_node_id, source_port_id)) in enumerate(
+        legacy_ica_sources.items(), start=1
+    ):
+        fit_node_id = f"ica-fit-migration-{index}"
+        while fit_node_id in used_node_ids:
+            fit_node_id += "-next"
+        used_node_ids.add(fit_node_id)
+        legacy_review = next(
+            node
+            for node in migrated_nodes
+            if isinstance(node, dict) and node.get("id") == review_node_id
+        )
+        position = legacy_review.get("position", {})
+        x = position.get("x", 0) if isinstance(position, dict) else 0
+        y = position.get("y", 0) if isinstance(position, dict) else 0
+        x = float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else 0.0
+        y = float(y) if isinstance(y, (int, float)) and not isinstance(y, bool) else 0.0
+        legacy_review["position"] = {"x": x + 180.0, "y": y}
+        fit_node = instantiate_registered_node(
+            "eeg.ica_fit",
+            fit_node_id,
+            CanvasPosition(x=max(0.0, x), y=y + 100.0),
+        )
+        additions.append(fit_node.model_dump(mode="json"))
+        used_edge_ids = {edge.get("id") for edge in migrated_edges if isinstance(edge, dict)}
+        for suffix, source, target in (
+            (
+                "fit-input",
+                {"node_id": source_node_id, "port_id": source_port_id},
+                {"node_id": fit_node_id, "port_id": "raw"},
+            ),
+            (
+                "fit-review",
+                {"node_id": fit_node_id, "port_id": "ica"},
+                {"node_id": review_node_id, "port_id": "fit"},
+            ),
+        ):
+            edge_id = f"migration-ica-{index}-{suffix}"
+            while edge_id in used_edge_ids:
+                edge_id += "-next"
+            used_edge_ids.add(edge_id)
+            migrated_edges.append({"id": edge_id, "source": source, "target": target})
+    if not additions and all(
+        before is after for before, after in zip(nodes, migrated_nodes, strict=True)
+    ):
         return migrated
     result = dict(migrated)
-    result["nodes"] = migrated_nodes
+    result["nodes"] = [*migrated_nodes, *additions]
+    result["edges"] = migrated_edges
+    return result
+
+
+def _is_legacy_ica_review_node(value: Any) -> bool:
+    """Recognize only the original illustrative ICA review placeholder."""
+
+    if not isinstance(value, dict) or value.get("type") != "eeg.ica_review":
+        return False
+    expected_ports = [
+        ("raw", "Raw EEG", "input", "raw_eeg"),
+        ("reviewed", "Reviewed EEG", "output", "reviewed_eeg"),
+    ]
+    ports = value.get("ports")
+    return (
+        value.get("label") == "ICA Review"
+        and value.get("category") == "Quality control"
+        and value.get("description") == _LEGACY_ICA_REVIEW_DESCRIPTION
+        and value.get("pauses_for_review") is True
+        and value.get("parameters") == []
+        and isinstance(ports, list)
+        and len(ports) == len(expected_ports)
+        and all(
+            isinstance(port, dict)
+            and not (set(port) - {"id", "label", "direction", "data_type", "required"})
+            and (
+                port.get("id"),
+                port.get("label"),
+                port.get("direction"),
+                port.get("data_type"),
+            )
+            == expected
+            and port.get("required", True) is True
+            for port, expected in zip(ports, expected_ports, strict=True)
+        )
+    )
+
+
+def _migrate_legacy_ica_review_node(value: dict[str, Any]) -> dict[str, Any]:
+    """Upgrade the exact placeholder to the explicit raw + fitted-model contract."""
+
+    manifest = NODE_REGISTRY_BY_ID.get("eeg.ica_review")
+    if manifest is None:
+        return value
+    migrated = deepcopy(value)
+    migrated["label"] = manifest.label
+    migrated["category"] = manifest.category
+    migrated["description"] = manifest.description
+    migrated["pauses_for_review"] = manifest.review_behavior == "required"
+    migrated["ports"] = [port.model_dump(mode="json") for port in manifest.ports]
+    migrated["parameters"] = []
+    return migrated
+
+
+def _legacy_ica_review_sources(nodes: list[Any], edges: list[Any]) -> dict[str, tuple[str, str]]:
+    """Find legacy review nodes with exactly one compatible raw-input edge."""
+
+    result: dict[str, tuple[str, str]] = {}
+    for node in nodes:
+        if not _is_legacy_ica_review_node(node):
+            continue
+        node_id = node.get("id")
+        if not isinstance(node_id, str):
+            continue
+        incoming = [
+            edge
+            for edge in edges
+            if isinstance(edge, dict)
+            and isinstance(edge.get("target"), dict)
+            and edge["target"].get("node_id") == node_id
+            and edge["target"].get("port_id") == "raw"
+        ]
+        if len(incoming) != 1 or not isinstance(incoming[0].get("source"), dict):
+            continue
+        source = incoming[0]["source"]
+        source_node_id = source.get("node_id")
+        source_port_id = source.get("port_id")
+        if isinstance(source_node_id, str) and isinstance(source_port_id, str):
+            result[node_id] = (source_node_id, source_port_id)
     return result
 
 

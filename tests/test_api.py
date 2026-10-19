@@ -54,7 +54,7 @@ def test_registry_lists_versioned_manifests() -> None:
 
     assert response.status_code == 200
     manifests = response.json()
-    assert len(manifests) == 14
+    assert len(manifests) == 15
     assert {manifest["id"] for manifest in manifests} == {manifest.id for manifest in NODE_REGISTRY}
     assert {"demo.copy", "demo.delay", "demo.fail", "demo.review", "demo.relay"} <= {
         manifest["id"] for manifest in manifests
@@ -66,6 +66,8 @@ def test_registry_lists_versioned_manifests() -> None:
         "eeg.inspect",
         "eeg.bad_channel_review",
         "eeg.filter",
+        "eeg.ica_fit",
+        "eeg.ica_review",
     }
     assert all(
         status == "example" for node_id, status in statuses.items() if node_id.startswith("demo.")
