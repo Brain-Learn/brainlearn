@@ -1169,3 +1169,41 @@ required hosted jobs passed on PR code/evidence head `ac2326a` in run
 `39400992369` (Python quality and tests; frontend quality, tests, and build).
 This records outreach only. No Step 7 parent/scientific-review checkbox
 changed, no scientific approval is inferred, and Step 8 remains deferred.
+
+## Step 7 fourth external methods-review outreach status
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #42 code/evidence head
+`37d963471bd1a3216c7a6f54bfbc2146683daf66`, compared with main
+`5eb1542b19bed8a89c35012a830d6cba74bcb749`.
+
+Status: **approved for outreach-status documentation only.** Read-only
+inspection of Gmail thread `1a159469a93c0a59` confirms one message labeled
+SENT, addressed to the institutionally listed Deusto email
+`mbgarciazapi@deusto.es`. The invitation links the methods-review packet,
+requests candid critique or a referral rather than endorsement, and asks for a
+bounded review of the EEG workflow. The thread contains no reply; a mailbox
+search for messages from the recipient returned none. The plan accurately
+records the invitation and pending status.
+
+The official [Deusto staff profile](https://www.deusto.es/es/inicio/somos-deusto/equipo/profesores/934/profesor)
+identifies Begoña García-Zapirain Soto as a professor and eVIDA Lab PI and
+describes her research in biological signal processing. The official
+[eVIDA publications page](https://evida.deusto.es/journals) lists her
+co-authorship of the 2015 EEG artifact-removal review. These sources support
+the recorded recipient and reviewer fit; they do not constitute a review of
+BrainLearn or scientific approval.
+
+The PR changes only the implementation-plan outreach log. Step 7's parent and
+scientific-review gates remain unchecked, and Step 8 remains deferred. The
+clean PR checkout passed locked EEG dependency sync; Ruff; formatting (94
+files); scoped mypy (33 files) and strict mypy (36 files); pytest (830 passed,
+4 skipped, 2 upstream deprecation warnings, 42.27s); npm ci (271 packages, 2
+high-severity findings in the full dependency tree); ESLint and Prettier;
+Vitest (183 tests in 21 files); Vite build (1,850 modules, existing chunk-size
+advisory); production audit (0 vulnerabilities); uv lock check; and
+`git diff --check`. Both required hosted checks passed on PR code/evidence head
+`37d9634` in run `39422650450` (Python quality and tests, 1m35s; frontend
+quality, tests, and build, 48s). This disposition confirms outreach status
+only; no scientific method or independent EEG methods review is approved.
