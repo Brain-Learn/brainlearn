@@ -1256,3 +1256,35 @@ run `39430591406` (Python quality and tests, 1m38s; frontend quality, tests,
 and build, 39s). This disposition confirms outreach status only. Step 7's
 parent and scientific-review gates remain unchecked; Step 8 remains deferred.
 No scientific method or external EEG methods review is approved.
+
+## Step 7 methods-review packet snapshot clarification — PR #44
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #44 head
+`b79ff42c3e0b79df7debecb77412ba45d196c999`, compared with main
+`e04ecc2a99d6d032a2b8aecea50815ac908f3746`.
+
+Status: **approved for the packet snapshot clarification only.** The packet
+now links the exact review tree at
+`103f5588c76d9d11a8810058ab400e85551d4303` and links the relevant filter and
+export, immutable QC, bad-channel review, ICA, and public-data comparison
+commits. Each linked commit exists and its subject matches the described
+change. Comparing that pinned tree with the PR head shows only
+`REVIEW.md`, `docs/eeg-methods-review.md`, `docs/implementation-plan.md`, and
+`docs/public-eeg-reference.md` changed; there are no later changes to
+processing code, tests, or fixtures. A packet link scan found 12 links, of
+which 3 are local links; all local targets exist. The corrected test statement
+(830 passed, 4 skipped) matches the reproduced full Python suite.
+
+The clean managed checkout passed locked EEG dependency sync; Ruff; formatting
+(94 files); scoped mypy (33 files) and strict mypy (36 files); pytest (830
+passed, 4 skipped, 2 upstream deprecation warnings, 39.50s); npm ci (271
+packages, 2 high-severity findings in the full dependency tree); ESLint and
+Prettier; Vitest (183 tests in 21 files); Vite build (1,850 modules, existing
+chunk-size advisory); production audit (0 vulnerabilities); uv lock check; and
+`git diff --check`. Both required hosted CI jobs passed on the reviewed head in
+run `39432522304` (Python quality and tests, 1m48s; frontend quality, tests,
+and build, 48s). The packet is not a methods review: Step 7's parent and
+scientific-review gates remain unchecked, and Step 8 remains deferred. No
+scientific method or assumption is approved by this disposition.
