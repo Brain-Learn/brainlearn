@@ -1109,3 +1109,32 @@ passed; both required hosted CI jobs passed on PR head `f3ea507` in run
 `39395757055` (Python 1m37s; frontend 42s). No scientific checklist item
 changed. Step 7's parent and scientific-review gates remain unchecked, and
 Step 8 remains deferred while both requests are pending.
+
+## Step 7 annotation-method review context documentation monitoring
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #40 final head
+`6b7ad26300d1aab6b0787d8e51aefe2a5ee46619`, compared with main
+`de5f27210fa7d521765d62dde3173e676abff4d0`.
+
+Status: **approved for annotation-review context documentation only.** The
+repair accurately distinguishes the case-insensitive `BAD_ACQ_SKIP` filter
+prefix from other `BAD` annotations such as `BAD_artifact`. It also correctly
+states that the adapter explicitly fits ICA with
+`reject_by_annotation=False`, while MNE 1.13.2 defaults that parameter to
+`True` and omits `bad`-prefixed spans. The pinned MNE Raw and ICA documentation
+support these descriptions. I checked the adapter, direct-MNE reference, and
+generated Python export; each carries the documented filter and ICA settings.
+With the pinned MNE 1.13.2 package, a focused annotation probe returned
+filterable sample spans `(0, 300)` and `(400, 1000)` for `BAD_artifact` and
+`BAD_ACQ_SKIP` intervals, respectively, confirming that only the latter is
+skipped by this filter configuration.
+
+The clean PR checkout passed `git diff --check`; a relative-link scan of the
+changed Markdown files found no missing targets. Both required hosted jobs
+passed on final PR head `6b7ad26` in run `39397591214` (Python quality and
+tests; frontend quality, tests, and build). This disposition approves only the
+accuracy of the reviewer-context documentation. It does not approve a
+scientific method or substitute for the pending external EEG methods review.
+No Step 7 parent/scientific-review checkbox changed; Step 8 remains deferred.
