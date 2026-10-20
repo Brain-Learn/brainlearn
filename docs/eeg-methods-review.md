@@ -37,6 +37,27 @@ The comparison uses a 1–40 Hz zero-phase FIR filter and MNE FastICA with seed
 exists to make the three software paths deterministic; it is not an artifact
 decision. BrainLearn does not assign artifact labels automatically.
 
+## Current annotation behavior to review
+
+The adapter currently calls MNE filtering with
+`skip_by_annotation=("edge", "bad_acq_skip")`. MNE splits filtering around
+segments whose annotation descriptions begin with either prefix. Other
+annotations, including descriptions beginning with `BAD`, are not excluded
+from filtering by this setting. The subsequent ICA fit explicitly uses
+`reject_by_annotation=False`, so MNE does not omit `bad`-annotated segments
+from the fit. In MNE 1.13.2, `ICA.fit` defaults to `reject_by_annotation=True`,
+which omits annotations whose descriptions begin with `bad`. See the pinned
+[MNE Raw filtering documentation](https://mne.tools/1.13/generated/mne.io.Raw.html)
+and [MNE ICA documentation](https://mne.tools/1.13/generated/mne.preprocessing.ICA.html).
+
+These settings are preserved in the direct-MNE comparison and generated
+export so the three paths agree; that agreement does not establish that
+including all annotated spans is appropriate. Please assess whether bad spans
+must be rejected or explicitly reviewed before filtering and ICA, what decision
+should be persisted, and what behavior is safe when the input has no suitable
+annotations. Do not infer that annotations were absent or harmless merely from
+the numerical comparison.
+
 ## Published pipeline context
 
 The EEGEyeNet paper describes its own minimal preprocessing pipeline: bad
@@ -58,9 +79,11 @@ required before scientific claims or the Step 8 descriptive workflow.
    for this recording, and what assumptions or limitations must be shown to
    researchers? Should the reference use the dataset paper's 0.5–40 Hz setting
    to support a comparison claim?
-2. Are channel reference, montage, bad-channel, interpolation, line-noise, and
-   annotation handling explicit and safe enough before ICA? Which choices must
-   be researcher-controlled or fail closed?
+2. Given the exact annotation behavior above, should `BAD` spans be protected
+   from filtering and omitted from ICA fitting? Should the workflow require a
+   researcher decision when bad annotations exist or are absent? How should
+   channel reference, montage, bad-channel review, interpolation, and line-noise
+   handling be exposed, persisted, or fail closed before ICA?
 3. Are FastICA's current fit settings, rank handling, convergence checks, and
    displayed component diagnostics sufficient for manual review on this
    recording? What diagnostic or reviewer action is missing?
