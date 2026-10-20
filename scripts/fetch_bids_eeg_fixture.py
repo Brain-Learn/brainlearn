@@ -92,9 +92,15 @@ class AllowlistedRedirectHandler(HTTPRedirectHandler):
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("destination", type=Path, help="directory for the fixture files")
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=MANIFEST,
+        help="pinned fixture manifest (defaults to the metadata-only ds002181 subset)",
+    )
     args = parser.parse_args()
 
-    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest = json.loads(args.manifest.expanduser().read_text(encoding="utf-8"))
     destination = args.destination.expanduser().resolve()
     destination.mkdir(parents=True, exist_ok=True)
 

@@ -95,12 +95,15 @@ exporter.
 direct-MNE reference, and the generated standalone script on the same local
 synthetic BIDS recording, filter settings, seed, and excluded component. Their
 reviewed FIF samples are compared in microvolts with `rtol=1e-6` and
-`atol=3e-5 µV`. The test also confirms the BIDS source files are unchanged, the
-fit pauses before exclusions, approval resumes processing, rejection does not
-produce reviewed data, and changes to either input artifact hide the saved
-choice. This tolerance describes only this pinned engineering fixture and
-environment. It is not a scientific acceptance threshold across devices,
-recordings, MNE versions, or platforms.
+`atol=3e-5 µV`. The opt-in sample-bearing public comparison uses the pinned
+EEGEyeNet recording documented in
+[`docs/public-eeg-reference.md`](public-eeg-reference.md) and the same
+engineering tolerance. Both checks confirm that BIDS source files are
+unchanged, the fit pauses before exclusions, approval resumes processing, and
+the generated script agrees with the in-app output. The synthetic tolerance
+was established on one local engineering fixture; the public check extends
+that software comparison to one real recording. Neither is a scientific
+acceptance threshold across experiments, devices, MNE versions, or platforms.
 
 ## Citations and software
 
