@@ -1285,6 +1285,9 @@ Prettier; Vitest (183 tests in 21 files); Vite build (1,850 modules, existing
 chunk-size advisory); production audit (0 vulnerabilities); uv lock check; and
 `git diff --check`. Both required hosted CI jobs passed on the reviewed head in
 run `39432522304` (Python quality and tests, 1m48s; frontend quality, tests,
-and build, 48s). The packet is not a methods review: Step 7's parent and
+and build, 48s). The monitor-only evidence update is on final docs head
+`4e9cc216cca1960f8c33a1b37ae52f589f4adb70`; both required hosted jobs passed
+in run `39433457104` (Python quality and tests, 1m33s; frontend quality,
+tests, and build, 46s). The packet is not a methods review: Step 7's parent and
 scientific-review gates remain unchecked, and Step 8 remains deferred. No
 scientific method or assumption is approved by this disposition.
