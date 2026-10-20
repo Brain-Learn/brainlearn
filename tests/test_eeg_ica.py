@@ -826,6 +826,34 @@ def test_public_bids_eeg_ica_matches_direct_mne_and_generated_export(
     assert _source_snapshot(dataset) == before
 
 
+def test_public_mne_reference_refuses_symlinked_output_parent(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    linked_parent = tmp_path / "output-link"
+    try:
+        linked_parent.symlink_to(target, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"the platform cannot create a test symlink: {exc}")
+    script = Path(__file__).parents[1] / "scripts" / "reference_public_eeg_mne.py"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            str(tmp_path / "missing-dataset"),
+            str(linked_parent / "reviewed.fif"),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+    assert result.returncode != 0
+    assert "symlinked directory" in result.stderr
+    assert list(target.iterdir()) == []
+
+
 def test_legacy_nonconverged_fit_cannot_be_reviewed_or_applied(
     client: TestClient, tmp_path: Path
 ) -> None:

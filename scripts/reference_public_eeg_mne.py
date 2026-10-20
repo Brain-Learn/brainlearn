@@ -16,6 +16,39 @@ FIXTURE_MANIFEST = (
 )
 
 
+def _prepare_output_path(path: Path, *, create_parents: bool = False) -> Path:
+    """Reject symlinked parents and optionally create a new real directory tree."""
+    output = Path(os.path.abspath(path.expanduser()))
+    parts = output.parent.parts
+    current = Path(parts[0])
+    for part in parts[1:]:
+        candidate = current / part
+        if candidate.is_symlink():
+            system_tmp = Path("/private/tmp")
+            if (
+                candidate == Path("/tmp")
+                and candidate.resolve(strict=True) == system_tmp
+                and system_tmp.is_dir()
+                and not system_tmp.is_symlink()
+            ):
+                current = system_tmp
+                continue
+            raise ValueError(f"Refusing output under symlinked directory: {candidate}")
+        if candidate.exists():
+            if not candidate.is_dir():
+                raise ValueError(f"Output parent is not a directory: {candidate}")
+        elif create_parents:
+            candidate.mkdir()
+            if candidate.is_symlink() or not candidate.is_dir():
+                raise ValueError(f"Output parent could not be created safely: {candidate}")
+        current = candidate
+
+    output = current / output.name
+    if output.is_symlink() or output.exists():
+        raise FileExistsError(f"Refusing to replace existing reference output: {output}")
+    return output
+
+
 def _sha256(path: Path) -> tuple[int, str]:
     digest = hashlib.sha256()
     byte_size = 0
@@ -48,6 +81,7 @@ def _verified_files(dataset_root: Path, manifest: dict[str, Any]) -> list[dict[s
 
 def build_reference(dataset_root: Path, output_path: Path) -> dict[str, Any]:
     """Filter and fit ICA with direct MNE, then save an explicit keep-all result."""
+    output = _prepare_output_path(output_path)
     import mne
     import mne_bids
     import numpy
@@ -103,12 +137,7 @@ def build_reference(dataset_root: Path, output_path: Path) -> dict[str, Any]:
             verbose="ERROR",
         )
 
-        output = output_path.expanduser().absolute()
-        if output.is_symlink() or output.exists():
-            raise FileExistsError(f"Refusing to replace existing reference output: {output}")
-        output.parent.mkdir(parents=True, exist_ok=True)
-        if output.is_symlink() or not output.parent.is_dir():
-            raise ValueError("The reference output directory is unsafe.")
+        output = _prepare_output_path(output, create_parents=True)
 
         with tempfile.TemporaryDirectory(prefix="brainlearn-public-reference-") as temporary:
             temporary_root = Path(temporary)
