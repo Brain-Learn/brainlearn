@@ -1247,6 +1247,10 @@ audit (0 vulnerabilities); uv lock check; and `git diff --check`. Both
 required hosted jobs passed on outreach-entry head
 `eee40c2deb08cfddc86778f25b7277be821bffb1` in run `39429668122` (Python
 quality and tests, 1m41s; frontend quality, tests, and build, 48s). This
-disposition confirms outreach status only. Step 7's parent and
-scientific-review gates remain unchecked; Step 8 remains deferred. No
-scientific method or external EEG methods review is approved.
+monitor-only documentation update is on final review head
+`71c5794450647bcce149ee9fccd4beac31307884`; both required hosted jobs passed
+on that head in run `39430221660` (Python quality and tests, 1m24s; frontend
+quality, tests, and build, 41s). This disposition confirms outreach status
+only. Step 7's parent and scientific-review gates remain unchecked; Step 8
+remains deferred. No scientific method or external EEG methods review is
+approved.
