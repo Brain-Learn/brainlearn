@@ -1250,7 +1250,9 @@ quality and tests, 1m41s; frontend quality, tests, and build, 48s). This
 monitor-only documentation update is on final review head
 `71c5794450647bcce149ee9fccd4beac31307884`; both required hosted jobs passed
 on that head in run `39430221660` (Python quality and tests, 1m24s; frontend
-quality, tests, and build, 41s). This disposition confirms outreach status
-only. Step 7's parent and scientific-review gates remain unchecked; Step 8
-remains deferred. No scientific method or external EEG methods review is
-approved.
+quality, tests, and build, 41s). The final evidence-update head
+`ab170e3ae959ee8b9f2516a239597c36bd5fce3f` passed both required hosted jobs in
+run `39430591406` (Python quality and tests, 1m38s; frontend quality, tests,
+and build, 39s). This disposition confirms outreach status only. Step 7's
+parent and scientific-review gates remain unchecked; Step 8 remains deferred.
+No scientific method or external EEG methods review is approved.
