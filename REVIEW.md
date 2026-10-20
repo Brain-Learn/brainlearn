@@ -1063,3 +1063,25 @@ required hosted CI jobs passed on head `f499cf5` in Actions run `39391896387`
 method. Step 7's parent and scientific-review gates remain unchecked; Step 8
 must remain deferred until an independent EEG methods reviewer records a
 decision.
+
+## Step 7 external methods-review outreach status
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #38 head
+`72d6480a9a0095b3197008d8c920ebd9c276f9ea`, compared with main merge commit
+`c742b03bb0afcc08f6e52f9b5d43f75b38621bfc`.
+
+Status: **approved for the outreach-status documentation only.** GitHub shows
+PR #37 merged on 2026-10-20 as `c742b03`. A read-only check of the sent-mail
+thread confirms that one external EEG/MEG methods-review request was sent with
+the public review packet link. The thread contains only the sent request; a
+mailbox search found no reply from the contacted address. The implementation
+plan's “awaiting response” status is accurate and does not imply acceptance or
+scientific approval.
+
+The PR changes only the implementation-plan log. `git diff --check` passed on
+the change, and both required hosted CI jobs passed on PR head `72d6480` in run
+`39393097006` (Python 1m39s; frontend 36s). No scientific checklist item
+changed. Step 7's parent and scientific-review gates remain unchecked, and
+Step 8 remains deferred while the request is pending.
