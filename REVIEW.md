@@ -1138,3 +1138,34 @@ tests; frontend quality, tests, and build). This disposition approves only the
 accuracy of the reviewer-context documentation. It does not approve a
 scientific method or substitute for the pending external EEG methods review.
 No Step 7 parent/scientific-review checkbox changed; Step 8 remains deferred.
+
+## Step 7 third external methods-review outreach status
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #41 code/evidence head
+`ac2326a94b174aa187eeab5ba137704863f0ec27`, compared with main
+`be971b8a0d9b3217af7a21e575c001283cb1072e`.
+
+Status: **approved for outreach-status documentation only.** I read Gmail
+message/thread `1a158a1626f2292a`; it is a single message labeled SENT, addressed
+to `smakeig@ucsd.edu`, with subject “Request for independent EEG methods
+review of BrainLearn.” The message links the methods-review packet, asks Dr.
+Scott Makeig for a bounded review or referral, and explicitly seeks candid
+critique rather than endorsement. The thread contains no reply, and a mailbox
+search for messages from that address returned no results. The implementation
+plan's “awaiting response” status is accurate.
+
+The official [UC San Diego SCCN profile](https://sccn.ucsd.edu/~scott/) lists
+Scott Makeig as a research scientist and director at UCSD, gives the matching
+`smakeig` contact, and describes research involving EEG, MEG, and independent
+component analysis. This supports the recipient identity and stated reviewer
+fit. PR #41 changes only the implementation-plan outreach record. The wording
+matches the sent message and does not claim that a review or endorsement has
+occurred.
+
+`git diff --check` and a relative-link scan of the changed plan passed. Both
+required hosted jobs passed on PR code/evidence head `ac2326a` in run
+`39400992369` (Python quality and tests; frontend quality, tests, and build).
+This records outreach only. No Step 7 parent/scientific-review checkbox
+changed, no scientific approval is inferred, and Step 8 remains deferred.
