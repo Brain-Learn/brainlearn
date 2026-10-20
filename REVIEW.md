@@ -1294,3 +1294,35 @@ tests, and build, 46s). A follow-up evidence commit,
 build, 42s). The packet is not a methods review: Step 7's parent and
 scientific-review gates remain unchecked, and Step 8 remains deferred. No
 scientific method or assumption is approved by this disposition.
+
+## Step 7 review evidence correction — PR #45
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #45 head
+`17bf926df4a50b4ec631f5e530d48e554eecd937`, compared with main
+`3d557020ec55cf3387720615335e3264456fe0d1`.
+
+Status: **approved for the review evidence correction only.** The diff changes
+only `REVIEW.md` and `docs/implementation-plan.md`. It corrects the description
+of `4e9cc216cca1960f8c33a1b37ae52f589f4adb70` as the first monitor evidence
+commit and records the follow-up evidence commit
+`713879b96c36addbb7dae17aed6008910782befc`. I verified the referenced runs
+against GitHub: `39432522304` is green on implementation head
+`b79ff42c3e0b79df7debecb77412ba45d196c999`; `39433457104` is green on
+`4e9cc216cca1960f8c33a1b37ae52f589f4adb70`; `39433765268` is green on
+`713879b96c36addbb7dae17aed6008910782befc`; and PR #45 run `39434732663` is
+green on this reviewed head `17bf926df4a50b4ec631f5e530d48e554eecd937`.
+
+The clean managed checkout passed locked EEG dependency sync; Ruff; formatting
+(94 files); scoped mypy (33 files) and strict mypy (36 files); pytest (830
+passed, 4 skipped, 2 upstream deprecation warnings, 44.49s); npm ci (271
+packages, 2 high-severity findings in the full dependency tree); ESLint and
+Prettier; Vitest (183 tests in 21 files); Vite build (1,850 modules, existing
+chunk-size advisory); production audit (0 vulnerabilities); uv lock check; and
+`git diff --check`. Run `39434732663` passed on the reviewed head (Python
+quality and tests, 1m38s; frontend quality, tests, and build, 45s).
+
+This disposition approves evidence wording only. No processing behavior,
+scientific assumption, or review status changed. Step 7's parent and
+scientific-review gates remain unchecked; Step 8 remains deferred.
