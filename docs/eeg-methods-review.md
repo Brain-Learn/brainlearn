@@ -99,11 +99,23 @@ required before scientific claims or the Step 8 descriptive workflow.
 
 ## Reproduction material
 
-The implementation is in merged commit `103f558`. The exact public-data
-three-path test and fixture retrieval commands are in
+The exact code snapshot for review is the tree at
+[`103f5588c76d9d11a8810058ab400e85551d4303`](https://github.com/Brain-Learn/brainlearn/tree/103f5588c76d9d11a8810058ab400e85551d4303).
+It contains the current filter, QC, ICA, and Python-export implementation as
+well as the public-data comparison. The relevant implementation history is
+[filtering and Python export (`2949d7f`)](https://github.com/Brain-Learn/brainlearn/commit/2949d7ffed093be49f69539706541eac4caf009e),
+[immutable QC review records (`f6b5c6b`)](https://github.com/Brain-Learn/brainlearn/commit/f6b5c6be6ac2bbf9ff2058a68bb1d90366459969),
+[bad-channel review persistence (`8df8c8d`)](https://github.com/Brain-Learn/brainlearn/commit/8df8c8d8dd16208c857c3d77a3baa3d70d6670ef),
+[ICA review (`b09419d`)](https://github.com/Brain-Learn/brainlearn/commit/b09419db746c71de99ecbe7857a14bc2c7785d8d),
+and [public-data validation (`103f558`)](https://github.com/Brain-Learn/brainlearn/commit/103f5588c76d9d11a8810058ab400e85551d4303).
+Main has advanced since that code snapshot through documentation-only
+commits; the source, tests, and fixture at the pinned revision are the scope
+for this review.
+
+The exact public-data three-path test and fixture retrieval commands are in
 [`docs/public-eeg-reference.md`](public-eeg-reference.md). Engineering
 verification recorded in `REVIEW.md` and `docs/implementation-plan.md` passed
-831 tests with 3 skipped, and the monitor approved the public-data engineering
+830 tests with 4 skipped, and the monitor approved the public-data engineering
 comparison leaf. No reviewer has approved the scientific assumptions yet.
 
 ## Reviewer record
