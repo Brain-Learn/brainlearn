@@ -975,3 +975,56 @@ certification. The fixture has no sensor locations, and a sample-bearing public
 BIDS recording plus independent EEG methods review remain outstanding. Step
 7's parent and scientific-review gate remain unchecked; Step 8 must not start
 until those review gates pass.
+
+## Step 7 public BIDS EEG engineering reference
+
+Review date: 2026-10-20
+
+Scope: PR #36 final head `e23e816b0cf1b4b4a2ebfc50150792d595f4d941`
+(code repair `63a460fb4889c9ae50d3341c361f9ee28aa44c1c`), compared with main
+`b09419db746c71de99ecbe7857a14bc2c7785d8d`.
+
+Status: **approved for the sample-bearing public-data engineering comparison
+leaf only.** The pinned [OpenNeuro ds007338 v1.0.0
+snapshot](https://openneuro.org/datasets/ds007338/versions/1.0.0) subset contains 12 files
+(41,877,563 bytes), with per-file source URLs, sizes, and SHA-256 values. The
+manifest records CC0-1.0, the dataset DOI, and source citations; I verified
+those against the downloaded snapshot metadata and the OpenNeuro record. The
+EDF samples are fetched at test time and are not stored in Git. The README and
+manifest preserve the source-side duration discrepancy (323.464 seconds in
+the EEG sidecar; 324 seconds from 162,000 samples at 500 Hz).
+
+The test exercises BrainLearn, a separately written direct-MNE reference, and
+the generated Python export on the same recording and explicit keep-all
+component decision. It compares the resulting FIF arrays to the declared
+engineering tolerance (`rtol=1e-6`, `atol=3e-5 µV`), checks the 129 EEG
+channels, convergence, and sampling dimensions, and verifies source files are
+unchanged. The empty exclusion list is expressly an engineering choice and
+does not claim artifact assessment or scientific suitability.
+
+The initial independent review found that a symlinked output parent redirected
+the direct-reference FIF outside the requested directory. On the same PR,
+`_prepare_output_path` now rejects symlinked ancestors before dataset access
+and checks newly created parents; the regression verifies the target remains
+empty. My adversarial replay with the verified public dataset now exits before
+reading it and leaves the outside target empty.
+
+Clean-checkout verification at repaired code head `63a460f`: public test and
+symlink regression passed (2, 44.73 seconds); full pytest passed (831 passed,
+3 skipped, 2 upstream Starlette/AnyIO deprecation warnings in 81.45 seconds).
+Locked EEG sync passed; Ruff passed; formatting passed (93 files); mypy passed
+(36 source files); ESLint and Prettier passed; Vitest passed (183 tests in 21
+files); production build passed (1,850 modules, with the existing chunk-size
+advisory); the production npm audit reported 0 vulnerabilities; `uv lock
+--check` and `git diff --check` passed. Both hosted checks passed on code head
+`63a460f` in Actions run `39388883901` (Python 1m34s; frontend 29s), and the
+Linux dataset-smoke workflow passed with the public three-path replay on that
+head in run `39388899335`. Both required checks also passed on final review
+documentation head `e23e816` in run `39389396037`.
+
+This is engineering validation on one public participant and recording. It
+does not establish suitable filtering or ICA choices, certify the EEG workflow,
+or replace independent EEG methods review. The Step 7 parent and
+scientific-review gate remain unchecked; do not begin Step 8 until an EEG
+methods reviewer evaluates the workflow and assumptions against this
+sample-bearing recording.
