@@ -1028,3 +1028,38 @@ or replace independent EEG methods review. The Step 7 parent and
 scientific-review gate remain unchecked; do not begin Step 8 until an EEG
 methods reviewer evaluates the workflow and assumptions against this
 sample-bearing recording.
+
+## Step 7 methods-review packet engineering disposition
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #37 head `f499cf58a7c8feb4da7c111fa6cf9761c83497de`,
+compared with main `103f5588c76d9d11a8810058ab400e85551d4303`.
+
+Status: **approved for the reviewer-packet documentation only.** The new packet
+states that it is pending and does not satisfy or record the independent EEG
+methods review. Its workflow and dataset context match the reviewed engineering
+path and pinned sample; its comparison claims and tolerance are consistent with
+the public three-path test and prior engineering evidence. The relative links
+to the fixture manifest, reference instructions, and packet resolve.
+
+I checked the cited Kastrati et al. paper at
+[arXiv:2111.05100v2](https://arxiv.org/html/2111.05100v2), including Appendix A.
+The packet's high-level summary is accurate: the paper describes EEGLAB
+clean_rawdata bad-channel identification, a 0.5–40 Hz band-pass, Zapline, and
+spherical-spline interpolation in its minimal pipeline; its maximal pipeline
+adds ICA with ICLabel artifact classification. The paper also gives additional
+implementation detail (including its high-variance criterion and Zapline
+settings); the packet presents this only as context and does not claim that
+BrainLearn reproduces the published recipe. The paper and dataset links resolve
+to the intended records, and the packet correctly distinguishes software
+agreement from scientific suitability.
+
+Documentation checks on the clean PR checkout: `git diff --check` passed, and
+a local-link scan found no missing relative Markdown targets in the three
+changed files. The repository has no Markdown build or link-check job; both
+required hosted CI jobs passed on head `f499cf5` in Actions run `39391896387`
+(Python and frontend). This review approves no scientific assumptions or EEG
+method. Step 7's parent and scientific-review gates remain unchecked; Step 8
+must remain deferred until an independent EEG methods reviewer records a
+decision.
