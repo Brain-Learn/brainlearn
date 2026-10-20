@@ -1085,3 +1085,27 @@ the change, and both required hosted CI jobs passed on PR head `72d6480` in run
 `39393097006` (Python 1m39s; frontend 36s). No scientific checklist item
 changed. Step 7's parent and scientific-review gates remain unchecked, and
 Step 8 remains deferred while the request is pending.
+
+## Step 7 second external methods-review outreach status
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #39 head
+`f3ea507c67ba97691dd1565f3c365b2d02728c2c`, compared with main
+`0e80905492837788d028ba358f4f1c21dae35bf3`.
+
+Status: **approved for the second-invitation status documentation only.**
+Read-only Sent-mail inspection confirms a second invitation was sent to a
+different external researcher. Its message links the public methods-review
+packet and requests independent review of the EEG/MEG workflow, citing the
+recipient's MNE-Python and signal-processing expertise. The thread has no
+response. The first invitation's thread also has no response, and searches for
+replies from both contacted addresses returned none. The plan accurately
+records both invitations as pending and does not treat them as scientific
+review or approval.
+
+The PR changes only the implementation-plan status log. `git diff --check`
+passed; both required hosted CI jobs passed on PR head `f3ea507` in run
+`39395757055` (Python 1m37s; frontend 42s). No scientific checklist item
+changed. Step 7's parent and scientific-review gates remain unchecked, and
+Step 8 remains deferred while both requests are pending.
