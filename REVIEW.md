@@ -1203,7 +1203,11 @@ files); scoped mypy (33 files) and strict mypy (36 files); pytest (830 passed,
 high-severity findings in the full dependency tree); ESLint and Prettier;
 Vitest (183 tests in 21 files); Vite build (1,850 modules, existing chunk-size
 advisory); production audit (0 vulnerabilities); uv lock check; and
-`git diff --check`. Both required hosted checks passed on PR code/evidence head
-`37d9634` in run `39422650450` (Python quality and tests, 1m35s; frontend
-quality, tests, and build, 48s). This disposition confirms outreach status
+`git diff --check`. Both required hosted checks passed on implementation head
+`37d963471bd1a3216c7a6f54bfbc2146683daf66` in run `39422650450` (Python
+quality and tests, 1m35s; frontend quality, tests, and build, 48s). The
+monitor-only documentation update is on final head
+`b5b12a195498d2231705d2ca6d721eda5aab4b99`; both required hosted checks passed
+on that head in run `39423347356` (Python quality and tests, 1m45s; frontend
+quality, tests, and build, 46s). This disposition confirms outreach status
 only; no scientific method or independent EEG methods review is approved.
