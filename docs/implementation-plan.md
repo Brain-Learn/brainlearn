@@ -522,6 +522,8 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-20 | Step 7 public BIDS reference final monitored gate | Complete | Independent clean-checkout review of PR #36 final head `e23e816b0cf1b4b4a2ebfc50150792d595f4d941` against main `b09419db746c71de99ecbe7857a14bc2c7785d8d` approved the pinned public-data engineering comparison leaf. The 12-file ds007338 v1.0.0 manifest and downloaded contents agree on sizes and SHA-256 hashes; its CC0 license, DOI, authors, and limitations match the snapshot metadata. BrainLearn, direct MNE, and generated Python compare on the 129-channel, 500 Hz, 162,000-sample EDF at `rtol=1e-6`, `atol=3e-5 µV`; all input files remain unchanged. Reproduced and reviewed the symlinked-output finding and repair: on code head `63a460f`, the symlink regression and public three-path test passed (2, 44.73s); a separate valid-dataset probe rejects the symlinked parent before dataset access and leaves the target empty. Full clean-checkout gate on that code head: locked EEG sync; Ruff; formatting (93 files); mypy (36 files); pytest 831 passed, 3 skipped, 2 upstream warnings (81.45s); ESLint and Prettier; Vitest 183 tests in 21 files; production build (1,850 modules; existing chunk advisory); production npm audit (0 vulnerabilities); lock and diff checks passed. Hosted CI passed on code head `63a460f` in run `39388883901`; the Linux dataset-smoke workflow passed its public three-path replay in run `39388899335`; both hosted CI jobs passed on final documentation head `e23e816` in run `39389396037`. This is engineering evidence only; one participant and recording do not validate scientific suitability. The public-reference leaf is independently approved; Step 7's parent and scientific-review gate remain unchecked pending independent EEG methods review. | Monitor review complete on PR #36 |
 
+| 2026-10-20 | Step 7 methods-review packet | Prepared; independent review pending | Added `docs/eeg-methods-review.md` with the exact workflow, pinned recording, engineering evidence and limits, reviewer questions, and a pending decision record. The packet compares BrainLearn's 1–40 Hz FastICA engineering path with the EEGEyeNet publication's separate preprocessing description (0.5–40 Hz, bad-channel detection, Zapline, interpolation; maximal processing adds ICA/ICLabel) and makes clear that BrainLearn does not reproduce it. The source paper's Appendix A was checked at https://arxiv.org/abs/2111.05100. No scientific approval is inferred; Step 7's parent/scientific gate stays unchecked, and Step 8 remains deferred until an independent EEG methods reviewer completes the packet. | PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
@@ -532,6 +534,7 @@ Preserve every completion-log row.
 The ICA engineering checklist and sample-bearing public-data engineering
 comparison have independent engineering review. The next gate is an independent
 EEG methods review of the workflow and assumptions against the pinned public
-BIDS recording. Keep Step 7's parent and scientific-review gate unchecked until
-that review is complete. The public comparison is engineering evidence, not
-scientific approval. Do not begin Step 8 before those review gates pass.
+BIDS recording. Use [`docs/eeg-methods-review.md`](eeg-methods-review.md) as
+the review packet. Keep Step 7's parent and scientific-review gate unchecked
+until that review is complete. The public comparison is engineering evidence,
+not scientific approval. Do not begin Step 8 before those review gates pass.
