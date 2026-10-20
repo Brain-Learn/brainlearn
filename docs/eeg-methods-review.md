@@ -41,22 +41,23 @@ decision. BrainLearn does not assign artifact labels automatically.
 
 The adapter currently calls MNE filtering with
 `skip_by_annotation=("edge", "bad_acq_skip")`. MNE splits filtering around
-segments whose annotation descriptions begin with either prefix. Other
-annotations, including descriptions beginning with `BAD`, are not excluded
-from filtering by this setting. The subsequent ICA fit explicitly uses
-`reject_by_annotation=False`, so MNE does not omit `bad`-annotated segments
-from the fit. In MNE 1.13.2, `ICA.fit` defaults to `reject_by_annotation=True`,
-which omits annotations whose descriptions begin with `bad`. See the pinned
+segments whose annotation descriptions begin with either prefix, matching
+without regard to case. Thus `BAD_ACQ_SKIP` segments are skipped by filtering,
+but a segment such as `BAD_artifact` is not. The subsequent ICA fit explicitly
+uses `reject_by_annotation=False`, so MNE does not omit `bad`-annotated
+segments from the fit. In MNE 1.13.2, `ICA.fit` defaults to
+`reject_by_annotation=True`, which omits annotations whose descriptions begin
+with `bad`, without regard to case. See the pinned
 [MNE Raw filtering documentation](https://mne.tools/1.13/generated/mne.io.Raw.html)
 and [MNE ICA documentation](https://mne.tools/1.13/generated/mne.preprocessing.ICA.html).
 
 These settings are preserved in the direct-MNE comparison and generated
 export so the three paths agree; that agreement does not establish that
-including all annotated spans is appropriate. Please assess whether bad spans
-must be rejected or explicitly reviewed before filtering and ICA, what decision
-should be persisted, and what behavior is safe when the input has no suitable
-annotations. Do not infer that annotations were absent or harmless merely from
-the numerical comparison.
+filtering `BAD_artifact` spans or including them in ICA is appropriate. Please
+assess whether bad spans must be rejected or explicitly reviewed before
+filtering and ICA, what decision should be persisted, and what behavior is safe
+when the input has no suitable annotations. Do not infer that annotations were
+absent or harmless merely from the numerical comparison.
 
 ## Published pipeline context
 
