@@ -1211,3 +1211,48 @@ monitor-only documentation update is on final head
 on that head in run `39423347356` (Python quality and tests, 1m45s; frontend
 quality, tests, and build, 46s). This disposition confirms outreach status
 only; no scientific method or independent EEG methods review is approved.
+
+## Step 7 fifth external methods-review outreach status
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #43 outreach-entry head
+`eee40c2deb08cfddc86778f25b7277be821bffb1`, compared with main
+`2f0e8a3ba991dae13fbbffa6ca45fe3dfde4d836`.
+
+Status: **approved for outreach-status documentation only.** Gmail thread
+`1a15976c53744ea4` contains one message labeled SENT to `marco.buiatti@unitn.it`,
+which matches the address published on the University of Trento-affiliated
+profile. The invitation links the review packet, requests candid critique or a
+referral rather than endorsement, and describes a bounded EEG-methods review.
+The thread has no reply, and a sender search found no response. The plan
+accurately records the invitation as pending.
+
+The official [University of Trento profile](https://sites.google.com/a/unitn.it/marcobuiatti/)
+lists the matching email and affiliation. Its [research page](https://sites.google.com/a/unitn.it/marcobuiatti/home-page/research)
+describes EEG studies and development of signal-processing methods, including
+artifact correction; the [EEG artifact-identification page](https://sites.google.com/a/unitn.it/marcobuiatti/home-page/research/eeg-artifact-identification)
+describes his work on ADJUST and co-development of NEAR. The UniTrento
+[BabyLab publications page](https://r1.unitn.it/babylab/en/rricerca/pubblicazioni/)
+lists the 2022 NEAR paper and its authors, including Buiatti. These sources
+support the recorded reviewer fit, not a review or endorsement of BrainLearn.
+
+PR #43 changes only the implementation-plan outreach log. I reproduced the
+clean-checkout gate: locked EEG sync; Ruff; formatting (94 files); scoped mypy
+(33 files) and strict mypy (36 files); pytest (830 passed, 4 skipped, 2
+upstream deprecation warnings, 43.08s); npm ci (271 packages, 2 high-severity
+findings in the full tree); ESLint and Prettier; Vitest (183 tests in 21
+files); Vite build (1,850 modules, existing chunk-size advisory); production
+audit (0 vulnerabilities); uv lock check; and `git diff --check`. Both
+required hosted jobs passed on outreach-entry head
+`eee40c2deb08cfddc86778f25b7277be821bffb1` in run `39429668122` (Python
+quality and tests, 1m41s; frontend quality, tests, and build, 48s). This
+monitor-only documentation update is on final review head
+`71c5794450647bcce149ee9fccd4beac31307884`; both required hosted jobs passed
+on that head in run `39430221660` (Python quality and tests, 1m24s; frontend
+quality, tests, and build, 41s). The final evidence-update head
+`ab170e3ae959ee8b9f2516a239597c36bd5fce3f` passed both required hosted jobs in
+run `39430591406` (Python quality and tests, 1m38s; frontend quality, tests,
+and build, 39s). This disposition confirms outreach status only. Step 7's
+parent and scientific-review gates remain unchecked; Step 8 remains deferred.
+No scientific method or external EEG methods review is approved.
