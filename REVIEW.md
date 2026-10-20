@@ -1326,3 +1326,42 @@ quality and tests, 1m38s; frontend quality, tests, and build, 45s).
 This disposition approves evidence wording only. No processing behavior,
 scientific assumption, or review status changed. Step 7's parent and
 scientific-review gates remain unchecked; Step 8 remains deferred.
+
+## Step 7 sixth independent EEG methods-review outreach — PR #46
+
+Review date: 2026-10-20
+
+Scope: documentation-only PR #46 outreach-entry head
+`44148286eeb4967cd77bd40a915794ee4a8c521e`, compared with main
+`97c8275fe35d3121e6403b1fd4a9a6ed7ec85370`.
+
+Status: **approved for outreach-status documentation only.** Gmail thread
+`1a159a1b9ab63da9` contains one message labeled SENT to
+`clemens.brunner@uni-graz.at`, matching the address on the University of Graz
+profile. The invitation links the methods packet and asks for candid critique
+or a referral rather than endorsement. It defines the bounded review scope and
+states that software agreement is engineering evidence, not scientific
+validation. The thread contains no reply, and a sender search for
+`clemens.brunner@uni-graz.at` returned no messages.
+
+The official [University of Graz research profile](https://online.uni-graz.at/kfu_online/wbforschungsportal.cbshowportal?pPersonNr=103269)
+identifies Brunner, lists the same institutional email, and describes his work
+in EEG oscillations, biosignal processing, and scientific software. It also
+lists his contribution to MNE-Python and MNELAB. His [project profile](https://cbrnr.github.io/)
+independently describes EEG and biomedical signal processing, contribution to
+MNE-Python, and MNELAB as a graphical interface for MNE-Python. These sources
+support the recorded contact and reviewer fit; they do not indicate a review or
+endorsement of BrainLearn.
+
+The clean detached checkout reproduced the full gate on Python 3.12: locked EEG
+sync; Ruff; formatting (94 files); scoped mypy (33 files) and strict mypy (36
+files); pytest (830 passed, 4 skipped, 2 upstream deprecation warnings,
+65.68s); npm ci (271 packages, 2 high-severity findings in the full dependency
+tree); ESLint and Prettier; Vitest (183 tests in 21 files); Vite build (1,850
+modules, existing chunk-size advisory); production audit (0 vulnerabilities);
+uv lock check; and `git diff --check`. Both required hosted CI jobs passed on
+outreach-entry head `44148286eeb4967cd77bd40a915794ee4a8c521e` in run
+`39436631157` (Python quality and tests, 1m43s; frontend quality, tests, and
+build, 47s). This confirms the invitation and record only. Step 7's parent and
+scientific-review gates remain unchecked; Step 8 remains deferred. No
+scientific method or external review is approved.
