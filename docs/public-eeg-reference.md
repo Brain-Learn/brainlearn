@@ -37,6 +37,13 @@ convergence and the recorded 129-channel fit, and confirms the source files do
 not change. The empty list is an explicit engineering decision to preserve
 every fitted component; it is not an artifact assessment or recommendation.
 
+This is not a reproduction of the EEGEyeNet publication's preprocessing. Its
+Appendix A describes bad-channel detection, a 0.5–40 Hz band-pass, Zapline line
+noise removal, and interpolation; its maximal pipeline adds ICA with ICLabel
+artifact classification. BrainLearn's 1–40 Hz engineering path does not run
+those procedures. See the [Step 7 methods-review packet](eeg-methods-review.md)
+for the questions that need independent evaluation.
+
 ## Limits
 
 This snapshot supplies real samples for reproducible software comparison. It
