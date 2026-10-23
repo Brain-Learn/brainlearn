@@ -74,7 +74,7 @@ sphinx_gallery_conf = {
 
 html_theme = "pydata_sphinx_theme"
 html_title = "BrainLearn — Documentation"
-html_logo = "_static/brainlearn-mark.png"
+html_logo = "_static/brainlearn-mark.svg"
 html_favicon = "_static/favicon.svg"
 html_static_path = ["_static"]
 html_css_files = ["css/brainlearn.css"]
@@ -83,7 +83,11 @@ html_baseurl = os.environ.get(
     "BRAINLEARN_DOCS_BASEURL", "https://brain-learn.github.io/brainlearn/"
 )
 html_theme_options = {
-    "logo": {"text": "BrainLearn"},
+    "logo": {
+        "text": "BrainLearn",
+        "image_light": "_static/brainlearn-mark.svg",
+        "image_dark": "_static/brainlearn-mark-dark.svg",
+    },
     "github_url": "https://github.com/Brain-Learn/brainlearn",
     "use_edit_page_button": True,
     "navbar_align": "content",

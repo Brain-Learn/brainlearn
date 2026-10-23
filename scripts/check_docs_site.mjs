@@ -65,6 +65,27 @@ const failures = [];
 try {
   const statusPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await statusPage.goto(`${baseUrl}/index.html`, { waitUntil: "domcontentloaded" });
+  const logoAssets = await statusPage.locator(".navbar-brand .logo__image").evaluateAll((images) =>
+    images.map((image) => ({
+      className: image.className,
+      loaded: image.complete && image.naturalWidth > 0,
+    })),
+  );
+  for (const variant of ["only-light", "only-dark"]) {
+    if (!logoAssets.some((image) => image.className.includes(variant) && image.loaded)) {
+      failures.push(`logo: ${variant} image is missing or failed to load`);
+    }
+  }
+  for (const mode of ["light", "dark"]) {
+    await statusPage.evaluate((theme) => {
+      document.documentElement.dataset.theme = theme;
+    }, mode);
+    const visibleLogo = await statusPage
+      .locator(`.navbar-brand .logo__image.${mode === "light" ? "only-light" : "only-dark"}`)
+      .evaluateAll((images) => images.some((image) => getComputedStyle(image).display !== "none"));
+    if (!visibleLogo) failures.push(`logo: ${mode}-mode variant is not visible`);
+  }
+  process.stdout.write("Checked light and dark documentation logo variants\n");
   const expectedStatus = process.env.BRAINLEARN_DOCS_STATUS ?? "Development";
   const statusText = await statusPage.locator(".bd-header-announcement .bl-status").innerText();
   if (!statusText.includes(expectedStatus) || !statusText.includes("docs")) {
