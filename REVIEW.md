@@ -1440,6 +1440,9 @@ not reproduce in hosted CI.
 Both required hosted jobs passed on PR #48 implementation head
 `6a2e4e529092af750d31888c3b0b0b17707e90d1` in run `39964390468` (Python
 quality and tests, 1m45s; frontend quality, tests, and build, 48s). This
+monitor evidence update passed both required jobs on head
+`6394a281ef6ed87803a4d34605642fe2b01c4c5c` in run `39964923193` (Python
+quality and tests, 1m30s; frontend quality, tests, and build, 42s). This
 disposition is limited to reconciling the prior CI evidence. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred. No
 scientific review or approval is inferred.
