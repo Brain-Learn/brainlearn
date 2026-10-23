@@ -2,10 +2,11 @@
 
 ## Review status
 
-**Pending.** This packet prepares the scientific review; it is not a review or
-approval. Step 7's top-level and scientific-review checkboxes stay unchecked
-until an independent EEG methods reviewer records a decision and any required
-changes have been completed and verified.
+**Pending.** One partial email response is recorded below. It is not a full
+review or approval of the bounded workflow. Step 7's top-level and
+scientific-review checkboxes stay unchecked until an independent EEG methods
+reviewer assesses the workflow against the pinned recording, records a
+decision, and any required changes have been completed and verified.
 
 ## Review scope
 
@@ -139,11 +140,35 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
 
 ## Reviewer record
 
-- Reviewer and relevant EEG methods experience: pending
-- Date and reviewed code commit: pending
-- Decision for the bounded Step 7 workflow: pending
-- Required changes and their verification: pending
-- Remaining limitations and references: pending
+- Reviewer and relevant EEG methods experience: Arnaud Delorme; UCSD lists EEG
+  analysis, independent component analysis, and neuroinformatics among his
+  research areas ([UCSD profile](https://profiles.ucsd.edu/arnaud.delorme)).
+- Date and reviewed code commit: email response received 2026-10-23; the
+  reviewer did not identify a reviewed code commit.
+- Decision for the bounded Step 7 workflow: no overall decision. The response
+  gives partial feedback on the ICA direction and recommends considering the
+  EEGLAB Python pipeline.
+- Feedback and scope: the reviewer expressed concern about validation of the
+  ICLabel pipeline in MNE and suggested EEGPrep. BrainLearn's pinned workflow
+  currently uses MNE FastICA followed by explicit manual component review; it
+  does not run ICLabel. The ICLabel concern therefore does not directly
+  describe the current implementation and needs clarification before it is
+  treated as a finding. The response does not address the pinned recording,
+  filter choice, BAD annotations, missing reference/power-line metadata, or
+  FastICA fit diagnostics.
+- References provided: [Automatic EEG Independent Component Classification
+  Using ICLabel in Python (2024)](https://arxiv.org/abs/2411.17721) compares
+  Python and MATLAB ICLabel results across 14 participants. [EEGPrep: a
+  validated Python implementation of the EEGLAB preprocessing pipeline
+  (2026)](https://arxiv.org/abs/2607.16647) reports stage-wise and end-to-end
+  comparisons against MATLAB on 13 participants. These papers support
+  evaluating the suggested route; they do not validate BrainLearn.
+- Required changes and their verification: no implementation change was
+  requested or made. Clarify the ICLabel mismatch and evaluate EEGPrep's fit
+  for BrainLearn before making a processing or architecture decision.
+- Remaining limitations: this partial feedback is not a review of the full
+  Step 7 assumptions and does not close the independent scientific-review
+  gate.
 
 Do not check Step 7's parent or scientific-review gate based on completion of
 this packet. Record the reviewer's actual decision and evidence in the
