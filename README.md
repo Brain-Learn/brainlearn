@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="website/_static/brainlearn-mark.png" alt="BrainLearn EEG signal branching into workflow nodes" width="360">
+</p>
+
 # BrainLearn
 
 BrainLearn is a local-first visual workflow builder for reproducible neuroscience research. The current experimental EEG path imports a project-local BIDS recording, inspects its metadata, applies a version-pinned MNE-Python filter, previews the change, and exports a runnable Python script.
