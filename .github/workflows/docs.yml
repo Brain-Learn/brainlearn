@@ -81,7 +81,7 @@ jobs:
         run: npm ci --prefix website
 
       - name: Install Chromium
-        run: npx --prefix website playwright install --with-deps chromium
+        run: npx --prefix website playwright install chromium
 
       - name: Check responsive layout and accessibility
         run: npm --prefix website run check -- "${RUNNER_TEMP}/brainlearn-docs/html"
