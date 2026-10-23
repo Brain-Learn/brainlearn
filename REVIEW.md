@@ -1446,3 +1446,26 @@ quality and tests, 1m30s; frontend quality, tests, and build, 42s). This
 disposition is limited to reconciling the prior CI evidence. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred. No
 scientific review or approval is inferred.
+
+## Step 7 eighth independent EEG methods-review outreach
+
+Review date: 2026-10-23
+
+Status: **awaiting response; no scientific review is inferred.** Sent one
+bounded review request to Dominik Welke at `d.welke@leeds.ac.uk` (Gmail
+message/thread `1a16980e2f85f583`, labeled SENT). The request links the pinned
+methods-review packet and asks for brief written feedback on the workflow's
+assumptions or a referral; it says the software comparison is engineering
+evidence only and explicitly allows declining.
+
+The reviewer's public [profile](https://dominikwelke.github.io/) describes EEG
+and EEGManyLabs work, open-science practice, and contributions mainly to the
+MNE-Python ecosystem. The same page lists the contact address above. These
+facts support the choice of recipient; they do not imply that he has reviewed
+or endorsed BrainLearn.
+
+The user chose to leave the proposed MNE Forum question unposted. No public
+forum post, account creation, or terms acceptance occurred. The request email
+is a separate authorized reviewer contact. No methods decision, code change,
+or checkbox state results from this entry. Step 7's parent and scientific
+review gates remain unchecked; Step 8 remains deferred.
