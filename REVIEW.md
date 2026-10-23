@@ -1557,3 +1557,30 @@ Sources checked: [EEGPrep preprint](https://arxiv.org/abs/2607.16647),
 [PyPI 0.4.0 metadata](https://pypi.org/project/eegprep/0.4.0/),
 [MNE integration guide](https://eegprep.org/user_guide/mne_integration.html),
 and [preprocessing guide](https://eegprep.org/user_guide/preprocessing_pipeline.html).
+
+## Repository logo and bounded demo-readiness monitoring — PR #61
+
+Review date: 2026-10-23
+
+Status: **approved for repository branding and bounded synthetic demo-readiness
+documentation only.** Reviewed final PR head
+`e5d4c8a225034883a4eef0bac323b794ddb3d9aa` against main
+`58d279755da33d5992a98acb567cb99bc23b30c9`. The initial dark-mode contrast
+finding at `website/conf.py:77` was fixed with separate light and dark SVG
+marks and a browser assertion for asset loading and theme visibility. The
+monitor's [final PR comment](https://github.com/Brain-Learn/brainlearn/pull/61#issuecomment-6370646784)
+records the disposition. Manual browser renders confirm the branch paths are
+visible in both themes.
+
+The clean checkout passed locked docs/EEG sync, strict Sphinx HTML build and
+linkcheck, and the responsive/axe browser gate for 7 pages at 375 px and 1440
+px; the new logo checks passed for both themes. The docs npm install reported
+0 vulnerabilities. `uv lock --check`, XML parsing of both logo variants and
+the favicon, and `git diff --check` passed. Hosted CI passed on the final head:
+run `39993944685` (Python 1m35s; frontend 37s) and docs run `39993944689`
+(48s; Pages deployment skipped as expected for a PR).
+
+The readiness statement remains limited to a deterministic synthetic
+engineering demo. No live GUI processing was run in this review, and no EEG
+method or scientific suitability is approved. Step 7's parent/scientific-review
+gates remain unchecked; Step 8 remains deferred.
