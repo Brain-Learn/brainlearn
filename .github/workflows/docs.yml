@@ -1,0 +1,119 @@
+name: Documentation site
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and check documentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Set documentation version label
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "BRAINLEARN_DOCS_VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            if [[ "${GITHUB_REF_NAME}" =~ (a|alpha|b|beta|rc)[0-9.-]*$ ]]; then
+              echo "BRAINLEARN_DOCS_STATUS=Pre-release" >> "$GITHUB_ENV"
+            else
+              echo "BRAINLEARN_DOCS_STATUS=Stable" >> "$GITHUB_ENV"
+            fi
+          else
+            echo "BRAINLEARN_DOCS_VERSION=development" >> "$GITHUB_ENV"
+            echo "BRAINLEARN_DOCS_STATUS=Development" >> "$GITHUB_ENV"
+          fi
+
+      - name: Install locked Python environment
+        run: uv sync --locked --all-packages --group docs --group eeg
+
+      - name: Build HTML documentation with warnings as errors
+        run: >-
+          uv run --locked --group docs --group eeg sphinx-build -E -a -n -W
+          --keep-going -b html website "${RUNNER_TEMP}/brainlearn-docs/html"
+
+      - name: Check external links
+        run: >-
+          uv run --locked --group docs --group eeg sphinx-build -E -a -n -W
+          --keep-going -b linkcheck website "${RUNNER_TEMP}/brainlearn-docs/linkcheck"
+
+      - name: Install browser accessibility checker
+        run: npm ci --prefix website
+
+      - name: Install Chromium
+        run: npx --prefix website playwright install --with-deps chromium
+
+      - name: Check responsive layout and accessibility
+        run: npm --prefix website run check -- "${RUNNER_TEMP}/brainlearn-docs/html"
+
+      - name: Upload static Pages artifact
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: "${{ runner.temp }}/brainlearn-docs/html"
+
+  deploy:
+    name: Deploy documentation to GitHub Pages
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+
+      - name: Download Pages artifact
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: github-pages
+          path: _site
+
+      - name: Publish Pages artifact
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

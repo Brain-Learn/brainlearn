@@ -17,6 +17,14 @@ dev = [
   "pytest>=8.4,<10",
   "ruff>=0.12,<1",
 ]
+docs = [
+  "myst-parser==4.0.1",
+  "pydata-sphinx-theme==0.23.0",
+  "sphinx==8.2.3",
+  "sphinx-copybutton==0.5.2",
+  "sphinx-design==0.6.1",
+  "sphinx-gallery==0.22.1",
+]
 eeg = [
   "brainlearn-mne",
   "mne==1.13.2",
