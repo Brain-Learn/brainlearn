@@ -1374,14 +1374,14 @@ Scope: documentation-only PR #47 implementation head
 `60dfe833412069fdf838ad38b71c667189db4da9`, compared with main
 `7c35fd29c82c6f8c8b3e58a956f90f56e407cc5d`.
 
-Status: **approved for the follow-up-record documentation only, pending the
-required hosted checks on this monitor update.** The implementation diff adds
-only one row in `docs/implementation-plan.md`. Gmail thread
-`1a159a1b9ab63da9` contains the original invitation and follow-up message
-`1a168f80a0d00e8f`, both labeled SENT to `clemens.brunner@uni-graz.at`. The
-follow-up repeats the bounded scope and asks for a referral if a review is not
-feasible. The thread has no reply; a search from the reviewer address returned
-no messages. No scientific review or approval is inferred.
+Status: **approved for the follow-up-record documentation only.** The original
+PR change adds one row in `docs/implementation-plan.md`; this monitor update
+records the review evidence. Gmail thread `1a159a1b9ab63da9` contains the
+original invitation and follow-up message `1a168f80a0d00e8f`, both labeled SENT
+to `clemens.brunner@uni-graz.at`. The follow-up repeats the bounded scope and
+asks for a referral if a review is not feasible. The thread has no reply; a
+search from the reviewer address returned no messages. No scientific review or
+approval is inferred.
 
 The clean detached checkout reproduced the full gate on Python 3.12: locked EEG
 sync; Ruff; formatting (94 files); CI-scoped mypy (33 files) and configured
@@ -1393,6 +1393,11 @@ audit (0 vulnerabilities); uv lock check; and `git diff --check`. Both required
 hosted jobs passed on implementation head
 `60dfe833412069fdf838ad38b71c667189db4da9` in run `39962536396` (Python
 quality and tests, 1m45s; frontend quality, tests, and build, 46s).
+
+After the monitor evidence was added, both hosted jobs passed on
+monitor-evidence head `a0bedb80f5d631de904e67161c5e3363f8d956eb` in run
+`39963120606` (Python quality and tests, 1m37s; frontend quality, tests, and
+build, 28s).
 
 This disposition covers the outreach record only. No scientific assumption or
 checklist state changed. Step 7's parent and scientific-review gates remain
