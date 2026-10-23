@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 160" role="img" aria-labelledby="title">
+  <title id="title">BrainLearn EEG signal connected to workflow nodes</title>
+  <g fill="none" stroke="#d7e5e8" stroke-linecap="round" stroke-linejoin="round" stroke-width="15">
+    <path d="M198 80C222 80 216 27 241 27"/>
+    <path d="M198 80H241"/>
+    <path d="M198 80C222 80 216 133 241 133"/>
+  </g>
+  <path d="M13 80h26c19 0 22-9 29-28 10-28 11 81 24 81s16-105 29-110c16-6 17 90 30 90 12 0 12-33 24-33" fill="none" stroke="#23c5c7" stroke-linecap="round" stroke-linejoin="round" stroke-width="14"/>
+  <circle cx="175" cy="80" r="28" fill="#d7e5e8"/>
+  <circle cx="175" cy="80" r="14" fill="#23c5c7"/>
+  <circle cx="244" cy="27" r="23" fill="#d7e5e8"/>
+  <circle cx="244" cy="27" r="12" fill="#23c5c7"/>
+  <circle cx="244" cy="80" r="23" fill="#d7e5e8"/>
+  <circle cx="244" cy="80" r="12" fill="#f4ad45"/>
+  <circle cx="244" cy="133" r="23" fill="#d7e5e8"/>
+  <circle cx="244" cy="133" r="12" fill="#23c5c7"/>
+</svg>
