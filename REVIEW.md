@@ -1365,3 +1365,35 @@ outreach-entry head `44148286eeb4967cd77bd40a915794ee4a8c521e` in run
 build, 47s). This confirms the invitation and record only. Step 7's parent and
 scientific-review gates remain unchecked; Step 8 remains deferred. No
 scientific method or external review is approved.
+
+## Step 7 reviewer follow-up monitoring — PR #47
+
+Review date: 2026-10-23
+
+Scope: documentation-only PR #47 implementation head
+`60dfe833412069fdf838ad38b71c667189db4da9`, compared with main
+`7c35fd29c82c6f8c8b3e58a956f90f56e407cc5d`.
+
+Status: **approved for the follow-up-record documentation only, pending the
+required hosted checks on this monitor update.** The implementation diff adds
+only one row in `docs/implementation-plan.md`. Gmail thread
+`1a159a1b9ab63da9` contains the original invitation and follow-up message
+`1a168f80a0d00e8f`, both labeled SENT to `clemens.brunner@uni-graz.at`. The
+follow-up repeats the bounded scope and asks for a referral if a review is not
+feasible. The thread has no reply; a search from the reviewer address returned
+no messages. No scientific review or approval is inferred.
+
+The clean detached checkout reproduced the full gate on Python 3.12: locked EEG
+sync; Ruff; formatting (94 files); CI-scoped mypy (33 files) and configured
+strict mypy (36 files); pytest (830 passed, 4 skipped, 2 upstream deprecation
+warnings, 63.86s); npm ci (271 packages; the full dependency tree reports 2
+moderate and 3 high findings); ESLint and Prettier; Vitest (183 tests in 21
+files); Vite build (1,850 modules, existing chunk-size advisory); production
+audit (0 vulnerabilities); uv lock check; and `git diff --check`. Both required
+hosted jobs passed on implementation head
+`60dfe833412069fdf838ad38b71c667189db4da9` in run `39962536396` (Python
+quality and tests, 1m45s; frontend quality, tests, and build, 46s).
+
+This disposition covers the outreach record only. No scientific assumption or
+checklist state changed. Step 7's parent and scientific-review gates remain
+unchecked; Step 8 remains deferred.
