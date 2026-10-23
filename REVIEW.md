@@ -1493,3 +1493,32 @@ BrainLearn.
 No reply, methods decision, code change, or scientific approval has been
 received. Step 7's parent and scientific-review gates remain unchecked; Step 8
 remains deferred.
+
+## Step 7 partial methods feedback from Arnaud Delorme
+
+Review date: 2026-10-23
+
+Status: **partial feedback received; the bounded workflow has not been
+approved.** Delorme replied in Gmail thread `1a16988f694a6f0d` (message
+`1a1698f4d35cc82b`, from `adelorme@ucsd.edu`). He expressed concern about
+validation of the ICLabel pipeline in MNE and recommended considering the
+EEGLAB Python pipeline, citing [the Python ICLabel comparison
+paper](https://arxiv.org/abs/2411.17721) and [the EEGPrep pipeline
+paper](https://arxiv.org/abs/2607.16647).
+
+The current BrainLearn implementation uses MNE FastICA followed by explicit
+manual component review; it does not run ICLabel. His ICLabel concern therefore
+does not directly identify a defect in the current path and should be
+clarified. The EEGPrep recommendation is relevant for evaluation, not yet a
+decision to replace the current adapter. His reply does not assess the pinned
+recording, filter, BAD-annotation handling, missing acquisition metadata, or
+the remaining review questions. The response does not state a reviewed commit
+or an overall decision for the bounded workflow.
+
+The [2024 paper](https://arxiv.org/abs/2411.17721) reports Python-versus-MATLAB
+ICLabel comparisons on 14 participants. The [2026 EEGPrep
+preprint](https://arxiv.org/abs/2607.16647) reports stage-wise and end-to-end
+comparisons against MATLAB on 13 participants. These are leads for assessing
+an alternative implementation; they do not validate BrainLearn. No code or
+scientific assumption changed. Step 7's parent and scientific-review gates
+remain unchecked; Step 8 remains deferred.
