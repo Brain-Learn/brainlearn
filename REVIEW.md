@@ -1469,3 +1469,27 @@ forum post, account creation, or terms acceptance occurred. The request email
 is a separate authorized reviewer contact. No methods decision, code change,
 or checkbox state results from this entry. Step 7's parent and scientific
 review gates remain unchecked; Step 8 remains deferred.
+
+## Step 7 ninth independent EEG methods-review outreach
+
+Review date: 2026-10-23
+
+Status: **awaiting response; no scientific review is inferred.** Sent one
+bounded review request to Arnaud Delorme at `adelorme@ucsd.edu` (Gmail
+message/thread `1a16988f694a6f0d`, labeled SENT). The request links the pinned
+methods-review packet, asks for brief written feedback on method assumptions
+or a referral, and states that the three-path comparison is engineering
+evidence only. It does not ask for endorsement and does not require running
+BrainLearn.
+
+The official [UCSD profile](https://profiles.ucsd.edu/arnaud.delorme) lists EEG
+analysis, independent component analysis, and neuroinformatics among his
+research areas. The [UCSD Institute for Neural Computation faculty
+page](https://inc.ucsd.edu/people/core-faculty.php) lists his contact and
+continued EEGLAB development as a research interest. These sources support
+the fit and address; they do not imply that he has reviewed or endorsed
+BrainLearn.
+
+No reply, methods decision, code change, or scientific approval has been
+received. Step 7's parent and scientific-review gates remain unchecked; Step 8
+remains deferred.
