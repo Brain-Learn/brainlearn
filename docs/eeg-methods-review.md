@@ -59,6 +59,25 @@ filtering and ICA, what decision should be persisted, and what behavior is safe
 when the input has no suitable annotations. Do not infer that annotations were
 absent or harmless merely from the numerical comparison.
 
+### Observations in the pinned recording
+
+The EDF was fetched from OpenNeuro's public S3 mirror and matched the fixture
+manifest's size and SHA-256. Reading it with the pinned MNE 1.13.2 found 272
+embedded annotations, including exactly one `BAD`-prefix annotation:
+`BAD_ACQ_SKIP` at 323.466 seconds, lasting 0.534 seconds and ending at 324.000
+seconds. The BIDS `events.tsv` contains 271 rows. Under the current adapter
+settings, filtering skips this `BAD_ACQ_SKIP` span, while ICA fitting includes
+it because `reject_by_annotation=False`.
+
+The EEG sidecar reports 500 Hz and 323.464 seconds, but lists `EEGReference`,
+`PowerLineFrequency`, and `SoftwareFilters` as `n/a`. The EDF contains 129 EEG
+channels and 162,000 samples (324 seconds). The BIDS channels table labels all
+129 channel rows `good`; that source label is not a BrainLearn QC decision and
+does not establish signal quality, reference, or hardware filtering. The
+annotation begins 2 ms after the sidecar's stated duration and ends with the
+EDF; both source duration values remain unreconciled. These are observations for
+review, not a scientific interpretation or approval.
+
 ## Published pipeline context
 
 The EEGEyeNet paper describes its own minimal preprocessing pipeline: bad
