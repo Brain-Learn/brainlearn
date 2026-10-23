@@ -1399,6 +1399,10 @@ monitor-evidence head `a0bedb80f5d631de904e67161c5e3363f8d956eb` in run
 `39963120606` (Python quality and tests, 1m37s; frontend quality, tests, and
 build, 28s).
 
+After the monitor's final evidence correction, both hosted jobs passed on final
+head `1972f78cb99c334b08586b0daef78418a4054508` in run `39963487794` (Python
+quality and tests, 1m28s; frontend quality, tests, and build, 43s).
+
 This disposition covers the outreach record only. No scientific assumption or
 checklist state changed. Step 7's parent and scientific-review gates remain
 unchecked; Step 8 remains deferred.
