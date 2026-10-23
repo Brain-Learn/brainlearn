@@ -1,6 +1,6 @@
 # Local development
 
-This foundation runs a Python service on loopback and a Vite development server. It renders an example EEG workflow, validates its graph, and reports lightweight system capabilities. It does not execute EEG processing.
+BrainLearn runs a Python service on loopback and a Vite development server. It validates workflows and provides an experimental, bounded EEG path for project-local BIDS import, signal inspection, MNE-Python filtering, previews, and Python export. Later EEG nodes remain examples until their behavior and scientific review gates are complete. See the [documentation website](https://brain-learn.github.io/brainlearn/) and [EEG filter demo](eeg-filter-demo.md).
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ The generated `uv.lock` and `apps/web/package-lock.json` should remain committed
 Start the API in one terminal:
 
 ```bash
-uv run uvicorn brainlearn_server.app:app --host 127.0.0.1 --port 8000 --reload
+uv run brainlearn-server
 ```
 
 Start the interface in another terminal:

@@ -11,9 +11,11 @@ The first product milestone is one complete EEG workflow. Do not broaden the ini
 ## Current state
 
 - `PROPOSAL.md` contains the product, publication, validation, CI/CD, licensing, and adoption plan.
+- [The documentation site](https://brain-learn.github.io/brainlearn/) is published from `website/`; source content and deployment checks live there.
 - `design/brainlearn-layout-concept-v1.png` is the first interface reference.
 - The repository was initialized on the `main` branch on 12 September 2026.
-- The executable foundation includes the workflow schema, validator, local API, capability inspection, and visual graph shell. Scientific processing is not implemented yet.
+- The app includes the workflow schema and validator, local service, capability inspection, visual graph, BIDS EEG discovery/import, signal inspection, MNE filtering, bounded previews, Python export, and engineering work for explicit ICA review. EEG processing remains experimental; independent methods review is pending, and the full descriptive workflow is not complete.
+- Follow `docs/implementation-plan.md` for the scientific-review gate and remaining EEG work. The filter comparison on the synthetic fixture is engineering evidence, not scientific validation.
 - BrainLearn's original code uses BSD-3-Clause. Preserve the root and package license files and SPDX metadata. Every external tool, dependency, dataset, atlas, model, and plugin retains its own license and must be reviewed separately before bundling.
 
 ## Architecture decision

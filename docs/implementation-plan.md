@@ -228,30 +228,30 @@ Goal: publish a polished static project and documentation website, inspired by
 the information architecture of the Nilearn documentation without copying its
 branding or content, and host it from the public GitHub repository.
 
-- [ ] Record a short documentation-stack decision comparing Sphinx with the
+- [x] Record a short documentation-stack decision comparing Sphinx with the
   PyData theme and Sphinx-Gallery against credible alternatives; prefer the
   scientific-Python ecosystem unless the tested requirements favor another
   stack.
-- [ ] Build a responsive landing page that explains BrainLearn's research-only,
+- [x] Build a responsive landing page that explains BrainLearn's research-only,
   local-first purpose, current maturity, supported EEG scope, and explicit
   non-clinical limitations without overstating scientific certification.
-- [ ] Provide primary navigation for Quickstart, Examples, User guide, API
+- [x] Provide primary navigation for Quickstart, Examples, User guide, API
   reference, installation/platform support, contributing, governance, citation,
   releases, and project status.
-- [ ] Create a searchable example gallery using only synthetic or clearly
+- [x] Create a searchable example gallery using only synthetic or clearly
   licensed public data, with exact versions, citations, checksums, expected
   outputs, limitations, and links to reproducible workflows.
-- [ ] Generate Python API reference from maintained public interfaces and link
+- [x] Generate Python API reference from maintained public interfaces and link
   frontend, workflow-schema, plugin, and local-service contracts without
   exposing internal or unstable APIs as supported.
-- [ ] Add a ten-minute EEG walkthrough with screenshots, keyboard-accessible
+- [x] Add a ten-minute EEG walkthrough with screenshots, keyboard-accessible
   instructions, downloadable example workflow, and explicit QC/reproducibility
   explanations. Never publish personal paths, session tokens, research data, or
   identifiable participant information.
 - [ ] Support versioned documentation with distinct development, prerelease,
   stable, and archived-version indicators; prevent old scientific runs from
   silently inheriting current documentation claims.
-- [ ] Add documentation lint, link checking, clean-build warnings-as-errors,
+- [x] Add documentation lint, link checking, clean-build warnings-as-errors,
   accessibility checks, responsive layout checks, and representative page
   rendering to CI.
 - [ ] Publish only the generated static site through GitHub Pages using a
@@ -564,6 +564,7 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-10-23 | Step 7 MNE methods-review follow-up | Author-reviewed per user direction; science review pending | Sent one brief follow-up to Dr. Arnaud Gramfort in the existing Gmail thread `1a1587c7877f77c7` (message `1a16910156ed418a`), three days after the initial request. The original message links the Step 7 review packet and asks for a candid review of the pinned MNE workflow or a referral; the follow-up reiterates the bounded request and says no more follow-ups will be sent. Gmail confirms both messages are SENT to `agramfort@meta.com`; there is no reviewer response. No methods decision or scientific approval is inferred. Local Python 3.12 gate passed: locked EEG sync; Ruff; formatting (94 files); scoped mypy (33 files); strict mypy (36 files); pytest (830 passed, 4 skipped, 2 upstream deprecation warnings, 41.07s); npm ci (271 packages; 2 moderate and 3 high findings in the full tree); ESLint and Prettier; Vitest (183 tests/21 files); Vite build (1,850 modules, existing chunk-size advisory); production audit (0 vulnerabilities); uv lock check; and diff check. Author self-review confirms this PR's changes are limited to outreach-status documentation and do not change code or scientific gate state. Independent monitoring was skipped at the user's direction; no scientific approval is inferred. Step 7 parent/scientific-review gates remain unchecked; Step 8 remains deferred. | PR #49 |
 
+| 2026-10-23 | Step 10A documentation site implementation | Verified; GitHub Pages deployment pending | Implemented the Sphinx 8.2.3, PyData Sphinx Theme 0.23.0, Sphinx-Gallery 0.22.1, MyST 4.0.1 stack after checking the Sphinx 9 compatibility conflict; `website/decisions/0001-documentation-stack.md` compares Sphinx with MkDocs Material and Docusaurus. Added the responsive landing, project/status and research boundaries, install and platform guidance, user/QC/reproducibility material, generated `brainlearn_core` API, provisional contracts, citation/release/governance/contributor pages, deployment/rollback instructions, and a synthetic BIDS gallery with fixture v1.0.0, CC0-1.0 metadata, MNE 1.13.2/MNE-BIDS 0.20.0, generator/file checksums, expected output, limitations, and citations. Added a ten-minute walkthrough with two screenshots captured from a successful local synthetic BIDS→inspect→filter run and its open filter comparison, keyboard instructions, and downloadable workflow/manifest links. The local docs gate passed: `uv sync --locked --all-packages --group docs --group eeg`; Sphinx HTML build with `-E -a -n -W --keep-going` succeeded; Sphinx linkcheck succeeded; axe-core/Playwright checked 7 representative pages at 375 px and 1440 px, with no WCAG 2.1 A/AA violations or horizontal overflow; search returned the QC guide; Development, Pre-release, Stable, and Archived version labels rendered in strict builds. Full local gate passed: Ruff; formatting (113 files); mypy (36 source files); pytest (830 passed, 4 skipped, 2 upstream deprecation warnings); frontend ESLint and Prettier; Vitest (183 tests/21 files); Vite production build (1,850 modules, existing chunk-size advisory); production dependency audit (0 vulnerabilities); docs browser-check package audit (0 vulnerabilities); and `git diff --check`. The full frontend dependency tree reports 2 moderate and 1 high audit finding, while production audit remains clean. Pages workflow uses SHA-pinned actions and least-privilege job permissions; the Pages source is configured for GitHub Actions, its protected `github-pages` environment permits only `main`, and tag builds run validation without deploying. Rollback documentation is present. No scientific claim or Step 7/8 gate changed. Step 10A's version archive/selector, first Pages deployment/homepage setting, and independent maintainer rebuild/deploy gate remain incomplete; keep its parent unchecked. | PR pending |
 | 2026-10-23 | Step 7 seventh independent-review outreach | Verified; independent response pending | Sent a targeted review request to Marijn van Vliet at Aalto University. His official Aalto profile lists EEG/MEG research, publication of analysis pipelines, and MNE-Python contributions, with `marijn.vanvliet@aalto.fi` as the listed contact: https://www.aalto.fi/en/people/marijn-van-vliet. Gmail message/thread `1a16913f321416f5` is labeled SENT to that address. The message links the pinned methods-review packet, asks for candid critique of the bounded workflow or a referral, and makes clear that the engineering comparison is not scientific validation. No reply or methods review has been received. Step 7 parent/scientific-review gates remain unchecked; Step 8 remains deferred. | PR #49 |
 
 ## Next assignment
