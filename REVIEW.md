@@ -1522,3 +1522,38 @@ comparisons against MATLAB on 13 participants. These are leads for assessing
 an alternative implementation; they do not validate BrainLearn. No code or
 scientific assumption changed. Step 7's parent and scientific-review gates
 remain unchecked; Step 8 remains deferred.
+
+## Step 7 EEGPrep candidate assessment and reviewer clarification
+
+Review date: 2026-10-23
+
+Delorme's partial email response recommended EEGPrep and cited its 2026
+preprint. The preprint reports stage-wise and end-to-end MATLAB parity for a
+specific EEGLAB-style pipeline on one 64-channel P300 dataset from 13
+participants (12 analyzed subjects on ARM). That is useful parity evidence for
+the tested pipeline and sample, not general evidence that its choices are
+scientifically suitable for BrainLearn's pinned recording.
+
+Reviewed public package and documentation state: PyPI lists EEGPrep 0.4.0
+(2026-09-23) as Alpha, Python >=3.12, BSD-2-Clause, with optional GUI/console
+and PyTorch extras. Its MNE guide documents conversion between MNE Raw and
+EEGPrep data, but calls out different voltage units, event-latency conventions,
+and temporary EEGLAB files. The guide frames EEGPrep as complementary to MNE,
+not a replacement. This makes EEGPrep a credible candidate for a separate
+same-recording comparison, but not a direct drop-in replacement for the
+current FastICA plus manual-review implementation. The review packet now
+records the metadata, annotation, unit, event, and provenance checks that such
+a comparison would need. No dependency, processing method, or scientific claim
+changed.
+
+A concise follow-up was sent to Delorme in Gmail thread
+`1a16988f694a6f0d` (message `1a169a569d750452`) to clarify whether his ICLabel
+comment targets a different pipeline and whether the pinned recording's
+`BAD_ACQ_SKIP` and missing reference/power-line metadata affect his
+recommendation. Reply pending. The Step 7 parent and scientific-review gates
+remain unchecked; Step 8 remains deferred.
+
+Sources checked: [EEGPrep preprint](https://arxiv.org/abs/2607.16647),
+[PyPI 0.4.0 metadata](https://pypi.org/project/eegprep/0.4.0/),
+[MNE integration guide](https://eegprep.org/user_guide/mne_integration.html),
+and [preprocessing guide](https://eegprep.org/user_guide/preprocessing_pipeline.html).

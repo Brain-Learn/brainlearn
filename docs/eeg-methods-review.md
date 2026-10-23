@@ -94,6 +94,44 @@ should assess whether BrainLearn's current defaults and explicit review
 boundaries are defensible for a bounded demo, and state what changes are
 required before scientific claims or the Step 8 descriptive workflow.
 
+## EEGPrep candidate raised in partial feedback
+
+Delorme's reply recommended evaluating EEGPrep. The cited 2026 preprint
+describes an EEGLAB-style workflow including average rereferencing,
+clean_rawdata, Picard ICA, ICLabel, channel interpolation, and epoching. It
+reports numerical comparisons with MATLAB on a 64-channel P300 dataset from
+13 participants (12 analyzed subjects on ARM), including near-zero differences
+for deterministic stages and maximum end-to-end RMS difference at or below
+2.1e-5 microvolts for the tested pipeline. This supports implementation parity
+for those tested steps and data; it does not establish general scientific
+suitability or validate BrainLearn's specific choices.
+
+The current PyPI release is EEGPrep 0.4.0, published 2026-09-23 and classified
+as Alpha; it requires Python 3.12 or later and declares BSD-2-Clause. This
+matches BrainLearn's Python floor, but its release status and separately
+licensed dependencies still require review before adding it to a supported
+environment. EEGPrep's own MNE integration guide says EEGPrep is not a
+replacement for MNE-Python: it describes converting MNE Raw objects into
+EEGPrep, running EEGPrep preprocessing/review, then converting back to MNE.
+The guide also calls out unit and event-latency differences and temporary
+EEGLAB files in conversion. These are adapter and provenance boundaries to
+test, not evidence of incompatibility.
+
+Assessment: EEGPrep is a credible candidate for a side-by-side engineering and
+methods comparison on the pinned BIDS recording, especially for its complete
+EEGLAB-derived preprocessing path. It is not a drop-in substitute for the
+current MNE FastICA/manual-review node, and the paper does not settle handling
+of this recording's terminal `BAD_ACQ_SKIP`, unknown EEG reference, or unknown
+power-line frequency. No dependency or algorithm has been changed. Before any
+adoption, compare BIDS metadata and annotations across the conversion boundary,
+units, events, filtering, reference, ICA fit/review, and output provenance on
+the same checksum-pinned input.
+
+Sources: [EEGPrep preprint](https://arxiv.org/abs/2607.16647),
+[EEGPrep 0.4.0 release metadata](https://pypi.org/project/eegprep/0.4.0/),
+[EEGPrep MNE integration guide](https://eegprep.org/user_guide/mne_integration.html),
+and [EEGPrep preprocessing guide](https://eegprep.org/user_guide/preprocessing_pipeline.html).
+
 ## Questions for the reviewer
 
 1. Is a 1–40 Hz zero-phase FIR filter an acceptable engineering-demo default
@@ -116,6 +154,9 @@ required before scientific claims or the Step 8 descriptive workflow.
 6. What concrete scientific tests, parameter changes, or limitations are
    required before the Step 7 gate can pass? Please identify methods references
    that should be added to the workflow's citations.
+7. Does EEGPrep's reported EEGLAB parity make it a better candidate for the
+   pinned recording, and what validation would still be needed for its
+   annotation, metadata, unit, event, and manual-review behavior?
 
 ## Reproduction material
 
@@ -164,8 +205,11 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   comparisons against MATLAB on 13 participants. These papers support
   evaluating the suggested route; they do not validate BrainLearn.
 - Required changes and their verification: no implementation change was
-  requested or made. Clarify the ICLabel mismatch and evaluate EEGPrep's fit
-  for BrainLearn before making a processing or architecture decision.
+  requested or made. A follow-up was sent 2026-10-23 in the same Gmail thread
+  (message `1a169a569d750452`) asking whether the ICLabel comment concerns a
+  different pipeline and whether the pinned recording's annotation/metadata
+  issues change the recommendation. Evaluate EEGPrep's fit for BrainLearn
+  before making a processing or architecture decision.
 - Remaining limitations: this partial feedback is not a review of the full
   Step 7 assumptions and does not close the independent scientific-review
   gate.
