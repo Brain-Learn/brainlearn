@@ -2,8 +2,9 @@
 
 ## Review status
 
-**Pending.** One partial email response is recorded below. It is not a full
-review or approval of the bounded workflow. Step 7's top-level and
+**Pending.** Partial email feedback from Arnaud Delorme is recorded below.
+It is not a full review or approval of the bounded workflow. Requests to
+additional reviewers are pending. Step 7's top-level and
 scientific-review checkboxes stay unchecked until an independent EEG methods
 reviewer assesses the workflow against the pinned recording, records a
 decision, and any required changes have been completed and verified.
@@ -96,7 +97,8 @@ required before scientific claims or the Step 8 descriptive workflow.
 
 ## EEGPrep candidate raised in partial feedback
 
-Delorme's reply recommended evaluating EEGPrep. The cited 2026 preprint
+Delorme's replies recommended evaluating EEGPrep, and clarified that MNE could
+be replaced by EEGPrep, particularly for ICA. The cited 2026 preprint
 describes an EEGLAB-style workflow including average rereferencing,
 clean_rawdata, Picard ICA, ICLabel, channel interpolation, and epoching. It
 reports numerical comparisons with MATLAB on a 64-channel P300 dataset from
@@ -119,9 +121,10 @@ test, not evidence of incompatibility.
 
 Assessment: EEGPrep is a credible candidate for a side-by-side engineering and
 methods comparison on the pinned BIDS recording, especially for its complete
-EEGLAB-derived preprocessing path. It is not a drop-in substitute for the
-current MNE FastICA/manual-review node, and the paper does not settle handling
-of this recording's terminal `BAD_ACQ_SKIP`, unknown EEG reference, or unknown
+EEGLAB-derived preprocessing path and ICA. The recommendation does not establish
+that an EEGPrep conversion is suitable for this recording or that it can replace
+the current node without further review. The paper does not settle handling of
+this recording's terminal `BAD_ACQ_SKIP`, unknown EEG reference, or unknown
 power-line frequency. No dependency or algorithm has been changed. Before any
 adoption, compare BIDS metadata and annotations across the conversion boundary,
 units, events, filtering, reference, ICA fit/review, and output provenance on
@@ -187,16 +190,20 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
 - Date and reviewed code commit: email response received 2026-10-23; the
   reviewer did not identify a reviewed code commit.
 - Decision for the bounded Step 7 workflow: no overall decision. The response
-  gives partial feedback on the ICA direction and recommends considering the
-  EEGLAB Python pipeline.
-- Feedback and scope: the reviewer expressed concern about validation of the
-  ICLabel pipeline in MNE and suggested EEGPrep. BrainLearn's pinned workflow
-  currently uses MNE FastICA followed by explicit manual component review; it
-  does not run ICLabel. The ICLabel concern therefore does not directly
-  describe the current implementation and needs clarification before it is
-  treated as a finding. The response does not address the pinned recording,
-  filter choice, BAD annotations, missing reference/power-line metadata, or
-  FastICA fit diagnostics.
+  gives partial feedback on the EEGPrep/ICA direction and channel/segment
+  handling before ICA.
+- Feedback and scope: the initial reply expressed concern about validation of
+  the ICLabel pipeline in MNE and suggested EEGPrep. BrainLearn's pinned
+  workflow currently uses MNE FastICA followed by explicit manual component
+  review; it does not run ICLabel. The ICLabel concern therefore does not
+  directly describe the current implementation. In a follow-up reply (message
+  `1a169a8428d52434`), Delorme said MNE could be replaced by EEGPrep,
+  particularly for ICA. In response to the annotation and metadata questions,
+  he characterized these as data-specific and said their usual practice is to
+  remove channels and segments with `clean_rawdata` before ICA. He did not
+  specify parameters for this recording or give an overall decision. This is
+  partial feedback, not approval of the current handling or a validated
+  instruction to change the workflow.
 - References provided: [Automatic EEG Independent Component Classification
   Using ICLabel in Python (2024)](https://arxiv.org/abs/2411.17721) compares
   Python and MATLAB ICLabel results across 14 participants. [EEGPrep: a
@@ -208,8 +215,17 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   requested or made. A follow-up was sent 2026-10-23 in the same Gmail thread
   (message `1a169a569d750452`) asking whether the ICLabel comment concerns a
   different pipeline and whether the pinned recording's annotation/metadata
-  issues change the recommendation. Evaluate EEGPrep's fit for BrainLearn
-  before making a processing or architecture decision.
+  issues change the recommendation; the response arrived later that day
+  (message `1a169a8428d52434`). Evaluate EEGPrep's fit for BrainLearn before
+  making a processing or architecture decision.
+- Additional independent-review request: Kay Robbins, Professor Emerita at
+  UT San Antonio, whose work includes EEG preprocessing, PREP, and EEG
+  preprocessing sensitivity ([UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html),
+  [PREP paper](https://doi.org/10.3389/fninf.2015.00016), and
+  [preprocessing sensitivity study](https://doi.org/10.1109/TNSRE.2020.2980223)).
+  A brief request for an independent critique or referral was sent to her
+  publicly listed institutional address on 2026-10-24 (Gmail message/thread
+  `1a16db33c9ccb242`). Response pending.
 - Remaining limitations: this partial feedback is not a review of the full
   Step 7 assumptions and does not close the independent scientific-review
   gate.
