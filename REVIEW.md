@@ -1619,8 +1619,8 @@ patched version. Alert closure remains pending merge and a Dependabot rescan;
 this review does not claim the alerts are already resolved. The initial review
 record commit `ec10165b0fb023ecdf786e43f00310968ef98206` passed fresh CI in
 Python/frontend run `40089915413` and docs run `40089915420`. A subsequent
-wording-only docs commit is the current PR tip `5189df4f767380143ec35910f7b99d15596e11f3`;
-required checks on that tip are pending. The Pillow code and local-gate
-evidence are unchanged. No scientific
+wording-only docs update clarified which code head was reviewed; it leaves the
+Pillow lockfile and code diff unchanged. The PR's required hosted checks gate
+merge. The Pillow code and local-gate evidence are unchanged. No scientific
 method or assumption changed. Step 7 parent/scientific-review gates remain
 unchecked, Step 8 remains deferred, and the Next assignment is unchanged.
