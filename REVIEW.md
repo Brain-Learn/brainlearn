@@ -1767,3 +1767,51 @@ This disposition approves only the outreach-record documentation. No code,
 dependency, processing method, or scientific claim changed. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred and the
 Next assignment remains Step 7.
+
+## ICA annotation sensitivity probe — PR #65
+
+Review date: 2026-10-24
+
+Status: **approved for bounded engineering-sensitivity documentation only.**
+Reviewed PR #65 at corrected documentation head
+`2b48fe22f2011bc50a8d7dbe7d2b19ccb07003d4` against base
+`446c416c3da7649ba371aafdf8db28b95a326401`. The diff changes only
+`docs/eeg-methods-review.md` and this implementation plan. The probe is scoped
+to one checksum-pinned recording and two FastICA fits with the same 1–40 Hz
+zero-phase FIR settings; `reject_by_annotation` is the only changed fit option.
+The corrected text accurately says the `BAD_ACQ_SKIP` annotation is
+recording-wide and that `get_data(..., reject_by_annotation="omit")` returned
+161,733 samples for a one-channel extraction. It does not imply that only one
+channel is annotated.
+
+I independently copied the 12-file fixture to a temporary directory and
+replayed the two MNE 1.13.2 fits (`n_components=None`, seed 0, `max_iter=1000`,
+`decim=1`). The recording-wide annotation had an empty channel list; the
+one-channel extraction returned 161,733 of 162,000 time points. The fits each
+had 96 components, used 162,000/161,733 samples, and converged in 90/139
+iterations. Hungarian matching of absolute Pearson spatial correlations
+reproduced min/p10/median/max `0.241615/0.903299/0.988873/0.999993` and counts
+below 0.8/0.9/0.95 of 8/10/21. All 12 manifest hashes matched before and after
+my replay; the packet also records that a second run reproduced its summary.
+No components were labeled or excluded. The packet says explicitly that this
+one-recording sensitivity result and the map correlations do not decide whether
+to reject, include, or review the interval and do not provide scientific
+acceptance criteria. This wording makes the result useful for review without
+selecting a method or implying scientific approval.
+
+In a clean detached Python 3.12 checkout, locked sync, `uv lock --check`, Ruff,
+formatting (113 files), strict mypy (33 source files), and pytest passed (830
+passed, 4 skipped, 2 upstream warnings). Frontend lint/Prettier, Vitest (183
+tests/21 files), production build, and production audit (0 vulnerabilities)
+passed; the full frontend install reported 3 development-tree vulnerabilities.
+Strict Sphinx HTML/linkcheck, responsive and axe checks for 7 pages at 375/1440
+px, docs package audit (0 vulnerabilities), and `git diff --check` passed.
+Hosted checks passed on the corrected head: Python/frontend run
+`40104345004`; docs run `40104345003` (Pages deployment skipped as expected
+for a PR).
+
+This disposition approves only the bounded engineering-sensitivity
+documentation. It is not a scientific methods review or endorsement of either
+ICA setting. No code, dependency, or processing method changed. Step 7's
+parent and scientific-review gates remain unchecked; Step 8 remains deferred
+and the Next assignment remains Step 7.
