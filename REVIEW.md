@@ -1889,3 +1889,28 @@ This disposition approves only the outreach-record documentation. No code,
 dependency, processing method, or scientific claim changed. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred and the
 Next assignment remains Step 7.
+
+## Certifi lockfile security update — PR #69
+
+Review date: 2026-10-24
+
+Status: **approved for the scoped dependency update; alert closure pending
+merge/rescan.** Reviewed PR #69 at dependency head
+`83897ec25d44afcd682720db20146ecd2278b681` against base
+`2260eb3fb20c8870adbd1354cff065e3d437a4cf`. The dependency diff changes only
+`uv.lock`: Certifi moves from `2026.7.22` to `2026.10.19`, with refreshed
+source and wheel artifact URLs, hashes, sizes, and upload metadata. No source
+code or runtime behavior was changed in this PR.
+
+In a clean detached checkout, `uv lock --check` passed. A locked Python 3.12
+sync across all workspace packages with dev, docs, and EEG groups installed
+87 packages successfully and reported `certifi==2026.10.19`; `uv tree
+--locked --package certifi` reported `certifi v2026.10.19`. `git diff --check`
+passed. Hosted Python/frontend checks passed in run `40106910898`, and docs
+checks passed in run `40106910900`; Pages deployment was skipped as expected
+for a pull request.
+
+This disposition covers the lockfile update and its reproducibility evidence.
+It does not claim the Dependabot alert has closed; confirm that after merge and
+rescan. No EEG method or scientific claim changed. Step 7's scientific-review
+gates remain unchecked; Step 8 remains deferred.
