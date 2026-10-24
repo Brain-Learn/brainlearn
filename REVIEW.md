@@ -1589,8 +1589,8 @@ gates remain unchecked; Step 8 remains deferred.
 
 Review date: 2026-10-24
 
-Status: **approved for the Pillow lockfile update only.** Reviewed final PR
-head `4b710886decc5420cc22a28f8da12bb45eb8196b` against current `main`
+Status: **approved for the Pillow lockfile update only.** Reviewed the code
+diff at PR head `4b710886decc5420cc22a28f8da12bb45eb8196b` against current `main`
 `456ff8c36d7b1ef1295d631ec40d90a219cc9f7b`. The rebased PR is a direct child
 of `main`; its complete patch changes only `uv.lock`, upgrading Pillow
 12.3.0 to 13.0.0 and regenerating the locked artifacts. Root and workspace
@@ -1611,11 +1611,13 @@ reported 0. Strict Sphinx HTML build and linkcheck passed, as did responsive
 and axe checks for 7 documentation pages at 375 px and 1440 px. `git diff --check`
 passed.
 
-Hosted CI passed on this final code head: run `40089590229` passed Python
+Hosted CI passed on the reviewed code head: run `40089590229` passed Python
 (1m37s) and frontend (26s); docs run `40089590280` passed (41s; Pages
 deployment correctly skipped on a PR). GitHub's Dependabot API still lists
 41 open Pillow alerts on the default branch, all with 13.0.0 as the first
 patched version. Alert closure remains pending merge and a Dependabot rescan;
-this review does not claim the alerts are already resolved. No scientific
+this review does not claim the alerts are already resolved. The review record
+was added to the same PR after the code review; fresh CI also passed on that
+documentation update. No scientific
 method or assumption changed. Step 7 parent/scientific-review gates remain
 unchecked, Step 8 remains deferred, and the Next assignment is unchanged.
