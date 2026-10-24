@@ -113,8 +113,9 @@ only changed setting was `reject_by_annotation`: `False` fit 162,000 samples
 and converged in 90 iterations; `True` fit 161,733 samples and converged in
 139 iterations. Both fits had 96 components and passed the configured
 convergence check. MNE's `get_data` with `reject_by_annotation="omit"`
-omitted 267 of 162,000 samples (0.165%) from one EEG channel, corresponding to
-the terminal `BAD_ACQ_SKIP` interval.
+returned 161,733 of 162,000 time samples for a one-channel extraction,
+omitting the 267 sample positions (0.165%) covered by the recording-wide
+terminal `BAD_ACQ_SKIP` annotation.
 
 For a diagnostic comparison, the two sets of 96 component maps were matched
 one-to-one to maximize absolute Pearson spatial correlation (Hungarian
