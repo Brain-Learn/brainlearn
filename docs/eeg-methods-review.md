@@ -34,6 +34,24 @@ direct-MNE reference, and the generated Python export agree within
 comparison demonstrates software agreement for this run. It does not show
 that the selected processing is scientifically suitable.
 
+### Interactive synthetic-demo verification
+
+On 2026-10-24, the local GUI was exercised end to end in a fresh temporary
+project with the manifest-pinned synthetic BIDS fixture in the
+[synthetic fixture manifest](../examples/synthetic-eeg-bids-manifest.json). Run
+`run-01715e7585f4` completed the BIDS input, signal inspection, and MNE filter
+nodes. The UI opened signal and Welch-spectrum comparisons for Cz and Pz. The
+Python export downloaded from that run was executed with MNE 1.13.2 and
+MNE-BIDS 0.20.0, and wrote a FIF output plus provenance. The GUI and standalone
+script FIF readbacks both contained two channels and 2,500 samples; their
+maximum absolute difference was `0 µV` (`rtol=1e-6`, `atol=2e-5 µV`). All nine
+fixture-file checksums still matched the committed manifest after both paths.
+
+This verifies the interactive engineering path on the deterministic synthetic
+recording. It does not establish suitable filter settings for human EEG, assess
+signal quality, or complete the independent methods review. The temporary
+project path and session token are intentionally omitted.
+
 The comparison uses a 1–40 Hz zero-phase FIR filter and MNE FastICA with seed
 0. The component-review record explicitly keeps every component. That choice
 exists to make the three software paths deterministic; it is not an artifact
