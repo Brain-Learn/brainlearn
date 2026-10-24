@@ -1940,3 +1940,28 @@ Hosted Python/frontend checks passed in CI run `40107457757`; documentation
 checks passed in run `40107457649`; Pages deployment was skipped as expected
 for a pull request. This disposition covers the Vitest dependency update and
 its local checks. No application code or scientific claim changed.
+
+## Vite security lockfile update — PR #67
+
+Review date: 2026-10-24
+
+Status: **approved for the scoped dependency update; alert closure pending
+merge/rescan.** Reviewed PR #67 at repaired dependency head
+`9abf0a86cce8379726c029d41b10ce5bc58aeedf` against base
+`e6349e8d2dead3f814d5744c25e01b425e7d12cd`. The diff changes only
+`apps/web/package.json` and `apps/web/package-lock.json`. Vite moves from
+`^7.1.5`/7.3.6 to `^7.3.7`/7.3.7, while Vitest remains `^5.0.5` and
+`@vitest/mocker` remains 5.0.5 from main. The repaired merge preserves the
+Vite update together with the merged Vitest lock state.
+
+In a clean checkout on Node 22.23.3/npm 10.9.9, `npm ci` installed 269
+packages and found 0 vulnerabilities. `npm ls vite vitest @vitest/mocker`
+confirmed Vite 7.3.7, Vitest 5.0.5, and `@vitest/mocker` 5.0.5. `npm test`
+passed all 183 tests in 21 files; `npm audit` found 0 vulnerabilities; and
+`git diff --check` passed.
+
+Hosted Python/frontend checks passed in CI run `40108075783`; documentation
+checks passed in run `40108075836`; Pages deployment was skipped as expected
+for a pull request. This disposition covers the Vite dependency update and its
+reproducibility/security evidence. Confirm the Dependabot alert after merge
+and rescan. No scientific or EEG-method claim is made.
