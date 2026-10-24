@@ -1616,8 +1616,11 @@ Hosted CI passed on the reviewed code head: run `40089590229` passed Python
 deployment correctly skipped on a PR). GitHub's Dependabot API still lists
 41 open Pillow alerts on the default branch, all with 13.0.0 as the first
 patched version. Alert closure remains pending merge and a Dependabot rescan;
-this review does not claim the alerts are already resolved. The review record
-was added to the same PR after the code review; fresh CI also passed on that
-documentation update. No scientific
+this review does not claim the alerts are already resolved. The initial review
+record commit `ec10165b0fb023ecdf786e43f00310968ef98206` passed fresh CI in
+Python/frontend run `40089915413` and docs run `40089915420`. A subsequent
+wording-only docs commit is the current PR tip `5189df4f767380143ec35910f7b99d15596e11f3`;
+required checks on that tip are pending. The Pillow code and local-gate
+evidence are unchanged. No scientific
 method or assumption changed. Step 7 parent/scientific-review gates remain
 unchecked, Step 8 remains deferred, and the Next assignment is unchanged.
