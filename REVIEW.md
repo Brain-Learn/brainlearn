@@ -1700,3 +1700,36 @@ expected for a PR).
 Step 7's parent and scientific-review gates remain unchecked; Step 8 remains
 deferred and the Next assignment remains Step 7. The recorded feedback is
 partial and does not approve the science or direct an implementation change.
+
+## Live synthetic EEG GUI demo verification — PR #63
+
+Review date: 2026-10-24
+
+Status: **approved for the engineering-evidence documentation only.** Reviewed
+PR #63 at head `aa16214dc3dba86814da08bbb1b3e143f572e5d9` against base
+`b81493837b612bf5ae28bb97e5531706f2faafb1`. The complete diff changes only
+`docs/eeg-methods-review.md` and `docs/implementation-plan.md`. It records a
+local interactive run on the deterministic synthetic BIDS fixture, says the
+export script was executed, and explicitly states that this does not establish
+human EEG suitability, signal quality, or independent methods approval.
+
+In a clean detached checkout, I passed `uv lock --check`, locked Python 3.12
+sync for all packages with EEG/docs groups, Ruff, Ruff format (113 files),
+strict mypy (33 source files), and pytest (830 passed, 4 skipped, 2 upstream
+warnings). Frontend lint/Prettier, Vitest (183 tests/21 files), production
+build, and production audit (0 vulnerabilities; the full frontend install has
+3 existing development-tree findings) passed. Strict Sphinx HTML build and
+linkcheck passed; responsive/axe checks passed for 7 pages at 375 px and 1440
+px; docs package audit and `git diff --check` passed. A focused fresh-project
+reproduction ran the synthetic fixture through the filter adapter and
+generated Python export: output shape `(2, 2500)`, maximum absolute difference
+`0 µV`, all nine fixture hashes matched the manifest, and source files stayed
+unchanged. This corroborates the numerical result; the historical visual GUI
+session is author-recorded and was not replayed in this review.
+
+Hosted checks passed on the reviewed head: Python/frontend run `40098043525`
+(1m44s/48s) and docs run `40098043541` (46s; Pages deployment skipped as
+expected for a PR). The review accepts this as engineering evidence for the
+synthetic GUI/export path only. No processing method changed. Step 7's parent
+and scientific-review gates remain unchecked; Step 8 remains deferred and the
+Next assignment remains Step 7.
