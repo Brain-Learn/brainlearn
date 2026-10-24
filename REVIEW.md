@@ -1490,9 +1490,10 @@ continued EEGLAB development as a research interest. These sources support
 the fit and address; they do not imply that he has reviewed or endorsed
 BrainLearn.
 
-No reply, methods decision, code change, or scientific approval has been
-received. Step 7's parent and scientific-review gates remain unchecked; Step 8
-remains deferred.
+The first response is recorded below. A clarifying reply later arrived in the
+same thread; both messages remain partial feedback, with no overall methods
+decision or scientific approval. Step 7's parent and scientific-review gates
+remain unchecked; Step 8 remains deferred.
 
 ## Step 7 partial methods feedback from Arnaud Delorme
 
@@ -1508,12 +1509,14 @@ paper](https://arxiv.org/abs/2607.16647).
 
 The current BrainLearn implementation uses MNE FastICA followed by explicit
 manual component review; it does not run ICLabel. His ICLabel concern therefore
-does not directly identify a defect in the current path and should be
-clarified. The EEGPrep recommendation is relevant for evaluation, not yet a
-decision to replace the current adapter. His reply does not assess the pinned
-recording, filter, BAD-annotation handling, missing acquisition metadata, or
-the remaining review questions. The response does not state a reviewed commit
-or an overall decision for the bounded workflow.
+does not directly identify a defect in the current path. In a follow-up reply
+(message `1a169a8428d52434`), Delorme said MNE could be replaced by EEGPrep,
+particularly for ICA. He characterized the annotation and missing-metadata
+issues as data-specific, and said their usual practice is to remove channels
+and segments with `clean_rawdata` before ICA. He did not specify parameters for
+this recording, assess every question in the packet, identify a reviewed code
+commit, or give an overall decision for the bounded workflow. This remains
+partial feedback rather than approval or a direction to change the adapter.
 
 The [2024 paper](https://arxiv.org/abs/2411.17721) reports Python-versus-MATLAB
 ICLabel comparisons on 14 participants. The [2026 EEGPrep
@@ -1547,16 +1550,47 @@ a comparison would need. No dependency, processing method, or scientific claim
 changed.
 
 A concise follow-up was sent to Delorme in Gmail thread
-`1a16988f694a6f0d` (message `1a169a569d750452`) to clarify whether his ICLabel
-comment targets a different pipeline and whether the pinned recording's
-`BAD_ACQ_SKIP` and missing reference/power-line metadata affect his
-recommendation. Reply pending. The Step 7 parent and scientific-review gates
-remain unchecked; Step 8 remains deferred.
+`1a16988f694a6f0d` (message `1a169a569d750452`); his brief reply is recorded
+above. The EEGPrep alternative and `clean_rawdata` suggestion require
+evaluation on the pinned data before changing methods. An independent-review
+request was sent to Kay Robbins (Gmail message/thread `1a16db33c9ccb242`),
+whose [UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html)
+and [PREP paper](https://doi.org/10.3389/fninf.2015.00016) show relevant EEG
+preprocessing work; response pending. No code or processing assumption changed.
+The Step 7 parent and scientific-review gates remain unchecked; Step 8 remains
+deferred.
 
 Sources checked: [EEGPrep preprint](https://arxiv.org/abs/2607.16647),
 [PyPI 0.4.0 metadata](https://pypi.org/project/eegprep/0.4.0/),
 [MNE integration guide](https://eegprep.org/user_guide/mne_integration.html),
 and [preprocessing guide](https://eegprep.org/user_guide/preprocessing_pipeline.html).
+
+## Step 7 follow-up response and additional independent-review outreach
+
+Review date: 2026-10-24
+
+Status: **partial feedback only; independent methods review remains pending.**
+Delorme's clarifying reply arrived in Gmail thread `1a16988f694a6f0d` (message
+`1a169a8428d52434`). He said MNE could be replaced by EEGPrep, particularly for
+ICA. In response to the pinned recording's annotation and metadata details, he
+said these were data-specific and described their usual practice of removing
+channels and segments with `clean_rawdata` before ICA. The reply did not give
+parameters for this recording or an overall decision. No software or method
+change is inferred from it.
+
+An independent-review request was sent to Kay Robbins at her publicly listed
+UTSA address (Gmail message/thread `1a16db33c9ccb242`). UTSA identifies her as
+Professor Emerita and lists data standards and reproducibility among her
+interests; her prior work includes the PREP pipeline and EEG preprocessing
+benchmarking ([UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html),
+[PREP paper](https://doi.org/10.3389/fninf.2015.00016),
+[preprocessing sensitivity study](https://doi.org/10.1109/TNSRE.2020.2980223)).
+The request asks for a brief critique or referral, not an endorsement. Response
+pending.
+
+No methods decision, implementation change, or scientific approval has been
+made. Step 7's parent and scientific-review gates remain unchecked; Step 8
+remains deferred.
 
 ## Repository logo and bounded demo-readiness monitoring — PR #61
 
