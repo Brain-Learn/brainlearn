@@ -1849,3 +1849,43 @@ This disposition approves only the outreach-record documentation. No code,
 dependency, processing method, or scientific claim changed. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred and the
 Next assignment remains Step 7.
+
+## Focused EEG preprocessing review request — PR #70
+
+Review date: 2026-10-24
+
+Status: **approved for outreach documentation only.** Reviewed PR #70 at head
+`206c2578f0c01a0d3c8252c6d574cc2d35d53888` against base
+`46642695a7674920fe8540e022776f15ddddd365`. The implementation diff changes
+only `docs/eeg-methods-review.md` and `docs/implementation-plan.md`; it adds
+one reviewer outreach record and its plan row. Gmail message/thread
+`1a16e7803dcea2c6` is a single sent request to `Makoto.Miyakoshi@cchmc.org`.
+It asks for a brief methods comment or referral about handling the pinned
+recording's `BAD_ACQ_SKIP` annotation and unavailable reference/power-line
+metadata before ICA, says there is no deadline, and says no reply is needed if
+unavailable. The thread has no response. The packet and plan accurately
+describe the outreach and do not imply a completed methods review or
+scientific approval.
+
+The cited [EEG analysis profile](https://gyree.co/) supports the bounded
+description of Miyakoshi as a computational neuroscientist offering EEG
+analysis and consultation. His [preprocessing guide](https://eeglab.ucsd.edu/mediawiki/index.php?title=Makoto%27s_preprocessing_pipeline)
+contains personal recommendations about channel and segment handling in
+preprocessing sequences that include ICA; the guide explicitly says these are
+his views, not official EEGLAB guidance. The cited [2023 EEG/ICA paper](https://pubmed.ncbi.nlm.nih.gov/36840814/)
+lists the corresponding-author address used for the request. These sources
+support reviewer fit and contact provenance only; none is evidence of review
+or endorsement of BrainLearn.
+
+In a clean detached Python 3.12 checkout, `uv sync --locked --python 3.12
+--all-packages --group docs --group eeg` and `uv lock --check` passed. Strict
+Sphinx HTML build (`-E -a -n -W --keep-going`) and linkcheck with the same
+strict flags passed; `git diff --check` passed. Hosted checks passed on the
+reviewed head: Python quality/tests and frontend quality/tests/build in run
+`40106011414`; documentation build/linkcheck in run `40106011384`; the Pages
+deployment job was skipped as expected for a pull request.
+
+This disposition approves only the outreach-record documentation. No code,
+dependency, processing method, or scientific claim changed. Step 7's parent
+and scientific-review gates remain unchecked; Step 8 remains deferred and the
+Next assignment remains Step 7.
