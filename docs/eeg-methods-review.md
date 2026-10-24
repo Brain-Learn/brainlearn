@@ -187,21 +187,56 @@ and [EEGPrep preprocessing guide](https://eegprep.org/user_guide/preprocessing_p
 ### MNE interoperability smoke check (engineering only)
 
 On 2026-10-24, EEGPrep 0.4.0 was installed in a separate Python 3.12
-environment; its resolver selected MNE 1.13.2. A two-channel synthetic MNE
-`RawArray` (500 Hz, 162,000 samples) was given a `BAD_ACQ_SKIP` annotation at
-323.466 s with a 0.534 s duration, matching the pinned recording's terminal
-annotation geometry. `eeg_mne2eeg` converted it to the EEGLAB-facing event
+environment; its resolver selected MNE 1.13.2. The synthetic two-channel MNE
+`RawArray` was built with this exact waveform and sampling grid:
+
+```python
+import numpy as np
+import mne
+from eegprep import eeg_eeg2mne, eeg_mne2eeg
+
+sfreq, n_times = 500.0, 162_000
+times = np.arange(n_times, dtype=np.float64) / sfreq
+data = np.vstack((
+    2e-6 * np.sin(2 * np.pi * 10 * times),
+    1e-6 * np.cos(2 * np.pi * 7 * times),
+))
+info = mne.create_info(["Cz", "Pz"], sfreq, ch_types=["eeg", "eeg"])
+raw = mne.io.RawArray(data, info, verbose="ERROR")
+raw.set_montage("standard_1020")
+raw.set_annotations(mne.Annotations(
+    onset=[323.466], duration=[0.534], description=["BAD_ACQ_SKIP"]
+))
+EEG = eeg_mne2eeg(raw)
+try:
+    eeg_eeg2mne(EEG)
+except AttributeError as error:
+    print(type(error).__name__, str(error))
+
+# Diagnostic override only; not an accepted adapter.
+EEG["chaninfo"] = {"nodatchans": {}}
+EEG["event"][0]["duration"] = 267
+roundtrip = eeg_eeg2mne(EEG)
+max_delta_uV = np.max(np.abs(
+    raw.get_data(units="uV") - roundtrip.get_data(units="uV")
+))
+```
+
+This annotation matches the pinned recording's terminal annotation geometry.
+`eeg_mne2eeg(raw)` converted it to the EEGLAB-facing event
 `{'latency': 161734, 'type': 'BAD_ACQ_SKIP'}` but did not retain the 267-sample
 duration. Calling `eeg_eeg2mne` on that unmodified result then raised
 `AttributeError: 'NoneType' object has no attribute 'get'` inside MNE's EEGLAB
 reader while processing `chaninfo`.
 
 As a diagnostic only, manually adding `chaninfo={'nodatchans': {}}` and
-`duration=267` to the event allowed the synthetic round trip to complete. The
-returned annotation onset and duration matched the input, and the maximum
-signal difference was `4.744e-8 µV`; MNE also warned that the estimated head
-radius was 13.9 cm for this two-channel montage. These manual edits and the
-warning mean the workaround is not an accepted adapter or validation result.
+`duration=267` to the event allowed the synthetic round trip to complete. With
+the exact waveform above, the returned annotation onset and duration matched
+the input and the maximum signal difference was `4.744e-8 µV` in this local
+environment. MNE also warned that the estimated head radius was 13.9 cm for
+this two-channel montage. These manual edits and the warning mean the
+workaround is not an accepted adapter or validation result; the numeric
+difference is only a record of this specific synthetic probe, not a tolerance.
 The check did not load the pinned EDF, run `clean_rawdata` or ICA, or assess
 scientific suitability.
 
@@ -213,14 +248,14 @@ then be repeated on the pinned BIDS recording with independent method review.
 No BrainLearn dependency, processing implementation, or scientific setting was
 changed.
 
-Reproduction used EEGPrep's 0.4.0 published source commit
+Reproduction used `uv venv --python 3.12 <isolated-venv>` followed by
+`uv pip install --python <isolated-venv>/bin/python eegprep==0.4.0`. EEGPrep's
+0.4.0 published source commit
 [`a3ad7d9`](https://github.com/sccn/eegprep/tree/a3ad7d9a9c971c3c06e5c764da4246258857fda2)
 and its documented [`eeg_mne2eeg`](https://github.com/sccn/eegprep/blob/a3ad7d9a9c971c3c06e5c764da4246258857fda2/src/eegprep/functions/miscfunc/eeg_mne2eeg.py)
 and [`eeg_eeg2mne`](https://github.com/sccn/eegprep/blob/a3ad7d9a9c971c3c06e5c764da4246258857fda2/src/eegprep/functions/miscfunc/eeg_eeg2mne.py)
-helpers. The baseline reproduction command is `uv pip install --python
-<isolated-venv>/bin/python eegprep==0.4.0`; the MNE `RawArray` fixture and
-conversion calls are described above. The manual diagnostic override is not
-part of the baseline command.
+helpers. The exact MNE `RawArray` fixture, baseline failure, and diagnostic
+override are shown above.
 
 ## Questions for the reviewer
 
