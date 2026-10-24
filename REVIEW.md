@@ -1733,3 +1733,37 @@ expected for a PR). The review accepts this as engineering evidence for the
 synthetic GUI/export path only. No processing method changed. Step 7's parent
 and scientific-review gates remain unchecked; Step 8 remains deferred and the
 Next assignment remains Step 7.
+
+## Focused EEG reviewer follow-up — PR #64
+
+Review date: 2026-10-24
+
+Status: **approved for outreach documentation only.** Reviewed PR #64 at head
+`f2c1848b245be95c35b853f7b2b65a9864bf8969` against base
+`20612c0edb6f02178cfa11e7011566be8631dec6`. The implementation diff adds only
+one completion-log row to `docs/implementation-plan.md`. Gmail thread
+`1a15867505c93243` contains the initial sent request and follow-up message
+`1a16e23c40b3e805` to Dr. Olaf Hauk. The follow-up narrows the ask to the
+terminal `BAD_ACQ_SKIP` annotation and the sidecar's `EEGReference` and
+`PowerLineFrequency` values of `n/a`, asks for a short recommendation or
+referral, sets no deadline, and explicitly says no reply is needed if he is
+unavailable. The thread has no response. The row describes these details
+accurately and does not infer a methods review, recommendation, or approval.
+
+In a clean detached Python 3.12 checkout, `uv sync --locked --all-packages
+--group dev --group docs --group eeg`, `uv lock --check`, Ruff, formatting
+(113 files), and strict mypy (36 source files) passed; pytest passed (830
+passed, 4 skipped, 2 upstream warnings). Frontend lint/Prettier, Vitest (183
+tests/21 files), production build, and production dependency audit (0
+vulnerabilities) passed; the full frontend install reported 3 development-tree
+vulnerabilities. Strict Sphinx HTML and linkcheck passed. Responsive and axe
+checks passed for 7 pages at 375 px and 1440 px; the docs package audit found
+0 vulnerabilities. `git diff origin/main...HEAD --check` passed. Hosted checks
+passed on the reviewed head: Python/frontend run `40099208682` (1m38s/36s)
+and docs run `40099208701` (57s; Pages deployment skipped as expected for a
+PR).
+
+This disposition approves only the outreach-record documentation. No code,
+dependency, processing method, or scientific claim changed. Step 7's parent
+and scientific-review gates remain unchecked; Step 8 remains deferred and the
+Next assignment remains Step 7.
