@@ -275,6 +275,15 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   A brief request for an independent critique or referral was sent to her
   publicly listed institutional address on 2026-10-24 (Gmail message/thread
   `1a16db33c9ccb242`). Response pending.
+- Additional independent-review request: Makoto Miyakoshi, an EEG researcher
+  and consultant whose personal preprocessing guidance covers channel and
+  segment rejection before ICA ([EEG analysis profile](https://gyree.co/),
+  [preprocessing guide](https://eeglab.ucsd.edu/mediawiki/index.php?title=Makoto%27s_preprocessing_pipeline)).
+  The guide explicitly describes its recommendations as personal rather than
+  official EEGLAB guidance. A focused request for a brief comment or referral
+  was sent to the corresponding-author address listed in a [recent EEG
+  paper](https://pubmed.ncbi.nlm.nih.gov/36840814/) on 2026-10-24 (Gmail
+  message/thread `1a16e7803dcea2c6`). Response pending.
 - Remaining limitations: this partial feedback is not a review of the full
   Step 7 assumptions and does not close the independent scientific-review
   gate.
