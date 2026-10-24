@@ -1914,3 +1914,29 @@ This disposition covers the lockfile update and its reproducibility evidence.
 It does not claim the Dependabot alert has closed; confirm that after merge and
 rescan. No EEG method or scientific claim changed. Step 7's scientific-review
 gates remain unchecked; Step 8 remains deferred.
+
+## Vitest lockfile security update — PR #68
+
+Review date: 2026-10-24
+
+Status: **approved for the scoped dependency update; a separate Vite finding
+remains open pending PR #67.** Reviewed PR #68 at dependency head
+`9f6986daaa429688e35f6eef53c842a32738caac` against base
+`a3e3f77be113b91c7e3f1b0eee3fac9d510cb518`. The dependency diff changes only
+`apps/web/package.json` and `apps/web/package-lock.json`: the direct Vitest
+range changes from `^5.0.1` to `^5.0.5`; Vitest and `@vitest/mocker` are both
+locked at `5.0.5`, with their related dependencies updated. `@vitest/mocker`
+is retained. The removed lock entries are `siginfo` and `stackback`, which
+were dependencies of `why-is-node-running` 2.3.0; the new lock uses
+`why-is-node-running` 3.2.1 without those dependencies.
+
+In a clean checkout on Node 22.23.3/npm 10.9.9, `npm ci` installed 269
+packages and `npm ls vitest @vitest/mocker` confirmed both packages at
+`5.0.5`. `npm test` passed all 183 tests in 21 files. `git diff --check`
+passed. `npm audit` reports a high-severity Vite 7.3.6 finding; it is outside
+this PR's diff and is addressed separately by pending PR #67.
+
+Hosted Python/frontend checks passed in CI run `40107457757`; documentation
+checks passed in run `40107457649`; Pages deployment was skipped as expected
+for a pull request. This disposition covers the Vitest dependency update and
+its local checks. No application code or scientific claim changed.
