@@ -98,6 +98,37 @@ annotation begins 2 ms after the sidecar's stated duration and ends with the
 EDF; both source duration values remain unreconciled. These are observations for
 review, not a scientific interpretation or approval.
 
+### Annotation-rejection sensitivity probe (engineering only)
+
+On 2026-10-24, a local sensitivity probe used the same 12-file, checksum-pinned
+recording. The public sample was retrieved through OpenNeuro's S3 mirror after
+the manifest's OpenNeuro object URL returned HTTP 502; every downloaded file
+matched the committed manifest before and after processing. OpenNeuro documents
+the S3 mirror as a source for public dataset objects
+([data-retention documentation](https://docs.openneuro.org/policy/data_retention.html)).
+
+With MNE 1.13.2, the same 1–40 Hz zero-phase FIR settings were used for two
+FastICA fits (`n_components=None`, seed 0, `max_iter=1000`, `decim=1`). The
+only changed setting was `reject_by_annotation`: `False` fit 162,000 samples
+and converged in 90 iterations; `True` fit 161,733 samples and converged in
+139 iterations. Both fits had 96 components and passed the configured
+convergence check. MNE's `get_data` with `reject_by_annotation="omit"`
+returned 161,733 of 162,000 time samples for a one-channel extraction,
+omitting the 267 sample positions (0.165%) covered by the recording-wide
+terminal `BAD_ACQ_SKIP` annotation.
+
+For a diagnostic comparison, the two sets of 96 component maps were matched
+one-to-one to maximize absolute Pearson spatial correlation (Hungarian
+assignment; sign ignored). The matched absolute correlations had minimum
+`0.2416`, 10th percentile `0.9033`, median `0.9889`, and maximum `0.99999`;
+8, 10, and 21 matches were below `0.8`, `0.9`, and `0.95`, respectively. A
+second run produced the same fit counts and correlation summary. No components
+were excluded or labeled. This one-recording engineering sensitivity result
+does not establish whether the interval should be included, rejected, or
+reviewed, and the map-correlation values are not scientific acceptance
+criteria. It is provided to make the impact of the review decision concrete,
+not to make that decision.
+
 ## Published pipeline context
 
 The EEGEyeNet paper describes its own minimal preprocessing pipeline: bad
