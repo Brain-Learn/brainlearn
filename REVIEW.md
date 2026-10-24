@@ -1815,3 +1815,37 @@ documentation. It is not a scientific methods review or endorsement of either
 ICA setting. No code, dependency, or processing method changed. Step 7's
 parent and scientific-review gates remain unchecked; Step 8 remains deferred
 and the Next assignment remains Step 7.
+
+## Focused ICA reviewer follow-up — PR #66
+
+Review date: 2026-10-24
+
+Status: **approved for outreach documentation only.** Reviewed PR #66 at head
+`064bac10e29950ccef797cea88664eb50367dcca` against base
+`896c4006e29402513d911e2ab78275af0e1d9fcd`. The implementation diff adds one
+completion-log row to `docs/implementation-plan.md`. Gmail thread
+`1a158a1626f2292a` contains the initial sent request and follow-up message
+`1a16e6e0b8c6b9ed` to Dr. Scott Makeig. The follow-up says the packet includes
+the fixed-seed `reject_by_annotation` sensitivity comparison and links to the
+current review packet. It asks whether the recording-wide terminal
+`BAD_ACQ_SKIP` plus missing reference/power-line metadata should require an
+explicit researcher decision before ICA, requests only a brief comment or
+referral, sets no deadline, and says no reply is needed if he is unavailable.
+The thread contains no reply. The row accurately records outreach only and
+does not imply a completed methods review or scientific approval.
+
+In a clean detached Python 3.12 checkout, locked sync, `uv lock --check`, Ruff,
+formatting (113 files), strict mypy (33 source files), and pytest passed (830
+passed, 4 skipped, 2 upstream warnings). Frontend lint/Prettier, Vitest (183
+tests/21 files), production build, and production audit (0 vulnerabilities)
+passed; the full frontend install reported 3 development-tree vulnerabilities.
+Strict Sphinx HTML/linkcheck, responsive and axe checks for 7 pages at 375/1440
+px, docs package audit (0 vulnerabilities), and `git diff --check` passed.
+Hosted checks passed on the reviewed head: Python/frontend run `40105115641`
+(1m46s/42s) and docs run `40105115730` (57s; Pages deployment skipped as
+expected for a PR).
+
+This disposition approves only the outreach-record documentation. No code,
+dependency, processing method, or scientific claim changed. Step 7's parent
+and scientific-review gates remain unchecked; Step 8 remains deferred and the
+Next assignment remains Step 7.
