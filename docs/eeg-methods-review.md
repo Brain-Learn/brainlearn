@@ -284,6 +284,14 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   was sent to the corresponding-author address listed in a [recent EEG
   paper](https://pubmed.ncbi.nlm.nih.gov/36840814/) on 2026-10-24 (Gmail
   message/thread `1a16e7803dcea2c6`). Response pending.
+- Additional independent-review request: Dr. Robert Oostenveld, Associate
+  Principal Investigator in the Donders Institute's MEG Methods group, whose
+  work develops EEG/MEG analysis methods and the FieldTrip toolbox ([Radboud
+  profile](https://www.ru.nl/en/people/oostenveld-r), [FieldTrip
+  preprocessing documentation](https://www.fieldtriptoolbox.org/development/module/preproc/)).
+  A focused request for a brief methods critique or referral was sent to the
+  institutional address on his profile on 2026-10-24 (Gmail message/thread
+  `1a16e9b1983a352a`). Response pending.
 - Remaining limitations: this partial feedback is not a review of the full
   Step 7 assumptions and does not close the independent scientific-review
   gate.
