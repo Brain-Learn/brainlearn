@@ -1965,3 +1965,51 @@ checks passed in run `40108075836`; Pages deployment was skipped as expected
 for a pull request. This disposition covers the Vite dependency update and its
 reproducibility/security evidence. Confirm the Dependabot alert after merge
 and rescan. No scientific or EEG-method claim is made.
+
+## Cross-tool EEG methods review request — PR #71
+
+Review date: 2026-10-24
+
+Status: **approved for outreach/security-status documentation only; the
+independent EEG methods review remains pending.** Reviewed PR #71 at head
+`d164c7b10fb76f1a8f859e2554f6e3cf3732ffa9` against base
+`4b15590fe5107a423abe482ee9b92daee5d21f6b`. The diff changes only
+`docs/eeg-methods-review.md` and `docs/implementation-plan.md`; it adds a
+reviewer outreach record and post-merge security-status row. No implementation
+or processing behavior changed.
+
+Gmail thread `1a16e9b1983a352a` contains one message labeled `SENT`, addressed
+to `robert.oostenveld@donders.ru.nl`; the thread has no reply. The message
+asks for a brief methods critique or referral about the pinned recording's
+`BAD_ACQ_SKIP` annotation and missing reference/power-line metadata before
+ICA. It says no software run or endorsement is requested, sets no deadline,
+says no reply is needed if unavailable, and clarifies that a brief note will
+not approve the full workflow. The plan row accurately records outreach only.
+
+The [Radboud University profile](https://www.ru.nl/en/people/oostenveld-r)
+lists that contact address, Dr. Oostenveld's Associate Principal Investigator
+role, EEG/MEG analysis-method research interest, MEG Methods group, and a
+FieldTrip project/publication. The official [FieldTrip preprocessing page](https://www.fieldtriptoolbox.org/development/module/preproc/)
+describes filtering, rereferencing, and related EEG/MEG preprocessing
+functions. These sources support reviewer fit and address provenance only;
+they do not evidence a review or endorsement of BrainLearn.
+
+The post-merge security row is accurate. PRs #69, #68, and #67 merged as
+`a3e3f77`, `e6349e8`, and `4b15590`. Main CI run `40108457888` and
+documentation/Pages run `40108457764` both passed on `4b15590`; the deployed
+site at <https://brain-learn.github.io/brainlearn/> returned HTTP 200. In the
+clean PR checkout, `npm ci` installed 269 packages and `npm audit` found zero
+vulnerabilities. `uv lock --check` passed and `uv tree --locked --package
+certifi` resolved `certifi v2026.10.19`. The Dependabot API currently returns
+eight open alerts for old dependency versions: five Vite alerts at 7.3.6, two
+`@vitest/mocker` alerts at 5.0.1, and one Certifi alert at 2026.7.22. Alert
+closure is not claimed; it remains pending GitHub's dependency-graph rescan.
+
+Clean-checkout verification passed: locked Python 3.12 sync for all packages
+with docs/EEG groups, strict Sphinx HTML build and linkcheck, and
+`git diff --check`. Hosted PR Python/frontend run `40108874216` and docs run
+`40108874178` passed on the reviewed head; Pages deployment was skipped as
+expected for a PR.
+
+No methods review or scientific approval is inferred. Step 7's parent and
+scientific-review gates remain unchecked; Step 8 remains deferred.
