@@ -197,16 +197,18 @@ from eegprep import eeg_eeg2mne, eeg_mne2eeg
 
 sfreq, n_times = 500.0, 162_000
 times = np.arange(n_times, dtype=np.float64) / sfreq
-data = np.vstack((
-    2e-6 * np.sin(2 * np.pi * 10 * times),
-    1e-6 * np.cos(2 * np.pi * 7 * times),
-))
+data = np.vstack(
+    (
+        2e-6 * np.sin(2 * np.pi * 10 * times),
+        1e-6 * np.cos(2 * np.pi * 7 * times),
+    )
+)
 info = mne.create_info(["Cz", "Pz"], sfreq, ch_types=["eeg", "eeg"])
 raw = mne.io.RawArray(data, info, verbose="ERROR")
 raw.set_montage("standard_1020")
-raw.set_annotations(mne.Annotations(
-    onset=[323.466], duration=[0.534], description=["BAD_ACQ_SKIP"]
-))
+raw.set_annotations(
+    mne.Annotations(onset=[323.466], duration=[0.534], description=["BAD_ACQ_SKIP"])
+)
 EEG = eeg_mne2eeg(raw)
 try:
     eeg_eeg2mne(EEG)
@@ -217,9 +219,7 @@ except AttributeError as error:
 EEG["chaninfo"] = {"nodatchans": {}}
 EEG["event"][0]["duration"] = 267
 roundtrip = eeg_eeg2mne(EEG)
-max_delta_uV = np.max(np.abs(
-    raw.get_data(units="uV") - roundtrip.get_data(units="uV")
-))
+max_delta_uV = np.max(np.abs(raw.get_data(units="uV") - roundtrip.get_data(units="uV")))
 ```
 
 This annotation matches the pinned recording's terminal annotation geometry.
@@ -233,10 +233,11 @@ As a diagnostic only, manually adding `chaninfo={'nodatchans': {}}` and
 `duration=267` to the event allowed the synthetic round trip to complete. With
 the exact waveform above, the returned annotation onset and duration matched
 the input and the maximum signal difference was `4.744e-8 µV` in this local
-environment. MNE also warned that the estimated head radius was 13.9 cm for
-this two-channel montage. These manual edits and the warning mean the
-workaround is not an accepted adapter or validation result; the numeric
-difference is only a record of this specific synthetic probe, not a tolerance.
+environment. MNE warned that the estimated head radius was 13.9 cm for this
+two-channel montage and emitted a deprecation warning for the `standard_1020`
+alias. These manual edits and warnings mean the workaround is not an accepted
+adapter or validation result; the numeric difference is only a record of this
+specific synthetic probe, not a tolerance.
 The check did not load the pinned EDF, run `clean_rawdata` or ICA, or assess
 scientific suitability.
 
