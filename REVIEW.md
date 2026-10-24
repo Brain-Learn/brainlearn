@@ -2013,3 +2013,45 @@ expected for a PR.
 
 No methods review or scientific approval is inferred. Step 7's parent and
 scientific-review gates remain unchecked; Step 8 remains deferred.
+
+## EEGPrep MNE interoperability smoke-check evidence — PR #72
+
+Review date: 2026-10-24
+
+Status: **approved for bounded engineering-evidence documentation only; the
+independent EEG methods review remains pending.** Reviewed PR #72 at final head
+`e341214f4f26590342b4ddae92037a0f0bc928eb` against base
+`1dc9443b7af1094a45d3537b148f99804e6a0c0e`. The diff changes only
+`docs/eeg-methods-review.md` and `docs/implementation-plan.md`; no project
+code, dependency, or processing setting changed.
+
+In a separate Python 3.12 environment, PyPI EEGPrep 0.4.0 resolved MNE
+1.13.2. The GitHub `v0.4.0` tag dereferences to the cited source commit
+`a3ad7d9a9c971c3c06e5c764da4246258857fda2`. Inspection of those pinned helpers
+and execution of the packet's exact synthetic waveform/montage recipe
+confirmed that `eeg_mne2eeg` emits latency `161734` and `BAD_ACQ_SKIP` type but
+omits the 267-sample annotation duration. The unmodified reverse conversion
+raises the reported `AttributeError: 'NoneType' object has no attribute
+'get'`. With the documented diagnostic-only `chaninfo` and duration override,
+the round trip preserves the annotation span; the maximum signal difference
+was `4.7436685912671805e-8 µV` (reported as `4.744e-8 µV`). MNE emitted the
+reported 13.9 cm head-radius warning and a `standard_1020` deprecation warning.
+The packet labels the override diagnostic-only and explicitly excludes the
+pinned EDF, cleaning, ICA, and scientific suitability. No methods review or
+scientific approval is inferred.
+
+The final-head clean-checkout gate passed: `uv lock --check`; locked Python
+3.12 sync across all packages with dev/docs/EEG groups; Ruff; format check
+(113 files); mypy (33 files); pytest (830 passed, 4 skipped, 2 dependency
+deprecation warnings); frontend lint and format; Vitest (183 tests in 21
+files); Vite build (1,850 modules, existing 524.24 kB chunk advisory);
+production audit (0 vulnerabilities); strict Sphinx HTML build and
+linkcheck; docs responsive/axe checks (7 pages at 375 px and 1440 px); docs
+package audit (0 vulnerabilities); and `git diff --check`. Hosted Python and
+frontend checks passed in run `40110575023`, and documentation checks passed
+in run `40110574979`; Pages deployment was skipped as expected for a PR. An
+intermediate documentation commit failed Ruff formatting; the final head
+corrected it and passed the clean and hosted checks.
+
+Step 7's parent and scientific-review gates remain unchecked. Step 8 remains
+deferred.
