@@ -1658,3 +1658,45 @@ Pillow lockfile and code diff unchanged. The PR's required hosted checks gate
 merge. The Pillow code and local-gate evidence are unchanged. No scientific
 method or assumption changed. Step 7 parent/scientific-review gates remain
 unchecked, Step 8 remains deferred, and the Next assignment is unchanged.
+
+## Step 7 partial methods feedback and independent-review outreach — PR #62
+
+Review date: 2026-10-24
+
+Status: **approved for the documentation update and outreach record only; no
+scientific approval.** Reviewed PR #62 at documentation head
+`c19b9e785ff1e910410a6c9097b805df4f60dd38` against base
+`d13bd1a18740a5680f06602aa878dd7c7ca1366e`. The diff changes only
+`REVIEW.md`, `docs/eeg-methods-review.md`, and
+`docs/implementation-plan.md`; it records partial reviewer feedback and a
+pending independent-review request without changing code, dependencies,
+processing methods, or scientific claims.
+
+Verified Delorme's follow-up in Gmail thread `1a16988f694a6f0d`, message
+`1a169a8428d52434`: he said EEGPrep could replace MNE, particularly for ICA,
+described annotation and missing metadata as data-specific, and said their
+usual practice is `clean_rawdata` channel and segment removal before ICA. He
+gave no pinned-recording parameters or overall workflow decision. Verified
+Kay Robbins's sent request in Gmail thread/message `1a16db33c9ccb242` to the
+address listed on her [official UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html).
+The profile identifies her as Professor Emerita and lists data standards and
+reproducibility; her [PREP paper](https://doi.org/10.3389/fninf.2015.00016)
+and [preprocessing sensitivity study](https://doi.org/10.1109/TNSRE.2020.2980223)
+support the stated reviewer fit. The sent thread contains no reply, so response
+pending is accurate.
+
+In a clean detached checkout at the reviewed head, locked Python 3.12 sync,
+`uv lock --check`, Ruff, Ruff format (113 files), strict mypy (33 source
+files), and pytest passed (830 passed, 4 skipped, 2 upstream warnings).
+Frontend lint/Prettier, Vitest (183 tests/21 files), build, and production
+audit (0 vulnerabilities) passed; the full development install reports 3
+existing development-tree vulnerabilities. Strict Sphinx HTML and linkcheck,
+responsive/axe browser checks (7 pages at 375 px and 1440 px), and
+`git diff --check` passed. Required hosted CI passed on the reviewed head:
+Python/frontend run `40090843162` (Python 1m43s; frontend 43s) and docs run
+`40090843192` (docs build/linkcheck passed; Pages deployment skipped as
+expected for a PR).
+
+Step 7's parent and scientific-review gates remain unchecked; Step 8 remains
+deferred and the Next assignment remains Step 7. The recorded feedback is
+partial and does not approve the science or direct an implementation change.
