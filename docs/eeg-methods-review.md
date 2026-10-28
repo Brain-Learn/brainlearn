@@ -342,8 +342,13 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   (message `1a169a569d750452`) asking whether the ICLabel comment concerns a
   different pipeline and whether the pinned recording's annotation/metadata
   issues change the recommendation; the response arrived later that day
-  (message `1a169a8428d52434`). Evaluate EEGPrep's fit for BrainLearn before
-  making a processing or architecture decision.
+  (message `1a169a8428d52434`). On 2026-10-28, a further clarification asked
+  whether his advice for the pinned recording is to review/remove bad channels
+  and the annotated terminal segment before ICA, whether EEGPrep is his
+  recommendation for ICA, and whether he has recording-specific settings
+  (message `1a182bb4afc4f17d`). No response to that clarification is recorded
+  yet. Evaluate EEGPrep's fit for BrainLearn before making a processing or
+  architecture decision.
 - Additional independent-review request: Kay Robbins, Professor Emerita at
   UT San Antonio, whose work includes EEG preprocessing, PREP, and EEG
   preprocessing sensitivity ([UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html),
