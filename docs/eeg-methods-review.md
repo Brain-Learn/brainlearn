@@ -2,12 +2,17 @@
 
 ## Review status
 
-**Pending.** Partial email feedback from Arnaud Delorme is recorded below.
-It is not a full review or approval of the bounded workflow. Requests to
-additional reviewers are pending. Step 7's top-level and
-scientific-review checkboxes stay unchecked until an independent EEG methods
-reviewer assesses the workflow against the pinned recording, records a
-decision, and any required changes have been completed and verified.
+**Deferred by product-owner decision (2026-10-28); not scientifically approved.**
+Partial email feedback from Arnaud Delorme is recorded below.
+Kay Robbins declined due to availability, and Makoto Miyakoshi offered a
+one-to-one online discussion. After checking availability, we said the first
+week of November was unavailable and asked for options after November 8 or a
+brief written critique. On 2026-10-28 the product owner directed the project
+to stop waiting for reviewer availability and continue to Step 8. This is a
+sequencing waiver only: no independent methods decision has been received,
+Step 7 remains unchecked, and the bounded workflow is not scientifically
+certified. Keep method settings explicit and provisional; the review can be
+resumed if an independent reviewer becomes available.
 
 ## Review scope
 
@@ -339,8 +344,13 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   (message `1a169a569d750452`) asking whether the ICLabel comment concerns a
   different pipeline and whether the pinned recording's annotation/metadata
   issues change the recommendation; the response arrived later that day
-  (message `1a169a8428d52434`). Evaluate EEGPrep's fit for BrainLearn before
-  making a processing or architecture decision.
+  (message `1a169a8428d52434`). On 2026-10-28, a further clarification asked
+  whether his advice for the pinned recording is to review/remove bad channels
+  and the annotated terminal segment before ICA, whether EEGPrep is his
+  recommendation for ICA, and whether he has recording-specific settings
+  (message `1a182bb4afc4f17d`). No response to that clarification is recorded
+  yet. Evaluate EEGPrep's fit for BrainLearn before making a processing or
+  architecture decision.
 - Additional independent-review request: Kay Robbins, Professor Emerita at
   UT San Antonio, whose work includes EEG preprocessing, PREP, and EEG
   preprocessing sensitivity ([UTSA profile](https://caicc.utsa.edu/faculty/profiles/robbins-kay.html),
@@ -348,7 +358,8 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   [preprocessing sensitivity study](https://doi.org/10.1109/TNSRE.2020.2980223)).
   A brief request for an independent critique or referral was sent to her
   publicly listed institutional address on 2026-10-24 (Gmail message/thread
-  `1a16db33c9ccb242`). Response pending.
+  `1a16db33c9ccb242`). She declined on 2026-10-25 due to time (reply
+  `1a174decc09c3090`); no methods assessment or referral was provided.
 - Additional independent-review request: Makoto Miyakoshi, an EEG researcher
   and consultant whose personal preprocessing guidance covers channel and
   segment rejection before ICA ([EEG analysis profile](https://gyree.co/),
@@ -357,7 +368,15 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   official EEGLAB guidance. A focused request for a brief comment or referral
   was sent to the corresponding-author address listed in a [recent EEG
   paper](https://pubmed.ncbi.nlm.nih.gov/36840814/) on 2026-10-24 (Gmail
-  message/thread `1a16e7803dcea2c6`). Response pending.
+  message/thread `1a16e7803dcea2c6`). On 2026-10-26 he offered an online
+  discussion at the beginning of November and asked about inviting EEGLAB
+  mailing-list attendees (reply `1a178c3248aea09e`). On 2026-10-28 we
+  proposed keeping the discussion one-to-one for this bounded review and
+  requested possible times (reply `1a182ab4ba35b6d4`). After checking
+  availability, we followed up on 2026-10-28 to say the first week of November
+  was unavailable and ask for options after November 8 or a brief written
+  critique (reply `1a182b73e2050e4c`). Scheduling and the methods review remain
+  pending; no scientific decision is inferred.
 - Additional independent-review request: Dr. Robert Oostenveld, Associate
   Principal Investigator in the Donders Institute's MEG Methods group, whose
   work develops EEG/MEG analysis methods and the FieldTrip toolbox ([Radboud

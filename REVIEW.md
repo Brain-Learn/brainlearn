@@ -2055,3 +2055,48 @@ corrected it and passed the clean and hosted checks.
 
 Step 7's parent and scientific-review gates remain unchecked. Step 8 remains
 deferred.
+
+## Step 7 owner-authorized sequencing waiver — PR #73
+
+Review date: 2026-10-28
+
+Status: **approved for documenting the product-owner sequencing waiver only;
+independent EEG methods review remains deferred.** Reviewed PR #73 at
+`7fc0ed43eceb026f57bdb39b67d2f2a05a549d88` against base
+`f036b2f25bc728d119274137f19638391f2647db`. The complete PR diff changes only
+`docs/eeg-methods-review.md` and `docs/implementation-plan.md`; it changes no
+processing code, dependency, method setting, or scientific claim. The user
+explicitly directed the project to stop waiting for a reviewer and proceed.
+The packet records this as a sequencing waiver, says no independent methods
+decision was received, and leaves Step 7 unchecked. The plan authorizes Step 8
+to proceed on the pinned `ds004771` v1.0.0 sample with explicit provisional
+parameters, no silent template defaults, and no scientific-certification
+claim. Step 8 also remains unchecked, and the independent review requirement
+for certification is retained. This approval covers only that documentation
+and sequencing change; it is not scientific approval of the EEG workflow.
+
+In a clean detached checkout of the reviewed head, Python 3.12 sync installed
+87 locked packages. `uv lock --check`, Ruff, formatting (113 files), strict
+mypy (36 source files), and pytest passed (830 passed, 4 skipped, 2 upstream
+deprecation warnings, 65.04 s). Frontend `npm ci` installed 269 packages with
+0 vulnerabilities; ESLint and Prettier passed; Vitest passed 183 tests in 21
+files; the production build passed (1,850 modules; existing 524.24 kB chunk
+advisory); and `npm audit` found 0 vulnerabilities. Docs `npm ci` installed 3
+packages with 0 vulnerabilities. Strict Sphinx HTML build and external
+linkcheck passed; the responsive/axe check passed for 7 pages at 375 px and
+1440 px; `git diff --check` passed. Hosted Python/frontend run `40702636285`
+passed (Python 2m03s, frontend 40s); hosted docs run `40702636474` passed
+(45s; Pages deployment skipped as expected).
+
+The preceding hosted run `40701908574` had one failed frontend attempt:
+`src/runFlow.test.tsx:199` expected two rendered `run-demo-1` occurrences but
+found one. The author ran the full local frontend suite successfully, and the
+failed job was rerun without source changes; attempt 2 passed. The latest-head
+hosted frontend check also passed. This documentation-only review does not
+change the unrelated test; retain the transient failure as a reliability risk.
+The monitor's review-record commit is documentation-only and must pass its
+own final-head checks before merge.
+
+Step 7 remains unchecked and scientifically unapproved. Step 8 remains
+unchecked; the product owner has authorized it as the next implementation
+assignment under the recorded waiver.
