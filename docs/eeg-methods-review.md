@@ -4,11 +4,13 @@
 
 **Pending.** Partial email feedback from Arnaud Delorme is recorded below.
 Kay Robbins declined due to availability, and Makoto Miyakoshi offered a
-one-to-one online discussion for early November; a time is not yet set. These
-are not a full review or approval of the bounded workflow. Step 7's top-level
-and scientific-review checkboxes stay unchecked until an independent EEG
-methods reviewer assesses the workflow against the pinned recording, records
-a decision, and any required changes have been completed and verified.
+one-to-one online discussion. After checking availability, we said the first
+week of November was unavailable and asked for options after November 8 or a
+brief written critique. These are not a full review or approval of the bounded
+workflow. Step 7's top-level and scientific-review checkboxes stay unchecked
+until an independent EEG methods reviewer assesses the workflow against the
+pinned recording, records a decision, and any required changes have been
+completed and verified.
 
 ## Review scope
 
@@ -363,8 +365,11 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   discussion at the beginning of November and asked about inviting EEGLAB
   mailing-list attendees (reply `1a178c3248aea09e`). On 2026-10-28 we
   proposed keeping the discussion one-to-one for this bounded review and
-  requested possible times (reply `1a182ab4ba35b6d4`). Scheduling and the
-  methods review remain pending; no scientific decision is inferred.
+  requested possible times (reply `1a182ab4ba35b6d4`). After checking
+  availability, we followed up on 2026-10-28 to say the first week of November
+  was unavailable and ask for options after November 8 or a brief written
+  critique (reply `1a182b73e2050e4c`). Scheduling and the methods review remain
+  pending; no scientific decision is inferred.
 - Additional independent-review request: Dr. Robert Oostenveld, Associate
   Principal Investigator in the Donders Institute's MEG Methods group, whose
   work develops EEG/MEG analysis methods and the FieldTrip toolbox ([Radboud
