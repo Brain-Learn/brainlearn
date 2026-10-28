@@ -177,7 +177,20 @@ Completion gate: the workflow pauses for review, resumes only after a persisted 
 
 Scientific review required before checking this step.
 
+**Progression waiver (2026-10-28):** The product owner directed the project to
+stop waiting for an independent EEG methods reviewer and proceed to Step 8.
+This waives the external-review prerequisite for sequencing only. Step 7 stays
+unchecked and scientifically unapproved. Any Step 8 method settings must be
+explicit, recorded per workflow/run, and labeled provisional; do not present
+the template as scientifically certified. Resume Step 7 review later if an
+independent reviewer becomes available.
+
 ## [ ] Step 8 — Complete descriptive EEG workflow
+
+Work proceeds under the Step 7 progression waiver above. Use the specified
+`ds004771` v1.0.0 reference cohort and `sub-001` through `sub-005` fixture. Do
+not make method settings implicit template defaults before independent review;
+require explicit parameters and preserve the research-only, descriptive scope.
 
 - [ ] Implement explicit event selection and event diagnostics.
 - [ ] Implement epoching with units, rejection rules, and baseline settings.
@@ -190,9 +203,11 @@ Scientific review required before checking this step.
 - [ ] Compare every certified node against the direct-MNE reference workflow.
 - [ ] Add a complete tutorial using the pinned public/synthetic dataset.
 
-Completion gate: a clean installation completes the full EEG template through both GUI and CLI; results match the reviewed reference workflow; report, provenance, methods, and citations describe the actual run.
+Technical completion gate: a clean installation completes the full EEG workflow through both GUI and CLI; results match a separately written direct-MNE reference using the same explicit, provisional parameters; and the report, provenance, methods, and citations describe the actual run. This gate demonstrates implementation and numerical agreement, not independent scientific approval or certification.
 
-Scientific review required before checking this step.
+Independent scientific review remains required before calling the EEG template
+scientifically certified. The Step 7 waiver permits Step 8 implementation but
+does not waive or satisfy that certification gate.
 
 ## [ ] Step 9 — Complete Python project and notebook export
 
@@ -615,18 +630,20 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-28 | Step 7 reviewer scheduling correction | Verified; independent methods review pending | After checking availability, sent Makoto Miyakoshi a one-to-one follow-up stating that the first week of November was unavailable and requesting options after November 8 or a brief written critique (Gmail thread `1a16e7803dcea2c6`, reply `1a182b73e2050e4c`). This corrects the earlier tentative availability; no meeting is booked and no scientific decision is inferred. `docs/eeg-methods-review.md` records the same status. Verification on this head: strict Sphinx HTML build and external linkcheck passed; browser accessibility/responsive check passed for 7 pages at 375px and 1440px; docs `npm ci` audited 4 packages with 0 vulnerabilities; `git diff --check` passed. Hosted checks must pass on this final PR head. Step 7's parent/scientific-review gates remain unchecked; Step 8 remains deferred. | PR #73 |
 | 2026-10-28 | Step 7 focused reviewer clarification | Verified; independent methods review pending | Followed up with Dr. Arnaud Delorme in the existing thread (message `1a182bb4afc4f17d`) to clarify whether his advice for pinned `ds007338` is to review/remove bad channels and the terminal annotated segment before ICA, whether EEGPrep is his ICA recommendation, and whether he has recording-specific settings. His answer is pending; his earlier comments remain partial guidance, with no workflow change inferred. On this updated head, strict Sphinx HTML build and external linkcheck passed; responsive/axe check passed for 7 pages at 375px and 1440px; `git diff --check` passed. Hosted Python/frontend run `40697803202` and docs run `40697803188` passed on the preceding head `0b71616`; Pages deployment skipped as expected. Hosted checks must pass again on the final PR head. Step 7 and Step 8 remain unchecked/deferred. | PR #73 |
 | 2026-10-28 | PR #73 hosted completion gate | Verified; monitoring pending | Required hosted checks passed on review-content head `dc8610f`: Python quality/tests and frontend quality/tests/build in Actions run `40698349573` (Python 1m41s, frontend 44s), plus strict docs build/check in run `40698350081` (54s). Pages deployment was skipped as expected. Local strict Sphinx HTML/linkcheck, responsive/axe checks (7 pages × 2 viewports), and `git diff --check` also passed on that content. The independent scientific review remains pending; the monitor must rerun the gate on the final PR head. No processing code or scientific assumption changed. | PR #73 |
+| 2026-10-28 | Step 7 progression waiver | Owner-authorized; scientific review deferred | The product owner instructed the project to stop waiting for an independent methods reviewer and proceed. Recorded the decision in `docs/eeg-methods-review.md` and here. Step 7 remains unchecked; this waiver authorizes a sequencing change only and is not scientific approval. Step 8 may proceed with the pinned `ds004771` v1.0.0 five-participant fixture, explicit provisional parameters, and no claim of certification. Step 8's independent-review requirement remains for any scientific-certification claim. The updated `Next assignment` names Step 8. On this waiver head, strict Sphinx HTML build and linkcheck passed; the docs browser/accessibility check passed for 7 pages at 375 px and 1440 px; `git diff --check` passed. Hosted checks must pass on the waiver PR head. | PR #73 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 7 — independent monitoring and scientific review
+### Step 8 — cohort EEG descriptive workflow under the Step 7 waiver
 
-The ICA engineering checklist and sample-bearing public-data engineering
-comparison have independent engineering review. The next gate is an independent
-EEG methods review of the workflow and assumptions against the pinned public
-BIDS recording. Use [`docs/eeg-methods-review.md`](eeg-methods-review.md) as
-the review packet. Keep Step 7's parent and scientific-review gate unchecked
-until that review is complete. The public comparison is engineering evidence,
-not scientific approval. Do not begin Step 8 before those review gates pass.
+Implement the bounded cohort workflow in the Step 8 checklist using
+OpenNeuro `ds004771` v1.0.0, with `sub-001` through `sub-005` as the pinned
+tutorial/reference sample. Use explicitly supplied provisional settings and
+label the resulting workflow as not independently scientifically reviewed.
+Keep Step 7 unchecked and do not describe either step's engineering
+verification as scientific approval. Complete Step 8's UI/CLI, provenance,
+reporting, reference-comparison, and failure-case gates before updating its
+checkboxes; independent review is still required before a certification claim.

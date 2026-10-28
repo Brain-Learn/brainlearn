@@ -2,15 +2,17 @@
 
 ## Review status
 
-**Pending.** Partial email feedback from Arnaud Delorme is recorded below.
+**Deferred by product-owner decision (2026-10-28); not scientifically approved.**
+Partial email feedback from Arnaud Delorme is recorded below.
 Kay Robbins declined due to availability, and Makoto Miyakoshi offered a
 one-to-one online discussion. After checking availability, we said the first
 week of November was unavailable and asked for options after November 8 or a
-brief written critique. These are not a full review or approval of the bounded
-workflow. Step 7's top-level and scientific-review checkboxes stay unchecked
-until an independent EEG methods reviewer assesses the workflow against the
-pinned recording, records a decision, and any required changes have been
-completed and verified.
+brief written critique. On 2026-10-28 the product owner directed the project
+to stop waiting for reviewer availability and continue to Step 8. This is a
+sequencing waiver only: no independent methods decision has been received,
+Step 7 remains unchecked, and the bounded workflow is not scientifically
+certified. Keep method settings explicit and provisional; the review can be
+resumed if an independent reviewer becomes available.
 
 ## Review scope
 
