@@ -3,11 +3,12 @@
 ## Review status
 
 **Pending.** Partial email feedback from Arnaud Delorme is recorded below.
-It is not a full review or approval of the bounded workflow. Requests to
-additional reviewers are pending. Step 7's top-level and
-scientific-review checkboxes stay unchecked until an independent EEG methods
-reviewer assesses the workflow against the pinned recording, records a
-decision, and any required changes have been completed and verified.
+Kay Robbins declined due to availability, and Makoto Miyakoshi offered a
+one-to-one online discussion for early November; a time is not yet set. These
+are not a full review or approval of the bounded workflow. Step 7's top-level
+and scientific-review checkboxes stay unchecked until an independent EEG
+methods reviewer assesses the workflow against the pinned recording, records
+a decision, and any required changes have been completed and verified.
 
 ## Review scope
 
@@ -348,7 +349,8 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   [preprocessing sensitivity study](https://doi.org/10.1109/TNSRE.2020.2980223)).
   A brief request for an independent critique or referral was sent to her
   publicly listed institutional address on 2026-10-24 (Gmail message/thread
-  `1a16db33c9ccb242`). Response pending.
+  `1a16db33c9ccb242`). She declined on 2026-10-25 due to time (reply
+  `1a174decc09c3090`); no methods assessment or referral was provided.
 - Additional independent-review request: Makoto Miyakoshi, an EEG researcher
   and consultant whose personal preprocessing guidance covers channel and
   segment rejection before ICA ([EEG analysis profile](https://gyree.co/),
@@ -357,7 +359,12 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   official EEGLAB guidance. A focused request for a brief comment or referral
   was sent to the corresponding-author address listed in a [recent EEG
   paper](https://pubmed.ncbi.nlm.nih.gov/36840814/) on 2026-10-24 (Gmail
-  message/thread `1a16e7803dcea2c6`). Response pending.
+  message/thread `1a16e7803dcea2c6`). On 2026-10-26 he offered an online
+  discussion at the beginning of November and asked about inviting EEGLAB
+  mailing-list attendees (reply `1a178c3248aea09e`). On 2026-10-28 we
+  proposed keeping the discussion one-to-one for this bounded review and
+  requested possible times (reply `1a182ab4ba35b6d4`). Scheduling and the
+  methods review remain pending; no scientific decision is inferred.
 - Additional independent-review request: Dr. Robert Oostenveld, Associate
   Principal Investigator in the Donders Institute's MEG Methods group, whose
   work develops EEG/MEG analysis methods and the FieldTrip toolbox ([Radboud
