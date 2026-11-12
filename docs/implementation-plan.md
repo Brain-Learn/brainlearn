@@ -650,6 +650,8 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-11-12 | Step 8 final provenance and gate reconciliation | Local gate passed on final implementation; external approvals pending | Tightened ICA provenance after reviewing the run records: `eeg.ica_fit` now requires explicit method, component policy, maximum iterations, annotation rejection, and decimation parameters; the node and worker versions are recorded; persisted ICA provenance uses schema 1.2; palette/migrated nodes have no silent scientific defaults, while the example's provisional values are explicit and stored per run. Migration coverage confirms old ICA nodes remain unconfigured until a researcher sets them. Re-ran the pinned direct-MNE reference on final code: 5 passed, with source checksums verified unchanged. Final full gate: locked environment and lock check passed; Ruff, formatting (124 files), strict mypy (37 source files), pytest (850 passed, 9 skipped, 2 upstream deprecation warnings); frontend ESLint/Prettier, Vitest (183 tests in 21 files), production build (1,852 modules; existing 532.83 kB advisory), and production audit (0 vulnerabilities); strict Sphinx build/linkcheck; responsive/axe gate (8 pages × 375 px and 1440 px); and `git diff --check`. Final UI-to-service run recorded 5 selected, 3 processed, 0 excluded, 2 failed (`sub-003` and `sub-005`, FastICA did not converge within the explicit provisional 1,000-iteration limit); QC decisions were test-only, not scientific approvals. Final CLI run processed `sub-001` with explicit test-only decisions and produced checksummed report/summary artifacts. Step 8 parent remains unchecked; independent methods review, monitoring approval, and hosted PR checks are pending. | Local implementation worktree |
 
+| 2026-11-12 | Step 8 initial hosted CI gate | Passed on PR #74 implementation head `e4463a0`; recheck required after this evidence-only update | GitHub Actions on PR #74: Python quality and tests and Frontend quality, tests, and build both passed in run `43275268857` (1m44s and 1m11s); Build and check documentation passed in run `43275268741` (42s), with Pages deployment skipped as expected. This completion-log update records the hosted evidence; the new final PR head must pass the required hosted checks again. No processing code or scientific setting changed. Independent methods review, monitor approval, and Step 8 parent approval remain pending. | PR #74 |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
@@ -660,14 +662,15 @@ Preserve every completion-log row.
 Submit the completed Step 8 implementation branch for review through the
 project PR workflow. The monitor must review the final head, reproduce the
 local gate, and record approval before merging. Repair requested changes on
-the same PR. Keep the Step 8 parent unchecked until independent scientific
-review, local/hosted gates, and monitor approval are all complete. Do not
-describe engineering verification as scientific approval.
+the same PR. Hosted checks must pass on the exact final head. Keep the Step 8
+parent unchecked until independent scientific review and monitor approval are
+complete. Do not describe engineering verification as scientific approval.
 
 **Reference decision:** `ds004771` v1.0.0 was not compatible with this raw
 workflow because its EEG files declare `RecordingType: epoched`. The product
 owner chose the plan's compatible-continuous-cohort option. `ds005284` v1.0.0
 provides continuous recordings and a shared `condition 54` event label across
 the pinned five-subject sample. Reference checksums, direct-MNE comparisons,
-and end-to-end UI/CLI runs are complete. The independent methods decision,
-hosted checks and monitor review remain pending.
+and end-to-end UI/CLI runs are complete. The independent methods decision and
+monitor review remain pending; the hosted checks must be reverified on the
+final PR head.
