@@ -154,6 +154,7 @@ def filter_raw_eeg(
     recording_path: str,
     source_files: list[dict[str, Any]],
     cancel_check: Callable[[], None],
+    excluded_channel_names: list[str] | None = None,
 ) -> MneFilterResult:
     """Filter a BIDS Raw object and write its FIF, preview, and provenance artifacts."""
 
@@ -198,6 +199,17 @@ def filter_raw_eeg(
     ]
     if not eeg_names:
         raise MneFilterError("The selected recording has no EEG channels to filter.")
+    reviewed_bad_channels = excluded_channel_names or []
+    invalid_bad_channels = sorted(set(reviewed_bad_channels) - set(eeg_names))
+    if invalid_bad_channels:
+        raise MneFilterError(
+            "The reviewed bad-channel list contains a channel that is not EEG in this "
+            f"recording: {invalid_bad_channels[0]!r}. Reinspect and review this recording."
+        )
+
+    # Persist the explicit decision in MNE metadata so downstream ICA excludes
+    # the reviewed channels. No interpolation or automatic approval occurs.
+    raw.info["bads"] = sorted(set(raw.info["bads"]) | set(reviewed_bad_channels))
 
     raw.load_data(verbose="ERROR")
     cancel_check()
@@ -283,6 +295,7 @@ def filter_raw_eeg(
                     "high_hz": high_hz,
                     "notch_frequencies_hz": notch_frequencies_hz,
                     "notch_width_hz": notch_width_hz,
+                    "excluded_bad_channels": sorted(reviewed_bad_channels),
                     "unit": "Hz",
                 },
                 "sampling_frequency_hz": sampling_frequency,

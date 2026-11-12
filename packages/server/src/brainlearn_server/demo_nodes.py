@@ -287,11 +287,36 @@ def eeg_bad_channel_review_adapter(ctx: NodeContext) -> list[StagedOutput]:
         raise ControlledFailure(
             "The EEG recording changed after inspection. Run Inspect Signal again before review."
         )
-    _require_cancel(ctx)
-    raise ReviewPauseRequested(
-        "Review the EEG channel list and explicitly record channels to exclude. "
-        "BrainLearn will verify the names against the current recording and save the decision."
+    saved_decision = next(
+        (item for item in ctx.qc_reviews if item.node_run_id == ctx.node_run_id), None
     )
+    if saved_decision is None:
+        raise ReviewPauseRequested(
+            "Review this recording's EEG channel list and explicitly record channels to exclude. "
+            "The saved decision will be passed to filtering and ICA for this recording only."
+        )
+    if saved_decision.decision != "approved":
+        raise ControlledFailure("The bad-channel review was not approved for this recording.")
+    _require_cancel(ctx)
+    reviewed_reference = {
+        **reference,
+        "bad_channel_review": {
+            "node_id": saved_decision.node_id,
+            "review_id": saved_decision.id,
+            "decision": saved_decision.decision,
+            "reviewer": saved_decision.reviewer,
+            "excluded_channel_names": list(saved_decision.excluded_channel_names),
+            "source_content_identity": saved_decision.source_content_identity,
+        },
+    }
+    _write_json(ctx.staging_dir / "bad-channel-reviewed-reference.json", reviewed_reference)
+    return [
+        StagedOutput(
+            "reviewed",
+            "bad-channel-reviewed-reference.json",
+            "application/vnd.brainlearn.artifact-reference+json",
+        )
+    ]
 
 
 def eeg_filter_adapter(ctx: NodeContext) -> list[StagedOutput]:
@@ -318,6 +343,38 @@ def eeg_ica_review_adapter(ctx: NodeContext) -> list[StagedOutput]:
     return apply_reviewed_ica_eeg(ctx)
 
 
+def eeg_epochs_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Create event-locked epochs through the allowlisted MNE analysis adapter."""
+
+    from brainlearn_server.mne_analysis import epoch_adapter
+
+    return epoch_adapter(ctx)
+
+
+def eeg_erp_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Summarize event-related potentials from the retained epoch artifact."""
+
+    from brainlearn_server.mne_analysis import erp_adapter
+
+    return erp_adapter(ctx)
+
+
+def eeg_psd_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Estimate descriptive Welch spectra from the retained epoch artifact."""
+
+    from brainlearn_server.mne_analysis import psd_adapter
+
+    return psd_adapter(ctx)
+
+
+def eeg_report_adapter(ctx: NodeContext) -> list[StagedOutput]:
+    """Render the actual persisted run parameters and upstream result summaries."""
+
+    from brainlearn_server.mne_analysis import report_adapter
+
+    return report_adapter(ctx)
+
+
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
 
@@ -334,7 +391,7 @@ class DemoParameter:
 
     id: str
     label: str
-    value_type: Literal["string", "number"]
+    value_type: Literal["string", "number", "integer", "boolean"]
     default: Any
     required: bool = False
     description: str = ""
@@ -458,7 +515,7 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
     "eeg.bad_channel_review": DemoNodeManifest(
         version="0.1.0",
         inputs={"raw": True},
-        outputs={},
+        outputs={"reviewed": False},
         handler=eeg_bad_channel_review_adapter,
         cacheable=False,
     ),
@@ -513,10 +570,59 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
         cacheable=False,
     ),
     "eeg.ica_fit": DemoNodeManifest(
-        version="0.1.0",
+        version="0.2.0",
         inputs={"raw": True},
         outputs={"ica": True, "diagnostics": True, "provenance": True},
         handler=eeg_ica_fit_adapter,
+        parameters={
+            "method": DemoParameter(
+                id="method",
+                label="ICA method",
+                value_type="string",
+                default=None,
+                required=True,
+                description="Provisional method; FastICA is currently the only supported option.",
+            ),
+            "component_policy": DemoParameter(
+                id="component_policy",
+                label="Component count policy",
+                value_type="string",
+                default=None,
+                required=True,
+                description=(
+                    "Provisional policy: pass n_components=None to MNE, using all selected "
+                    "EEG channels."
+                ),
+            ),
+            "max_iterations": DemoParameter(
+                id="max_iterations",
+                label="Maximum ICA iterations",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Provisional FastICA convergence limit.",
+                minimum=10,
+                maximum=5000,
+            ),
+            "reject_by_annotation": DemoParameter(
+                id="reject_by_annotation",
+                label="Reject BAD annotated spans during ICA fitting",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Provisional setting. False includes BAD annotated spans in the fit.",
+            ),
+            "decim": DemoParameter(
+                id="decim",
+                label="ICA decimation factor",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Provisional sampling factor passed to MNE ICA fitting.",
+                minimum=1,
+                maximum=16,
+            ),
+        },
         cacheable=False,
     ),
     "eeg.ica_review": DemoNodeManifest(
@@ -524,6 +630,151 @@ EEG_NODES: dict[str, DemoNodeManifest] = {
         inputs={"raw": True, "fit": True},
         outputs={"reviewed": True, "provenance": True},
         handler=eeg_ica_review_adapter,
+        cacheable=False,
+    ),
+    "eeg.epochs": DemoNodeManifest(
+        version="0.2.0",
+        inputs={"reviewed": True},
+        outputs={"epochs": True, "diagnostics": True},
+        handler=eeg_epochs_adapter,
+        parameters={
+            "event": DemoParameter(
+                id="event",
+                label="Exact event label",
+                value_type="string",
+                default=None,
+                required=True,
+                description="Choose one exact annotation label shown by Event Diagnostics.",
+            ),
+            "tmin": DemoParameter(
+                id="tmin",
+                label="Epoch start (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Provisional epoch start relative to the selected event.",
+            ),
+            "tmax": DemoParameter(
+                id="tmax",
+                label="Epoch end (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Provisional epoch end relative to the selected event.",
+            ),
+            "baseline_enabled": DemoParameter(
+                id="baseline_enabled",
+                label="Apply baseline correction",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Select whether the configured baseline interval is applied.",
+            ),
+            "baseline_start": DemoParameter(
+                id="baseline_start",
+                label="Baseline start (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit start of the baseline interval relative to the event.",
+            ),
+            "baseline_end": DemoParameter(
+                id="baseline_end",
+                label="Baseline end (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit end of the baseline interval relative to the event.",
+            ),
+            "reject_eeg_peak_to_peak_uv": DemoParameter(
+                id="reject_eeg_peak_to_peak_uv",
+                label="EEG peak-to-peak rejection (µV; 0 disables)",
+                value_type="number",
+                default=None,
+                required=True,
+                minimum=0.0,
+                description="Explicit MNE epoch rejection threshold in microvolts; 0 disables it.",
+            ),
+            "reject_by_annotation": DemoParameter(
+                id="reject_by_annotation",
+                label="Reject annotated bad spans",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Explicitly choose whether overlapping BAD annotations reject epochs.",
+            ),
+        },
+        cacheable=False,
+    ),
+    "eeg.erp_average": DemoNodeManifest(
+        version="0.2.0",
+        inputs={"epochs": True},
+        outputs={"evoked": True},
+        handler=eeg_erp_adapter,
+        cacheable=False,
+    ),
+    "eeg.psd": DemoNodeManifest(
+        version="0.2.0",
+        inputs={"epochs": True},
+        outputs={"spectrum": True},
+        handler=eeg_psd_adapter,
+        parameters={
+            "fmin_hz": DemoParameter(
+                id="fmin_hz",
+                label="Minimum frequency (Hz)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit lower Welch frequency bound.",
+            ),
+            "fmax_hz": DemoParameter(
+                id="fmax_hz",
+                label="Maximum frequency (Hz)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit upper Welch frequency bound.",
+            ),
+            "n_fft": DemoParameter(
+                id="n_fft",
+                label="FFT points",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Welch FFT length; must be at least n_per_seg.",
+            ),
+            "n_per_seg": DemoParameter(
+                id="n_per_seg",
+                label="Samples per segment",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Welch segment length in samples.",
+            ),
+            "n_overlap": DemoParameter(
+                id="n_overlap",
+                label="Overlap samples",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Welch overlap in samples; smaller than n_per_seg.",
+            ),
+            "window": DemoParameter(
+                id="window",
+                label="Welch window",
+                value_type="string",
+                default=None,
+                required=True,
+                description="Explicit window: hamming, hann, or boxcar.",
+            ),
+        },
+        cacheable=False,
+    ),
+    "output.report": DemoNodeManifest(
+        version="0.2.0",
+        inputs={"evoked": True, "spectrum": True, "diagnostics": True},
+        outputs={"report": True},
+        handler=eeg_report_adapter,
         cacheable=False,
     ),
 }

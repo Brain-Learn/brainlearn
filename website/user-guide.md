@@ -21,7 +21,7 @@ The graph is a directed acyclic graph. Loops for repeated model fitting belong i
 
 Run records capture workflow version, input identities, parameter values, implementation versions, environment information, QC decisions, outputs, and citations as those fields become available for a node. Previews are bounded summaries and must not be mistaken for full-resolution scientific review.
 
-The current runnable EEG path is BIDS import → signal inspection → MNE filter. The filter reads one recording, leaves source files untouched, and writes a new artifact and provenance record. The other visible nodes communicate the intended workflow and may not execute yet; consult {doc}`status` before relying on one.
+The experimental EEG cohort path reads compatible continuous BIDS EEG recordings, pauses for explicit channel and ICA decisions per recording, then runs filtering, event-locked epochs, ERP, PSD, and reporting. It records provenance and continues after an individual recording fails. Its methods have not received independent scientific approval. Follow {doc}`eeg-cohort` for the bounded five-participant walkthrough and consult {doc}`status` before relying on any result.
 
 ## Inspect and export
 

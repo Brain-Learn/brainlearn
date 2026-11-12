@@ -14,6 +14,7 @@ from brainlearn_core import (
     OPENNEURO_PROVIDER,
     RUN_TERMINAL_STATES,
     CatalogEntry,
+    CohortRunRecord,
     DatasetSearch,
     DownloadRecord,
     LocalImportRecord,
@@ -32,7 +33,7 @@ from brainlearn_core import (
 )
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from brainlearn_server.auth import get_session_token, require_session_token
@@ -51,6 +52,7 @@ from brainlearn_server.bids_eeg import (
     BidsSignalInspectionError,
 )
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
+from brainlearn_server.cohort import CohortExecutionError, CohortRunService
 from brainlearn_server.datasets import (
     DatasetListResponse,
     list_dataset_page,
@@ -248,6 +250,7 @@ downloads = DownloadService(store)
 local_imports = LocalImportService(store)
 bids_eeg = BidsEegDiscoveryService(store)
 researcher_decisions = ResearcherDecisionStore(store)
+cohorts = CohortRunService(workers, bids_eeg)
 
 
 def _run_response(path: str, record: RunRecord) -> RunResponse:
@@ -1375,6 +1378,38 @@ class RunStartRequest(BaseModel):
     seed: int = 0
 
 
+class CohortStartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    workflow: Workflow
+    recording_paths: list[str] = Field(min_length=1, max_length=128)
+    seed: StrictInt = Field(default=0, ge=0)
+    dataset_id: str | None = Field(default=None, max_length=64)
+    dataset_version: str | None = Field(default=None, max_length=64)
+
+
+class CohortOpenRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    cohort_id: str = Field(min_length=1)
+
+
+class CohortRecoverRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+
+
+class CohortResultRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    cohort_id: str = Field(min_length=1)
+    kind: Literal["report", "summary"]
+
+
 class RunCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1433,6 +1468,90 @@ def start_run(
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _run_response(payload.path, started)
+
+
+@app.post("/api/cohorts/start", response_model=CohortRunRecord)
+def start_cohort(
+    payload: CohortStartRequest, _auth: None = Depends(require_session_token)
+) -> CohortRunRecord:
+    try:
+        return cohorts.start(
+            payload.path,
+            payload.workflow,
+            payload.recording_paths,
+            seed=payload.seed,
+            dataset_id=payload.dataset_id,
+            dataset_version=payload.dataset_version,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CohortExecutionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except (OSError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cohorts/open", response_model=CohortRunRecord)
+def open_cohort(
+    payload: CohortOpenRequest, _auth: None = Depends(require_session_token)
+) -> CohortRunRecord:
+    try:
+        return cohorts.get(payload.path, payload.cohort_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cohorts/recover", response_model=list[CohortRunRecord])
+def recover_cohorts(
+    payload: CohortRecoverRequest, _auth: None = Depends(require_session_token)
+) -> list[CohortRunRecord]:
+    try:
+        return cohorts.recover_project(payload.path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cohorts/cancel", response_model=CohortRunRecord)
+def cancel_cohort(
+    payload: CohortOpenRequest, _auth: None = Depends(require_session_token)
+) -> CohortRunRecord:
+    try:
+        return cohorts.cancel(payload.path, payload.cohort_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/cohorts/result")
+def cohort_result(
+    payload: CohortResultRequest, _auth: None = Depends(require_session_token)
+) -> Response:
+    try:
+        data, media_type = cohorts.store.read_result(payload.path, payload.cohort_id, payload.kind)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Content-Disposition": f'inline; filename="{payload.cohort_id}-{payload.kind}"'},
+    )
 
 
 @app.post("/api/runs/cancel", response_model=RunResponse)

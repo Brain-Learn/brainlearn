@@ -3,7 +3,7 @@
   "id": "eeg-first-look",
   "metadata": {
     "name": "EEG first look",
-    "description": "Project-local BIDS EEG import, inspection, and experimental filtering execute when configured; later analysis nodes illustrate planned processing.",
+    "description": "Experimental per-recording BIDS EEG workflow with explicit QC, filtering, ICA review, event-locked epochs, ERP, PSD, and a provenance-aware descriptive report. Settings are provisional and not independently scientifically reviewed.",
     "created_with": "BrainLearn 0.1.0",
     "modality": "EEG",
     "status": "example"
@@ -15,13 +15,17 @@
       "label": "BIDS EEG",
       "category": "Input",
       "description": "Use a discovered project-local BIDS EEG dataset as a workflow input.",
-      "position": { "x": 20, "y": 170 },
+      "position": {
+        "x": 20,
+        "y": 170
+      },
       "ports": [
         {
           "id": "dataset",
           "label": "Dataset",
           "direction": "output",
-          "data_type": "bids_dataset"
+          "data_type": "bids_dataset",
+          "required": true
         }
       ],
       "parameters": [
@@ -32,7 +36,8 @@
           "required": true,
           "description": "Project-relative path to a discovered BIDS EEG dataset."
         }
-      ]
+      ],
+      "pauses_for_review": false
     },
     {
       "id": "inspect",
@@ -40,25 +45,31 @@
       "label": "Inspect Signal",
       "category": "Quality control",
       "description": "Read measured signal and acquisition properties without transforming the recording or generating previews.",
-      "position": { "x": 240, "y": 170 },
+      "position": {
+        "x": 240,
+        "y": 170
+      },
       "ports": [
         {
           "id": "dataset",
           "label": "Dataset",
           "direction": "input",
-          "data_type": "bids_dataset"
+          "data_type": "bids_dataset",
+          "required": true
         },
         {
           "id": "raw",
           "label": "Raw EEG reference",
           "direction": "output",
-          "data_type": "raw_eeg"
+          "data_type": "raw_eeg",
+          "required": true
         },
         {
           "id": "report",
           "label": "Inspection report",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         }
       ],
       "parameters": [
@@ -78,31 +89,38 @@
       "label": "Band-pass Filter",
       "category": "Preprocessing",
       "description": "Apply an MNE FIR band-pass and optional notch filter to EEG channels, with a bounded before/after preview and provenance.",
-      "position": { "x": 470, "y": 170 },
+      "position": {
+        "x": 470,
+        "y": 170
+      },
       "ports": [
         {
           "id": "raw",
           "label": "Raw EEG",
           "direction": "input",
-          "data_type": "raw_eeg"
+          "data_type": "raw_eeg",
+          "required": true
         },
         {
           "id": "filtered",
           "label": "Filtered EEG",
           "direction": "output",
-          "data_type": "raw_eeg"
+          "data_type": "raw_eeg",
+          "required": true
         },
         {
           "id": "preview",
           "label": "Before/after preview",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         },
         {
           "id": "provenance",
           "label": "Filter provenance",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         }
       ],
       "parameters": [
@@ -134,42 +152,86 @@
           "required": false,
           "description": "Width passed to MNE's FIR notch filter, in Hz."
         }
-      ]
+      ],
+      "pauses_for_review": false
     },
     {
       "id": "ica-fit",
       "type": "eeg.ica_fit",
       "label": "Fit ICA",
       "category": "Preprocessing",
-      "description": "Fit an MNE ICA model and inspect component maps, source time courses, spectra, and diagnostics without rejecting components.",
-      "position": { "x": 700, "y": 80 },
+      "description": "Fit an MNE ICA model using explicit provisional settings and inspect component maps, source time courses, spectra, and diagnostics without rejecting components.",
+      "position": {
+        "x": 700,
+        "y": 80
+      },
       "ports": [
         {
           "id": "raw",
           "label": "Raw EEG",
           "direction": "input",
-          "data_type": "raw_eeg"
+          "data_type": "raw_eeg",
+          "required": true
         },
         {
           "id": "ica",
           "label": "Fitted ICA model",
           "direction": "output",
-          "data_type": "ica_fit"
+          "data_type": "ica_fit",
+          "required": true
         },
         {
           "id": "diagnostics",
           "label": "ICA components",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         },
         {
           "id": "provenance",
           "label": "Fit provenance",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         }
       ],
-      "parameters": [],
+      "parameters": [
+        {
+          "id": "method",
+          "label": "ICA method",
+          "value": "fastica",
+          "required": true,
+          "description": "Provisional method; FastICA is currently the only supported option."
+        },
+        {
+          "id": "component_policy",
+          "label": "Component count policy",
+          "value": "all_eeg_channels",
+          "required": true,
+          "description": "Provisional policy: pass n_components=None to MNE, using all selected EEG channels."
+        },
+        {
+          "id": "max_iterations",
+          "label": "Maximum ICA iterations",
+          "value": 1000,
+          "required": true,
+          "description": "Provisional FastICA convergence limit."
+        },
+        {
+          "id": "reject_by_annotation",
+          "label": "Reject BAD annotated spans during ICA fitting",
+          "value": false,
+          "required": true,
+          "description": "Provisional setting. False includes BAD annotated spans in the fit."
+        },
+        {
+          "id": "decim",
+          "label": "ICA decimation factor",
+          "value": 1,
+          "required": true,
+          "description": "Provisional sampling factor passed to MNE ICA fitting."
+        }
+      ],
       "pauses_for_review": false
     },
     {
@@ -178,31 +240,38 @@
       "label": "ICA Component Review",
       "category": "Quality control",
       "description": "Pause for explicit researcher component choices, then apply the saved exclusions to the matching input recording.",
-      "position": { "x": 710, "y": 210 },
+      "position": {
+        "x": 710,
+        "y": 210
+      },
       "ports": [
         {
           "id": "raw",
           "label": "Raw EEG",
           "direction": "input",
-          "data_type": "raw_eeg"
+          "data_type": "raw_eeg",
+          "required": true
         },
         {
           "id": "fit",
           "label": "Fitted ICA",
           "direction": "input",
-          "data_type": "ica_fit"
+          "data_type": "ica_fit",
+          "required": true
         },
         {
           "id": "reviewed",
           "label": "Reviewed EEG",
           "direction": "output",
-          "data_type": "reviewed_eeg"
+          "data_type": "reviewed_eeg",
+          "required": true
         },
         {
           "id": "provenance",
           "label": "Review provenance",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         }
       ],
       "parameters": [],
@@ -213,159 +282,395 @@
       "type": "eeg.epochs",
       "label": "Epochs",
       "category": "Processing",
-      "description": "Create event-locked epochs using explicit time bounds.",
-      "position": { "x": 950, "y": 170 },
+      "description": "Create event-locked MNE epochs using an exact annotation label and explicit provisional timing, baseline, and rejection settings. Event diagnostics are saved.",
+      "position": {
+        "x": 950,
+        "y": 170
+      },
       "ports": [
         {
           "id": "reviewed",
           "label": "Reviewed EEG",
           "direction": "input",
-          "data_type": "reviewed_eeg"
+          "data_type": "reviewed_eeg",
+          "required": true
         },
         {
           "id": "epochs",
           "label": "Epochs",
           "direction": "output",
-          "data_type": "epochs"
+          "data_type": "epochs",
+          "required": true
+        },
+        {
+          "id": "diagnostics",
+          "label": "Event and epoch diagnostics",
+          "direction": "output",
+          "data_type": "report",
+          "required": true
         }
       ],
       "parameters": [
         {
           "id": "event",
-          "label": "Event name",
-          "value": "stimulus",
-          "required": true
+          "label": "Exact event label",
+            "value": "condition 54",
+          "required": true,
+          "description": "Choose one exact label shown by Event Diagnostics."
         },
-        { "id": "tmin", "label": "Start (s)", "value": -0.2, "required": true },
-        { "id": "tmax", "label": "End (s)", "value": 0.8, "required": true }
-      ]
+        {
+          "id": "tmin",
+          "label": "Epoch start (s)",
+          "value": -0.2,
+          "required": true,
+          "description": "Provisional epoch start relative to the selected event."
+        },
+        {
+          "id": "tmax",
+          "label": "Epoch end (s)",
+          "value": 0.8,
+          "required": true,
+          "description": "Provisional epoch end relative to the selected event."
+        },
+        {
+          "id": "baseline_enabled",
+          "label": "Apply baseline correction",
+          "value": true,
+          "required": true,
+          "description": "Select whether the configured baseline interval is applied."
+        },
+        {
+          "id": "baseline_start",
+          "label": "Baseline start (s)",
+          "value": -0.2,
+          "required": true,
+          "description": "Explicit baseline start relative to the event."
+        },
+        {
+          "id": "baseline_end",
+          "label": "Baseline end (s)",
+          "value": 0.0,
+          "required": true,
+          "description": "Explicit baseline end relative to the event."
+        },
+        {
+          "id": "reject_eeg_peak_to_peak_uv",
+          "label": "EEG peak-to-peak rejection (µV; 0 disables)",
+          "value": 0.0,
+          "required": true,
+          "description": "Explicit MNE epoch rejection threshold in microvolts; 0 disables."
+        },
+        {
+          "id": "reject_by_annotation",
+          "label": "Reject annotated bad spans",
+          "value": true,
+          "required": true,
+          "description": "Choose whether epochs overlapping BAD annotations are rejected."
+        }
+      ],
+      "pauses_for_review": false
     },
     {
       "id": "erp",
       "type": "eeg.erp_average",
       "label": "ERP Average",
       "category": "Analysis",
-      "description": "Average selected epochs to form an evoked response.",
-      "position": { "x": 1190, "y": 80 },
+      "description": "Average the retained epochs and report the per-time-point sample SD across epochs for this recording.",
+      "position": {
+        "x": 1190,
+        "y": 80
+      },
       "ports": [
         {
           "id": "epochs",
           "label": "Epochs",
           "direction": "input",
-          "data_type": "epochs"
+          "data_type": "epochs",
+          "required": true
         },
         {
           "id": "evoked",
           "label": "Evoked",
           "direction": "output",
-          "data_type": "evoked"
+          "data_type": "evoked",
+          "required": true
         }
       ],
-      "parameters": []
+      "parameters": [],
+      "pauses_for_review": false
     },
     {
       "id": "psd",
       "type": "eeg.psd",
       "label": "PSD",
       "category": "Analysis",
-      "description": "Estimate a power spectrum from the reviewed epochs.",
-      "position": { "x": 1190, "y": 280 },
+      "description": "Estimate Welch PSD from the same retained epoch artifact used by ERP and report per-recording mean and sample SD across epochs.",
+      "position": {
+        "x": 1190,
+        "y": 280
+      },
       "ports": [
         {
           "id": "epochs",
           "label": "Epochs",
           "direction": "input",
-          "data_type": "epochs"
+          "data_type": "epochs",
+          "required": true
         },
         {
           "id": "spectrum",
           "label": "Spectrum",
           "direction": "output",
-          "data_type": "spectrum"
+          "data_type": "spectrum",
+          "required": true
         }
       ],
-      "parameters": []
+      "parameters": [
+        {
+          "id": "fmin_hz",
+          "label": "Minimum frequency (Hz)",
+          "value": 1.0,
+          "required": true
+        },
+        {
+          "id": "fmax_hz",
+          "label": "Maximum frequency (Hz)",
+          "value": 40.0,
+          "required": true
+        },
+        {
+          "id": "n_fft",
+          "label": "FFT points",
+          "value": 256,
+          "required": true
+        },
+        {
+          "id": "n_per_seg",
+          "label": "Samples per segment",
+          "value": 256,
+          "required": true
+        },
+        {
+          "id": "n_overlap",
+          "label": "Overlap samples",
+          "value": 128,
+          "required": true
+        },
+        {
+          "id": "window",
+          "label": "Welch window",
+          "value": "hamming",
+          "required": true,
+          "description": "Explicit window: hamming, hann, or boxcar."
+        }
+      ],
+      "pauses_for_review": false
     },
     {
       "id": "report",
       "type": "output.report",
       "label": "Report",
       "category": "Output",
-      "description": "Combine analysis artifacts into a future methods and results report.",
-      "position": { "x": 1430, "y": 170 },
+      "description": "Build a self-contained descriptive HTML report from executed run parameters, QC decisions, ERP and PSD artifacts, methods placeholders, and deduplicated citations.",
+      "position": {
+        "x": 1430,
+        "y": 170
+      },
       "ports": [
         {
           "id": "evoked",
           "label": "Evoked",
           "direction": "input",
-          "data_type": "evoked"
+          "data_type": "evoked",
+          "required": true
         },
         {
           "id": "spectrum",
           "label": "Spectrum",
           "direction": "input",
-          "data_type": "spectrum"
+          "data_type": "spectrum",
+          "required": true
+        },
+        {
+          "id": "diagnostics",
+          "label": "Event and epoch diagnostics",
+          "direction": "input",
+          "data_type": "report",
+          "required": true
         },
         {
           "id": "report",
           "label": "Report",
           "direction": "output",
-          "data_type": "report"
+          "data_type": "report",
+          "required": true
         }
       ],
-      "parameters": []
+      "parameters": [],
+      "pauses_for_review": false
+    },
+    {
+      "id": "bad-channels",
+      "type": "eeg.bad_channel_review",
+      "label": "Bad Channel Review",
+      "category": "Quality control",
+      "description": "Pause for an explicit bad-channel decision, then pass that recording-specific decision downstream with the current source identity; channels are never interpolated.",
+      "position": {
+        "x": 440,
+        "y": 340
+      },
+      "ports": [
+        {
+          "id": "raw",
+          "label": "Raw EEG",
+          "direction": "input",
+          "data_type": "raw_eeg",
+          "required": true
+        },
+        {
+          "id": "reviewed",
+          "label": "QC-reviewed EEG reference",
+          "direction": "output",
+          "data_type": "raw_eeg",
+          "required": true
+        }
+      ],
+      "parameters": [],
+      "pauses_for_review": true
     }
   ],
   "edges": [
     {
       "id": "e1",
-      "source": { "node_id": "bids", "port_id": "dataset" },
-      "target": { "node_id": "inspect", "port_id": "dataset" }
+      "source": {
+        "node_id": "bids",
+        "port_id": "dataset"
+      },
+      "target": {
+        "node_id": "inspect",
+        "port_id": "dataset"
+      }
     },
     {
       "id": "e2",
-      "source": { "node_id": "inspect", "port_id": "raw" },
-      "target": { "node_id": "filter", "port_id": "raw" }
+      "source": {
+        "node_id": "bad-channels",
+        "port_id": "reviewed"
+      },
+      "target": {
+        "node_id": "filter",
+        "port_id": "raw"
+      }
     },
     {
       "id": "e3",
-      "source": { "node_id": "filter", "port_id": "filtered" },
-      "target": { "node_id": "ica", "port_id": "raw" }
+      "source": {
+        "node_id": "filter",
+        "port_id": "filtered"
+      },
+      "target": {
+        "node_id": "ica",
+        "port_id": "raw"
+      }
     },
     {
       "id": "e9",
-      "source": { "node_id": "filter", "port_id": "filtered" },
-      "target": { "node_id": "ica-fit", "port_id": "raw" }
+      "source": {
+        "node_id": "filter",
+        "port_id": "filtered"
+      },
+      "target": {
+        "node_id": "ica-fit",
+        "port_id": "raw"
+      }
     },
     {
       "id": "e10",
-      "source": { "node_id": "ica-fit", "port_id": "ica" },
-      "target": { "node_id": "ica", "port_id": "fit" }
+      "source": {
+        "node_id": "ica-fit",
+        "port_id": "ica"
+      },
+      "target": {
+        "node_id": "ica",
+        "port_id": "fit"
+      }
     },
     {
       "id": "e4",
-      "source": { "node_id": "ica", "port_id": "reviewed" },
-      "target": { "node_id": "epochs", "port_id": "reviewed" }
+      "source": {
+        "node_id": "ica",
+        "port_id": "reviewed"
+      },
+      "target": {
+        "node_id": "epochs",
+        "port_id": "reviewed"
+      }
     },
     {
       "id": "e5",
-      "source": { "node_id": "epochs", "port_id": "epochs" },
-      "target": { "node_id": "erp", "port_id": "epochs" }
+      "source": {
+        "node_id": "epochs",
+        "port_id": "epochs"
+      },
+      "target": {
+        "node_id": "erp",
+        "port_id": "epochs"
+      }
     },
     {
       "id": "e6",
-      "source": { "node_id": "epochs", "port_id": "epochs" },
-      "target": { "node_id": "psd", "port_id": "epochs" }
+      "source": {
+        "node_id": "epochs",
+        "port_id": "epochs"
+      },
+      "target": {
+        "node_id": "psd",
+        "port_id": "epochs"
+      }
     },
     {
       "id": "e7",
-      "source": { "node_id": "erp", "port_id": "evoked" },
-      "target": { "node_id": "report", "port_id": "evoked" }
+      "source": {
+        "node_id": "erp",
+        "port_id": "evoked"
+      },
+      "target": {
+        "node_id": "report",
+        "port_id": "evoked"
+      }
     },
     {
       "id": "e8",
-      "source": { "node_id": "psd", "port_id": "spectrum" },
-      "target": { "node_id": "report", "port_id": "spectrum" }
+      "source": {
+        "node_id": "psd",
+        "port_id": "spectrum"
+      },
+      "target": {
+        "node_id": "report",
+        "port_id": "spectrum"
+      }
+    },
+    {
+      "id": "e11",
+      "source": {
+        "node_id": "inspect",
+        "port_id": "raw"
+      },
+      "target": {
+        "node_id": "bad-channels",
+        "port_id": "raw"
+      }
+    },
+    {
+      "id": "e12",
+      "source": {
+        "node_id": "epochs",
+        "port_id": "diagnostics"
+      },
+      "target": {
+        "node_id": "report",
+        "port_id": "diagnostics"
+      }
     }
   ]
 }

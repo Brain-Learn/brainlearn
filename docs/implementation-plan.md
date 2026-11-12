@@ -187,21 +187,32 @@ independent reviewer becomes available.
 
 ## [ ] Step 8 — Complete descriptive EEG workflow
 
-Work proceeds under the Step 7 progression waiver above. Use the specified
-`ds004771` v1.0.0 reference cohort and `sub-001` through `sub-005` fixture. Do
-not make method settings implicit template defaults before independent review;
+Work proceeds under the Step 7 progression waiver above. Use OpenNeuro
+`ds005284` v1.0.0 and `sub-001` through `sub-005` as the pinned reference
+cohort. The original `ds004771` selection was replaced after inspection showed
+that it contains pre-epoched data incompatible with this workflow's continuous
+filter and ICA stages. Do not make method settings implicit template defaults
+before independent review;
 require explicit parameters and preserve the research-only, descriptive scope.
 
-- [ ] Implement explicit event selection and event diagnostics.
-- [ ] Implement epoching with units, rejection rules, and baseline settings.
-- [ ] Implement ERP averaging and uncertainty summaries.
-- [ ] Implement PSD analysis with documented estimator settings.
-- [ ] Join ERP and PSD artifacts into an HTML report.
-- [ ] Report exclusions, failures, participant counts, and denominators.
-- [ ] Generate methods text from actual run records with human-review placeholders.
-- [ ] Generate a deduplicated citation bundle for executed methods.
-- [ ] Compare every certified node against the direct-MNE reference workflow.
-- [ ] Add a complete tutorial using the pinned public/synthetic dataset.
+- [x] Implement explicit event selection and event diagnostics.
+- [x] Implement epoching with units, rejection rules, and baseline settings.
+- [x] Implement ERP averaging and uncertainty summaries.
+- [x] Implement PSD analysis with documented estimator settings.
+- [x] Join ERP and PSD artifacts into an HTML report.
+- [x] Report exclusions, failures, participant counts, and denominators.
+- [x] Generate methods text from actual run records with human-review placeholders.
+- [x] Generate a deduplicated citation bundle for executed methods.
+- [x] Compare event selection, epochs, ERP, and PSD against separately written
+  direct-MNE operations on the pinned five-recording sample with predeclared
+  tolerances; this establishes implementation parity, not scientific approval.
+- [x] Add a complete tutorial using the pinned public reference dataset.
+
+- [x] Persist cohort workflow snapshots, per-recording identities, parameters,
+  QC/output references, and checksummed reports with migration and round-trip coverage.
+- [x] Continue after individual recording failures and preserve selected,
+  processed, excluded, failed, and cancelled denominators.
+- [x] Complete and verify clean UI-to-service and CLI runs on the pinned reference sample.
 
 Technical completion gate: a clean installation completes the full EEG workflow through both GUI and CLI; results match a separately written direct-MNE reference using the same explicit, provisional parameters; and the report, provenance, methods, and citations describe the actual run. This gate demonstrates implementation and numerical agreement, not independent scientific approval or certification.
 
@@ -632,6 +643,12 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-10-28 | PR #73 hosted completion gate | Verified; monitoring pending | Required hosted checks passed on review-content head `dc8610f`: Python quality/tests and frontend quality/tests/build in Actions run `40698349573` (Python 1m41s, frontend 44s), plus strict docs build/check in run `40698350081` (54s). Pages deployment was skipped as expected. Local strict Sphinx HTML/linkcheck, responsive/axe checks (7 pages × 2 viewports), and `git diff --check` also passed on that content. The independent scientific review remains pending; the monitor must rerun the gate on the final PR head. No processing code or scientific assumption changed. | PR #73 |
 | 2026-10-28 | Step 7 progression waiver | Owner-authorized; scientific review deferred | The product owner instructed the project to stop waiting for an independent methods reviewer and proceed. Recorded the decision in `docs/eeg-methods-review.md` and here. Step 7 remains unchecked; this waiver authorizes a sequencing change only and is not scientific approval. Step 8 may proceed with the pinned `ds004771` v1.0.0 five-participant fixture, explicit provisional parameters, and no claim of certification. Step 8's independent-review requirement remains for any scientific-certification claim. The updated `Next assignment` names Step 8. Local strict Sphinx HTML build and linkcheck passed; the docs browser/accessibility check passed for 7 pages at 375 px and 1440 px; `git diff --check` passed. Hosted checks passed on review-content head `68903c5`: Python quality/tests run `40701908574` (1m43s) and docs build/check run `40701908645` (46s; Pages deployment skipped). The first frontend test attempt failed at `runFlow.test.tsx:199` (`run-demo-1` expected twice, found once); local `npm --prefix apps/web run test` passed 183 tests, and rerunning the failed hosted job in the same run without code changes passed in 32s. This is recorded as a transient test failure, not a code repair. The monitor must reproduce the gate on the final PR head. | PR #73 |
 | 2026-10-28 | PR #73 sequencing-waiver monitoring | Approved for waiver documentation only; no scientific approval | Independent monitor reviewed content head `7fc0ed43eceb026f57bdb39b67d2f2a05a549d88` against base `f036b2f25bc728d119274137f19638391f2647db`; the PR changes only `docs/eeg-methods-review.md` and this plan. It honestly records the owner's direction to proceed without an independent methods decision, keeps Step 7 and Step 8 unchecked, identifies Step 8 parameters as provisional/explicit with no silent defaults, and retains scientific review before certification. Clean Python 3.12 gate passed: locked sync installed 87 packages; lock check, Ruff, format (113 files), strict mypy (36), pytest (830 passed, 4 skipped, 2 upstream deprecation warnings); frontend install (269 packages, 0 vulnerabilities), lint/format, Vitest (183/21), build (1,850 modules; existing 524.24 kB advisory), and audit (0 vulnerabilities); docs install (3 packages, 0 vulnerabilities), strict Sphinx HTML/linkcheck, responsive/axe (7 pages at 375 px and 1440 px), and diff check. Hosted Python/frontend run `40702636285` and docs run `40702636474` passed on that head; Pages deployment was skipped as expected. Earlier frontend attempt 1 in run `40701908574` failed at `runFlow.test.tsx:199`, then attempt 2 passed without source changes; retain as a test reliability risk. Monitor review-record changes require final-head checks before merge. | PR #73 |
+| 2026-10-28 | Step 8 core implementation and dataset compatibility check | Core behaviors implemented and locally verified; reference completion blocked | Activated the event/epoch, ERP, PSD, report, and cohort execution paths; added versioned cohort run persistence/migration, per-recording QC flow, UI launcher, CLI, per-recording provenance, partial-failure denominators, and direct-MNE comparison tests. Node-level direct-MNE parity and failure tests use a deterministic synthetic Raw fixture, not the five-participant reference. On the downloaded OpenNeuro `ds004771` v1.0.0 `sub-001` recording, MNE 1.13.2 reads `sub-001_task-PY_eeg.set` only as `Epochs` with shape `(480, 34, 334)` at 256 Hz and 21 composite event IDs; `read_raw_eeglab` raises `TypeError` because it has 480 trials, and the template's current exact event label is not present. The sidecar declares `RecordingType: epoched`; current filter and ICA nodes require continuous `Raw`. The `.set` and `.fdt` SHA-256 values (`4a0c22fa…c24bea`, `432419ed…ebc0e1`) match the pinned upstream annex identities and were not changed. Added BIDS recording-type reporting and fail-closed raw/cohort compatibility reasons. Updated only verified Step 8 leaf items for the synthetic analysis/report behavior, migration, and partial cohort denominators; left the five-participant reference comparison, tutorial, UI/CLI completion gate, and Step 8 parent unchecked. Full Python suite passed 847, 4 skipped, 2 upstream deprecation warnings; strict mypy passed (41 source files); Ruff and format passed (122 files); frontend lint/format passed, Vitest passed 183 tests/21 files, Vite build passed (1,852 modules; existing >500 kB advisory), production audit found 0 vulnerabilities, `uv lock --check`, locked sync, and `git diff --check` passed. No actual reference cohort execution or scientific approval is claimed. | Local implementation worktree; reference choice required |
+| 2026-11-12 | Step 8 reference-cohort compatibility decision | Compatible raw reference selected; implementation still provisional | The product owner asked us to choose the best path for the `ds004771` compatibility blocker. Kept the existing continuous-raw filter/ICA graph and selected OpenNeuro `ds005284` v1.0.0, participants `sub-001`–`sub-005`, as the bounded reference fixture rather than reinterpreting pre-epoched trials. The pinned OpenNeuro metadata tag resolves to commit `71e72dd42cd756fa530d0e3e4b710aba06a8b581`; `dataset_description.json` declares CC0 and DOI `10.18112/openneuro.ds005284.v1.0.0`; `sub-001` BIDS EEG metadata declares continuous recording, 64 EEG channels, 1024 Hz, and a `condition 54` event label. The downloaded `sub-001` BDF is 65,511,936 bytes and SHA-256 `a3dcbdc69c5cd2b47c19cd2fcbe27ddbca0baa3deca6881b37e8e02fed970cda`, matching its pinned OpenNeuro annex key. MNE-BIDS 0.20.0 reads it as continuous Raw and exposes the event annotations; `condition 54` is the exact recorded label mapped in the sidecar to the laser-stimulation event. The dataset switch is an explicit compatibility decision under the plan's allowed continuous-cohort option, not scientific review. Step 7 remains unchecked; Step 8 parameters and outputs remain experimental. | Local implementation worktree |
+
+| 2026-11-12 | Step 8 implementation and end-to-end completion gate | Local technical gate passed; independent methods review and monitor approval pending | Implemented per-recording cohort execution, explicit bad-channel and ICA reviews, event diagnostics, epochs, ERP, PSD, descriptive aggregation, run-record-based HTML/JSON reporting, CLI execution, and persistence migration/round-trip coverage. The independent direct-MNE reference test passed for `sub-001`–`sub-005`; it checks exact event selection, epochs, ERP and PSD with `1e-12 V` epoch tolerance, `rtol=1e-7`/`atol=1e-12` summary tolerances, and verifies the pinned source hashes before/after. UI-to-service integration on all five recordings completed with 5 selected, 3 processed, 0 excluded, 2 failed; `sub-003` and `sub-005` failed with recorded FastICA non-convergence reasons, the remaining recordings completed, and the generated report/summary correctly report 3 processed participants and 16 retained epochs each. UI QC entries were explicitly test-only and do not constitute scientific approvals. A clean local CLI project then completed the full graph for `sub-001` with explicit test-only decisions at both QC pauses; report and JSON summary were generated. The CLI run exposed a 1 MB local diagnostic-preview cap that rejected the 1.6 MB ICA diagnostics; raised the bounded cap to 10 MB and added coverage that accepts 1.6 MB and rejects payloads over 10 MB. The new EEG cohort tutorial built under strict Sphinx settings; linkcheck passed; the responsive/axe browser gate passed 8 pages at 375 px and 1440 px after making the data tables keyboard-focusable. Final local gate after the CLI-cap repair passed: locked `uv sync` and `uv lock --check`; Ruff and formatting (124 files); strict mypy (41 source files); pytest (849 passed, 9 skipped, 2 upstream deprecation warnings); pinned direct-MNE reference (5 passed with source checksums unchanged); frontend ESLint/Prettier, Vitest (183 tests/21 files), Vite build (1,852 modules; existing 532.83 kB chunk advisory), production audit (0 vulnerabilities); strict Sphinx HTML/linkcheck; responsive/axe checks (8 pages at 375 px and 1440 px); and `git diff --check`. The Step 8 parent remains unchecked pending independent scientific review, monitoring approval, and hosted PR checks. | Local implementation worktree |
+
+| 2026-11-12 | Step 8 final provenance and gate reconciliation | Local gate passed on final implementation; external approvals pending | Tightened ICA provenance after reviewing the run records: `eeg.ica_fit` now requires explicit method, component policy, maximum iterations, annotation rejection, and decimation parameters; the node and worker versions are recorded; persisted ICA provenance uses schema 1.2; palette/migrated nodes have no silent scientific defaults, while the example's provisional values are explicit and stored per run. Migration coverage confirms old ICA nodes remain unconfigured until a researcher sets them. Re-ran the pinned direct-MNE reference on final code: 5 passed, with source checksums verified unchanged. Final full gate: locked environment and lock check passed; Ruff, formatting (124 files), strict mypy (37 source files), pytest (850 passed, 9 skipped, 2 upstream deprecation warnings); frontend ESLint/Prettier, Vitest (183 tests in 21 files), production build (1,852 modules; existing 532.83 kB advisory), and production audit (0 vulnerabilities); strict Sphinx build/linkcheck; responsive/axe gate (8 pages × 375 px and 1440 px); and `git diff --check`. Final UI-to-service run recorded 5 selected, 3 processed, 0 excluded, 2 failed (`sub-003` and `sub-005`, FastICA did not converge within the explicit provisional 1,000-iteration limit); QC decisions were test-only, not scientific approvals. Final CLI run processed `sub-001` with explicit test-only decisions and produced checksummed report/summary artifacts. Step 8 parent remains unchecked; independent methods review, monitoring approval, and hosted PR checks are pending. | Local implementation worktree |
 
 ## Next assignment
 
@@ -640,11 +657,17 @@ Preserve every completion-log row.
 
 ### Step 8 — cohort EEG descriptive workflow under the Step 7 waiver
 
-Implement the bounded cohort workflow in the Step 8 checklist using
-OpenNeuro `ds004771` v1.0.0, with `sub-001` through `sub-005` as the pinned
-tutorial/reference sample. Use explicitly supplied provisional settings and
-label the resulting workflow as not independently scientifically reviewed.
-Keep Step 7 unchecked and do not describe either step's engineering
-verification as scientific approval. Complete Step 8's UI/CLI, provenance,
-reporting, reference-comparison, and failure-case gates before updating its
-checkboxes; independent review is still required before a certification claim.
+Submit the completed Step 8 implementation branch for review through the
+project PR workflow. The monitor must review the final head, reproduce the
+local gate, and record approval before merging. Repair requested changes on
+the same PR. Keep the Step 8 parent unchecked until independent scientific
+review, local/hosted gates, and monitor approval are all complete. Do not
+describe engineering verification as scientific approval.
+
+**Reference decision:** `ds004771` v1.0.0 was not compatible with this raw
+workflow because its EEG files declare `RecordingType: epoched`. The product
+owner chose the plan's compatible-continuous-cohort option. `ds005284` v1.0.0
+provides continuous recordings and a shared `condition 54` event label across
+the pinned five-subject sample. Reference checksums, direct-MNE comparisons,
+and end-to-end UI/CLI runs are complete. The independent methods decision,
+hosted checks and monitor review remain pending.
