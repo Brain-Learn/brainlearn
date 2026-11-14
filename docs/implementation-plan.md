@@ -220,16 +220,25 @@ Independent scientific review remains required before calling the EEG template
 scientifically certified. The Step 7 waiver permits Step 8 implementation but
 does not waive or satisfy that certification gate.
 
+**Owner sequencing waiver (2026-11-14):** The product owner directed the agent
+to perform its own Step 8 implementation review and proceed to Step 9 without
+waiting for the independent monitor review of PR #74. This waives sequencing
+only: PR #74 remains open, no monitor approval or scientific approval is
+inferred, and the Step 7/Step 8 parent checkboxes and certification gates stay
+unchecked. Step 9 may export the current workflow as experimental software;
+its clean-environment gate cannot be marked complete until the EEG workflow is
+scientifically certified.
+
 ## [ ] Step 9 — Complete Python project and notebook export
 
-- [ ] Export `workflow.py`, configuration, README, environment lock, provenance, citations, and expected output descriptions.
-- [ ] Export a readable notebook that separates setup, inspection, QC decisions, processing, and results.
-- [ ] Provide readable direct-library mode and exact BrainLearn-runner replay mode.
-- [ ] Ensure generated projects do not depend on the browser interface.
-- [ ] Add deterministic formatting and snapshot review for generated code.
-- [ ] Run exported projects in a clean environment during integration testing.
-- [ ] Prevent embedded secrets, session tokens, and unintended absolute personal paths.
-- [ ] Document which aspects are exact replay and which allow tolerance-based agreement.
+- [x] Export `workflow.py`, configuration, README, environment lock, provenance, citations, and expected output descriptions.
+- [x] Export a readable notebook that separates setup, inspection, QC decisions, processing, and results.
+- [x] Provide readable direct-library mode and exact BrainLearn-runner replay mode.
+- [x] Ensure generated projects do not depend on the browser interface.
+- [x] Add deterministic formatting and snapshot review for generated code.
+- [x] Run exported projects in a clean environment during integration testing.
+- [x] Prevent embedded secrets, session tokens, and unintended absolute personal paths.
+- [x] Document which aspects are exact replay and which allow tolerance-based agreement.
 
 Completion gate: a second clean environment runs the exported Python project without the BrainLearn GUI and reproduces the certified workflow within the declared agreement level.
 
@@ -653,26 +662,30 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-11-12 | Step 8 initial hosted CI gate | Passed on PR #74 implementation head `e4463a0`; recheck required after this evidence-only update | GitHub Actions on PR #74: Python quality and tests and Frontend quality, tests, and build both passed in run `43275268857` (1m44s and 1m11s); Build and check documentation passed in run `43275268741` (42s), with Pages deployment skipped as expected. This completion-log update records the hosted evidence; the new final PR head must pass the required hosted checks again. No processing code or scientific setting changed. Independent methods review, monitor approval, and Step 8 parent approval remain pending. | PR #74 |
 
 | 2026-11-14 | Step 8 implementer self-review and UI lifecycle repair | Self-review findings repaired; independent monitor review pending | Reviewed the cohort execution, QC persistence, MNE analysis adapters, reports, CLI, and UI against the Step 8 gates. Found that the UI could start another cohort while one was active and could display stale cohort/scan results after switching projects. On the same PR #74 branch, the UI now disables new scans/selections/starts during an active run, resets project-scoped state during project/token recovery, and discards stale asynchronous responses after a context switch. Added three focused interaction regressions. Verification on this change: focused UI tests 3 passed; full frontend suite 186 passed in 22 files; ESLint, Prettier, TypeScript/Vite production build (1,852 modules; existing 533.39 kB advisory), and `git diff --check` passed. No scientific settings or processing behavior changed. Hosted checks must pass again on the new PR head; implementer self-review is not monitor approval. Step 8 parent remains unchecked. | PR #74 |
+| 2026-11-14 | Owner-authorized Step 8 to Step 9 sequencing waiver | Recorded; approval gates unchanged | The product owner directed a self-review of Step 8 followed by proceeding to Step 9 before PR #74 receives independent monitor review. This waiver changes sequencing only: PR #74 stays open, self-review is not monitor approval, and Step 7/Step 8 parent and scientific-review gates remain unchecked. Step 9 exports must label the EEG workflow experimental; its clean-environment completion gate remains blocked on scientific certification. | PR #74 |
+| 2026-11-14 | Step 9 portable Python/notebook cohort export | Engineering gate locally verified; PR #76 open; hosted CI, scientific, and monitor gates pending | Added the authenticated `POST /api/cohorts/export` endpoint and a terminal-cohort UI download. The deterministic archive contains the saved graph/configuration, notebook, methods README, exact hashed direct-MNE lock, standalone MNE workflow, BrainLearn CLI runner, citations, expected-output guide, and run/QC provenance; it does not contain EEG inputs, outputs, or tokens. Provenance retains recording identities, source checksums, parameters, node settings/versions, run environment, seeds, QC decisions, output IDs/media/paths/hashes, failures, and citations. Direct mode verifies pinned source hashes and recomputed BIDS identities, checks locked package versions, requires explicit acknowledgement before reusing source-bound bad-channel decisions, refits ICA and requests fresh human review, rejects POSIX/Windows path traversal, and rejects incompatible result axes without resampling or interpolation. The BrainLearn runner verifies source identity before contacting the local service and restricts token-bearing requests to loopback URLs. Its HTML report includes cohort-level ERP/PSD means and between-participant SDs; the report and JSON summary preserve failure/exclusion reasons and denominators, aggregate repeated runs within each participant before cohort means/SDs, and return failure when no recording succeeds. Regression evidence: archive bytes are deterministic across repeated exports; secret/personal-path probes reject; export API auth is required; a failed two-recording cohort yields selected=2, processed=0, failed=2 and an HTML report; the generated direct workflow agrees with a separately written direct-MNE path on the CC0 synthetic BIDS fixture at `rtol=1e-7`, `atol=1e-12`, with source hashes unchanged; a multi-recording aggregation regression gives equal weight to participants; and a clean Python 3.12.13 environment processed the synthetic recording with 1 retained epoch after explicit test-only QC input, preserving QC timestamps and all nine source checksums. Server wheel build confirmed the lock and all export templates are packaged. Final local gate: locked Python sync and `uv lock --check`; Ruff and formatting (127 files); strict mypy (44 source files); pytest 855 passed, 9 skipped, 2 upstream deprecation warnings; generated-script lint also passed; frontend ESLint/Prettier, Vitest 186 tests/22 files, Vite build (1,852 modules; existing 534.07 kB chunk advisory), production audit 0 vulnerabilities; strict Sphinx HTML and linkcheck; responsive/axe checks for 8 pages at 375 px and 1440 px; and `git diff --check`. No pinned human cohort or public-reference sample was replayed by the exported direct project in this work unit, and synthetic QC inputs are test-only. Step 7, Step 8, and Step 9 parent/scientific-certification gates stay unchecked; the full clean-environment gate remains dependent on independent methods certification. | PR #76 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 8 — cohort EEG descriptive workflow under the Step 7 waiver
+### Step 9 — complete Python project and notebook export under the owner sequencing waiver
 
-Submit the completed Step 8 implementation branch for review through the
-project PR workflow. The monitor must review the final head, reproduce the
-local gate, and record approval before merging. Repair requested changes on
-the same PR. Hosted checks must pass on the exact final head. Keep the Step 8
-parent unchecked until independent scientific review and monitor approval are
-complete. Do not describe engineering verification as scientific approval.
+Review Step 9 PR #76 and reproduce its local gate before approval; repair any
+findings on that same PR. Keep PR #74 open and do not merge it as part of this
+sequencing waiver. Preserve the Step 7, Step 8, and Step 9 parent/scientific
+gates as unchecked. Keep all exported analysis claims experimental until
+independent EEG methods review certifies the workflow. The Step 9 clean-second-
+environment completion gate remains unsatisfied until certification is met,
+even though export mechanics and synthetic engineering replay passed.
 
-**Reference decision:** `ds004771` v1.0.0 was not compatible with this raw
-workflow because its EEG files declare `RecordingType: epoched`. The product
-owner chose the plan's compatible-continuous-cohort option. `ds005284` v1.0.0
-provides continuous recordings and a shared `condition 54` event label across
-the pinned five-subject sample. Reference checksums, direct-MNE comparisons,
-and end-to-end UI/CLI runs are complete. The independent methods decision and
-monitor review remain pending; the hosted checks must be reverified on the
-final PR head.
+**Export scope:** Export a completed cohort's workflow snapshot, explicit
+settings, recording identities, decisions, results descriptions, environment,
+and citations. Generated direct-library code must not depend on the browser;
+BrainLearn-runner replay may use the local service and CLI but must not embed a
+session token. Do not bundle input EEG or output artifacts. Use relative paths
+or clear user-supplied path placeholders, and record which replay claims are
+exact and which are tolerance-based. The reference remains OpenNeuro
+`ds005284` v1.0.0, participants `sub-001` through `sub-005`; its reference
+checksums and numerical parity are engineering evidence only.
