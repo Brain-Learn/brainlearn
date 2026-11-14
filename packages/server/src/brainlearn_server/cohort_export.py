@@ -18,8 +18,8 @@ class CohortExportError(ValueError):
 
 
 _ABSOLUTE_PATH = re.compile(
-    r"(?<![:\w])(?:/Users/|/home/|/private/|/Volumes/|/var/folders/|/tmp/|/mnt/|/media/|"
-    r"/workspace/|[A-Za-z]:[\\/])[^\s\"']+"
+    r"(?<![:\w])(?:(?:\\\\|//)[^\s\"']+|(?:/Users/|/home/|/private/|/Volumes/|/var/folders/|"
+    r"/tmp/|/mnt/|/media/|/workspace/|[A-Za-z]:[\\/])[^\s\"']+)"
 )
 _SECRET = re.compile(
     r"(?i)(?:BRAINLEARN_SESSION_TOKEN\s*[=:]\s*\S+|"

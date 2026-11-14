@@ -2100,3 +2100,52 @@ own final-head checks before merge.
 Step 7 remains unchecked and scientifically unapproved. Step 8 remains
 unchecked; the product owner has authorized it as the next implementation
 assignment under the recorded waiver.
+
+## Combined Step 8/9 PR #74 engineering findings
+
+Review date: 2026-11-14
+
+Status: **Three engineering findings repaired on PR #74; independent GitHub
+review and EEG methods decision remain pending.** Audited combined PR #74 at
+head `0c711b08accd6ba1867a5b4eb73da42150d141bc` against `main`. At the start
+of this review, the PR had no reviewer comments or approvals. The configured
+GitHub account owns the PR, so GitHub rejected a formal request-changes review
+on its own PR. Inline findings and a summary were posted by that same account;
+they document the local audit and are not independent monitor feedback or
+approval.
+
+The audit found and repaired three engineering defects on the existing PR
+branch:
+
+1. The exact BrainLearn replay rejected preflight-excluded cohort rows with no
+   readable input files before the service could re-inspect them. Replay now
+   skips identity hashing only for rows marked excluded with no files, while
+   keeping those rows in the config and cohort denominator. A regression also
+   confirms selected rows with missing identities still fail.
+2. The export personal-path scanner missed UNC paths after JSON escaping.
+   Its path guard now rejects UNC paths, covered by a serialized QC-note
+   regression.
+3. Direct replay recorded but did not verify the exported lockfile digest.
+   It now hashes `environment.lock` and compares it with
+   `direct_replay_environment.lockfile_sha256` before checking installed
+   package versions. Correct and mismatched lock hashes are covered by the
+   exported-workflow tests.
+
+No processing method, parameter, or scientific claim changed. The final local
+gate passed: locked Python sync and `uv lock --check`; Ruff and formatting
+(127 files); strict mypy (38 source files); pytest (855 passed, 9 skipped, 2
+upstream deprecation warnings); the pinned `ds005284` reference (5 passed);
+generated export-script lint; wheel build and 5/5 packaged export-resource
+checks; frontend ESLint/Prettier, Vitest (186 tests in 22 files), production
+build (1,852 modules; existing 534.07 kB chunk advisory), and production
+audit (0 vulnerabilities); strict Sphinx HTML build and linkcheck; responsive
+and axe checks for 8 pages at 375 px and 1440 px; docs audit (0
+vulnerabilities); and `git diff --check`. The initial full pytest attempt
+identified one synthetic aggregate fixture without the newly required lock
+digest; that fixture was updated and the complete suite then passed. No
+pinned human cohort was replayed by the exported direct project.
+
+PR #74 remains open for an independent reviewer. Step 7, Step 8, and Step 9
+parent and scientific-certification gates remain unchecked. The EEG methods
+decision remains pending; this engineering review does not certify the
+workflow.

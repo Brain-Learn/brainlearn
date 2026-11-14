@@ -38,17 +38,25 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _locked_versions() -> dict[str, str]:
+def _locked_versions(config: dict[str, Any]) -> dict[str, str]:
+    environment = config.get("direct_replay_environment")
+    expected_digest = environment.get("lockfile_sha256") if isinstance(environment, dict) else None
+    lock_bytes = (HERE / "environment.lock").read_bytes()
+    if (
+        not isinstance(expected_digest, str)
+        or hashlib.sha256(lock_bytes).hexdigest() != expected_digest
+    ):
+        raise RuntimeError("The exported environment.lock does not match the recorded SHA-256.")
     versions: dict[str, str] = {}
-    for line in (HERE / "environment.lock").read_text(encoding="utf-8").splitlines():
+    for line in lock_bytes.decode("utf-8").splitlines():
         if line and not line[0].isspace() and "==" in line:
             name, constraint = line.split("==", maxsplit=1)
             versions[name] = constraint.split(maxsplit=1)[0]
     return versions
 
 
-def _check_versions() -> dict[str, str]:
-    expected = _locked_versions()
+def _check_versions(config: dict[str, Any]) -> dict[str, str]:
+    expected = _locked_versions(config)
     mismatches = []
     installed: dict[str, str] = {}
     for name, version in expected.items():
@@ -523,7 +531,7 @@ def _run_recording(
             "software": {
                 **{
                     name: version
-                    for name, version in _locked_versions().items()
+                    for name, version in _locked_versions(config).items()
                     if _installed_version(name) == version
                 },
             },
@@ -544,7 +552,7 @@ def run_workflow(
     selected_recordings: list[str] | None = None,
     output_dir: Path | None = None,
 ) -> dict[str, Any]:
-    software = _check_versions()
+    software = _check_versions(config)
     started_at = _utc_now()
     environment = {
         "operating_system": platform.system(),

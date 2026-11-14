@@ -100,6 +100,10 @@ def _safe_source(root: Path, relative: str) -> Path:
 def _verify_source_identities(dataset_root: Path, recordings: list[dict[str, Any]]) -> None:
     for recording in recordings:
         input_files = recording.get("input_files")
+        if recording.get("original_state") == "excluded" and not input_files:
+            # Preserve preflight exclusions in the replay denominator without
+            # requiring an identity for files that could not be read.
+            continue
         if not isinstance(input_files, list) or not input_files:
             raise ValueError(
                 f"No pinned input-file identity for {recording.get('recording_path')}."

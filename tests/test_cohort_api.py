@@ -231,6 +231,10 @@ def test_cohort_export_rejects_secrets_and_unsafe_paths() -> None:
         _check_no_secrets({"notes.json": b'{"note": "/Users/researcher/private data"}'})
     with pytest.raises(CohortExportError, match="absolute personal path"):
         _check_no_secrets({"notes.json": b'{"note": "/Volumes/Research/private data"}'})
+    with pytest.raises(CohortExportError, match="absolute personal path"):
+        _check_no_secrets(
+            {"notes.json": json.dumps({"note": r"\\lab-files\users\alice\study\raw.edf"}).encode()}
+        )
     with pytest.raises(CohortExportError, match="project-relative"):
         _relative_path("../outside/dataset", "Dataset path")
 
@@ -303,11 +307,38 @@ def test_exported_source_path_guard_and_brainlearn_runner_loopback_guard(
         }
     ]
     runner_namespace["_verify_source_identities"](dataset, records)
+    preflight_excluded = {
+        "recording_path": "sub-02/eeg/sub-02_task-demo_eeg.edf",
+        "original_state": "excluded",
+        "input_files": [],
+        "input_identity": None,
+    }
+    runner_namespace["_verify_source_identities"](dataset, [*records, preflight_excluded])
+    with pytest.raises(ValueError, match="No pinned input-file identity"):
+        runner_namespace["_verify_source_identities"](
+            dataset,
+            [
+                {
+                    "recording_path": "sub-03/eeg/sub-03_task-demo_eeg.edf",
+                    "original_state": "selected",
+                    "input_files": [],
+                }
+            ],
+        )
     with pytest.raises(ValueError, match="checksum changed"):
         source.write_bytes(b"changed bytes")
         runner_namespace["_verify_source_identities"](dataset, records)
     with pytest.raises(ValueError, match="project-relative"):
         runner_namespace["_dataset_root"](tmp_path / "project", "../outside")
+
+    shutil.copy(
+        Path(__file__).parents[1] / "packages/server/src/brainlearn_server/eeg-cohort.lock",
+        tmp_path / "environment.lock",
+    )
+    with pytest.raises(RuntimeError, match="does not match the recorded SHA-256"):
+        direct_namespace["_locked_versions"](
+            {"direct_replay_environment": {"lockfile_sha256": "0" * 64}}
+        )
 
 
 def test_cohort_project_export_requires_the_local_session_token(client: TestClient) -> None:
@@ -398,11 +429,13 @@ def test_exported_direct_mne_replay_matches_separate_synthetic_reference(
     export_dir.mkdir()
     script = export_dir / "workflow.py"
     script.write_text(_workflow_script(), encoding="utf-8")
+    lockfile = Path(__file__).parents[1] / "packages/server/src/brainlearn_server/eeg-cohort.lock"
+    lock_bytes = lockfile.read_bytes()
+    config["direct_replay_environment"] = {
+        "lockfile_sha256": hashlib.sha256(lock_bytes).hexdigest()
+    }
     (export_dir / "config.json").write_text(json.dumps(config), encoding="utf-8")
-    shutil.copy(
-        Path(__file__).parents[1] / "packages/server/src/brainlearn_server/eeg-cohort.lock",
-        export_dir / "environment.lock",
-    )
+    shutil.copy(lockfile, export_dir / "environment.lock")
     loader = SourceFileLoader("exported_workflow_for_test", str(script))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None
@@ -544,9 +577,8 @@ def test_exported_cohort_means_weight_participants_not_recordings(
 
     script_path = tmp_path / "workflow.py"
     script_path.write_text(_workflow_script(), encoding="utf-8")
-    script_path.with_name("environment.lock").write_bytes(
-        files("brainlearn_server").joinpath("eeg-cohort.lock").read_bytes()
-    )
+    lock_bytes = files("brainlearn_server").joinpath("eeg-cohort.lock").read_bytes()
+    script_path.with_name("environment.lock").write_bytes(lock_bytes)
     loader = SourceFileLoader("exported_workflow_aggregation_test", str(script_path))
     spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec is not None
@@ -593,6 +625,7 @@ def test_exported_cohort_means_weight_participants_not_recordings(
         "recordings": [dict(item, original_state="selected") for item in recordings],
         "citations": [],
         "parameters": {},
+        "direct_replay_environment": {"lockfile_sha256": hashlib.sha256(lock_bytes).hexdigest()},
     }
     result = module.run_workflow(
         config,
