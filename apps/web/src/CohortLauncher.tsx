@@ -71,6 +71,7 @@ export function CohortLauncher({
   const [cohort, setCohort] = useState<CohortRunRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [resultPending, setResultPending] = useState(false);
   const lastChildRunId = useRef<string | null>(null);
   const generation = useRef(0);
@@ -86,31 +87,47 @@ export function CohortLauncher({
   }, [onChildRun]);
 
   useEffect(() => {
-    if (!projectPath || !token) return;
+    generation.current += 1;
+    const requestGeneration = generation.current;
+    lastChildRunId.current = null;
+    setCohort(null);
+    setDiscovery(null);
+    setSelectedPaths([]);
+    setMessage(null);
+    setPending(false);
+    setResultPending(false);
+    if (!projectPath || !token) {
+      setRecovering(false);
+      return;
+    }
     let stopped = false;
+    setRecovering(true);
     void recoverCohorts(projectPath, token)
       .then((records) => {
-        if (stopped) return;
+        if (stopped || generation.current !== requestGeneration) return;
         const active = records.find((item) =>
           ACTIVE_COHORT_STATES.has(item.state),
         );
         if (active) {
-          generation.current += 1;
           lastChildRunId.current = null;
           setCohort(active);
           setMessage(
             "Recovered the persisted cohort run and its child workflows.",
           );
-        }
+        } else setCohort(null);
       })
       .catch((reason: unknown) => {
-        if (!stopped) {
+        if (!stopped && generation.current === requestGeneration) {
           setMessage(
             reason instanceof Error
               ? reason.message
               : "Unable to recover cohort runs.",
           );
         }
+      })
+      .finally(() => {
+        if (!stopped && generation.current === requestGeneration)
+          setRecovering(false);
       });
     return () => {
       stopped = true;
@@ -178,12 +195,14 @@ export function CohortLauncher({
       );
       return;
     }
+    const requestGeneration = generation.current;
     setPending(true);
     setMessage(null);
     try {
       const result = await discoverBidsEeg(projectPath, datasetRoot.trim(), {
         token,
       });
+      if (requestGeneration !== generation.current) return;
       setDiscovery(result);
       const referenceSubjects = new Set(["001", "002", "003", "004", "005"]);
       const defaultSelection = /ds005284/.test(datasetRoot)
@@ -200,6 +219,7 @@ export function CohortLauncher({
       else if (defaultSelection.length === 0)
         setMessage("Select one or more compatible recordings below.");
     } catch (reason) {
+      if (requestGeneration !== generation.current) return;
       setDiscovery(null);
       setSelectedPaths([]);
       setMessage(
@@ -208,7 +228,7 @@ export function CohortLauncher({
           : "Unable to scan the BIDS dataset.",
       );
     } finally {
-      setPending(false);
+      if (requestGeneration === generation.current) setPending(false);
     }
   };
 
@@ -223,6 +243,7 @@ export function CohortLauncher({
   const launch = async () => {
     if (!projectPath || !token || !discovery || selectedPaths.length === 0)
       return;
+    const requestGeneration = generation.current;
     setPending(true);
     setMessage(null);
     try {
@@ -232,42 +253,50 @@ export function CohortLauncher({
         selectedPaths,
         token,
       );
+      if (requestGeneration !== generation.current) return;
       generation.current += 1;
       lastChildRunId.current = null;
       setCohort(record);
       setMessage(
         `Cohort ${record.id} started. Each recording will pause for explicit channel and ICA review.`,
       );
+      setPending(false);
     } catch (reason) {
+      if (requestGeneration !== generation.current) return;
       setMessage(
         reason instanceof Error
           ? reason.message
           : "Unable to start the cohort workflow.",
       );
     } finally {
-      setPending(false);
+      if (requestGeneration === generation.current) setPending(false);
     }
   };
 
   const stop = async () => {
     if (!cohort || !projectPath || !token) return;
+    const requestGeneration = generation.current;
     setPending(true);
     try {
-      setCohort(await cancelCohort(projectPath, cohort.id, token));
+      const updated = await cancelCohort(projectPath, cohort.id, token);
+      if (requestGeneration !== generation.current) return;
+      setCohort(updated);
       setMessage("Cohort cancellation requested.");
     } catch (reason) {
+      if (requestGeneration !== generation.current) return;
       setMessage(
         reason instanceof Error
           ? reason.message
           : "Unable to cancel the cohort.",
       );
     } finally {
-      setPending(false);
+      if (requestGeneration === generation.current) setPending(false);
     }
   };
 
   const saveResult = async (kind: "report" | "summary") => {
     if (!cohort || !projectPath || !token) return;
+    const requestGeneration = generation.current;
     setResultPending(true);
     try {
       const blob = await downloadCohortResult(
@@ -276,18 +305,20 @@ export function CohortLauncher({
         kind,
         token,
       );
+      if (requestGeneration !== generation.current) return;
       download(
         blob,
         `${cohort.id}-${kind}.${kind === "report" ? "html" : "json"}`,
       );
     } catch (reason) {
+      if (requestGeneration !== generation.current) return;
       setMessage(
         reason instanceof Error
           ? reason.message
           : `Unable to download the ${kind}.`,
       );
     } finally {
-      setResultPending(false);
+      if (requestGeneration === generation.current) setResultPending(false);
     }
   };
 
@@ -317,7 +348,9 @@ export function CohortLauncher({
         />
       </label>
       <button
-        disabled={pending || !projectPath || !token}
+        disabled={
+          pending || recovering || cohortIsActive || !projectPath || !token
+        }
         onClick={() => void scan()}
       >
         {pending ? "Working…" : "Scan cohort recordings"}
@@ -336,7 +369,12 @@ export function CohortLauncher({
             <label className="cohort-recording" key={recording.path}>
               <input
                 checked={selectedPaths.includes(recording.path)}
-                disabled={recording.status !== "ready" || pending}
+                disabled={
+                  recording.status !== "ready" ||
+                  pending ||
+                  recovering ||
+                  cohortIsActive
+                }
                 onChange={() => toggleRecording(recording.path)}
                 type="checkbox"
               />
@@ -354,6 +392,8 @@ export function CohortLauncher({
           <button
             disabled={
               pending ||
+              recovering ||
+              cohortIsActive ||
               discovery.status !== "ready" ||
               selectedPaths.length === 0
             }
