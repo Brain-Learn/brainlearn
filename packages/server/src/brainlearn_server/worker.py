@@ -437,6 +437,54 @@ def _validate_node_ports(node: NodeInstance, connected_inputs: set[str] | None =
                 )
 
 
+def _validate_node_parameters(node: NodeInstance) -> None:
+    """Reject missing, mistyped, or unknown execution parameters before a run is stored."""
+
+    manifest = _worker_manifest(node.type)
+    if manifest is None:
+        return
+    supplied: dict[str, Any] = {}
+    for parameter in node.parameters:
+        if parameter.id in supplied:
+            raise ValueError(f"Node {node.id!r} repeats parameter {parameter.id!r}.")
+        supplied[parameter.id] = parameter.value
+    unknown = sorted(set(supplied) - set(manifest.parameters))
+    if unknown:
+        raise ValueError(
+            f"Node {node.id!r} has unknown parameter {unknown[0]!r} for {node.type!r}."
+        )
+    for identifier, spec in manifest.parameters.items():
+        value = supplied.get(identifier)
+        if spec.required and value is None:
+            raise ValueError(
+                f"Node {node.id!r} requires parameter {identifier!r}. Set it explicitly "
+                "before starting the workflow."
+            )
+        if value is None:
+            continue
+        matches = {
+            "string": isinstance(value, str),
+            "number": isinstance(value, (int, float)) and not isinstance(value, bool),
+            "integer": type(value) is int,
+            "boolean": type(value) is bool,
+        }[spec.value_type]
+        if not matches:
+            raise ValueError(
+                f"Node {node.id!r} parameter {identifier!r} must be {spec.value_type}."
+            )
+        if spec.value_type == "string" and spec.required and not value.strip():
+            raise ValueError(f"Node {node.id!r} parameter {identifier!r} must not be blank.")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if spec.minimum is not None and value < spec.minimum:
+                raise ValueError(
+                    f"Node {node.id!r} parameter {identifier!r} must be at least {spec.minimum}."
+                )
+            if spec.maximum is not None and value > spec.maximum:
+                raise ValueError(
+                    f"Node {node.id!r} parameter {identifier!r} must be at most {spec.maximum}."
+                )
+
+
 def build_run_record(workflow: Workflow, seed: int = 0, created_at: str | None = None) -> RunRecord:
     """Create a queued run record from a semantically valid workflow."""
 
@@ -464,6 +512,7 @@ def build_run_record(workflow: Workflow, seed: int = 0, created_at: str | None =
         node = by_id[node_id]
         connected = {edge.target.port_id for edge in edges_by_target.get(node_id, [])}
         _validate_node_ports(node, connected)
+        _validate_node_parameters(node)
         inputs: dict[str, str] = {}
         sources: dict[str, dict[str, str]] = {}
         for edge in edges_by_target.get(node_id, []):
@@ -930,7 +979,10 @@ class WorkerService:
                 decided = node.review_pause.model_copy(
                     update={"decided_at": timestamp, "decision": "approved", "note": note}
                 )
-                apply_reviewed_ica = node.node_type == "eeg.ica_review"
+                apply_reviewed_artifact = node.node_type in {
+                    "eeg.ica_review",
+                    "eeg.bad_channel_review",
+                }
                 queued_event = RunEvent(
                     schema_version="1.0",
                     seq=len(record.events) + 1,
@@ -939,8 +991,8 @@ class WorkerService:
                     node_run_id=node_run_id,
                     attempt=0,
                     message=(
-                        "Applying the persisted ICA component decision."
-                        if apply_reviewed_ica
+                        "Applying the persisted EEG quality-control decision."
+                        if apply_reviewed_artifact
                         else ""
                     ),
                 )
@@ -949,13 +1001,13 @@ class WorkerService:
                         update={
                             "state": (
                                 NodeRunState.QUEUED
-                                if apply_reviewed_ica
+                                if apply_reviewed_artifact
                                 else NodeRunState.SUCCEEDED
                             ),
-                            "attempt": 0 if apply_reviewed_ica else item.attempt,
-                            "started_at": None if apply_reviewed_ica else item.started_at,
-                            "finished_at": None if apply_reviewed_ica else timestamp,
-                            "artifacts": [] if apply_reviewed_ica else item.artifacts,
+                            "attempt": 0 if apply_reviewed_artifact else item.attempt,
+                            "started_at": None if apply_reviewed_artifact else item.started_at,
+                            "finished_at": None if apply_reviewed_artifact else timestamp,
+                            "artifacts": [] if apply_reviewed_artifact else item.artifacts,
                             "review_pause": decided,
                         }
                     )
@@ -974,7 +1026,7 @@ class WorkerService:
                         attempt=node.attempt,
                         message=note or "Review approved.",
                     ),
-                    *([queued_event] if apply_reviewed_ica else []),
+                    *([queued_event] if apply_reviewed_artifact else []),
                 ]
                 repaired = record.model_copy(
                     update={"state": RunState.RUNNING, "node_runs": nodes, "events": events}

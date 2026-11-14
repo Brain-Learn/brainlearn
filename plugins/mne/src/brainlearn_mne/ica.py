@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Any
 
 ICA_DIAGNOSTICS_MEDIA_TYPE = "application/vnd.brainlearn.eeg-ica-diagnostics+json"
-ICA_PROVENANCE_SCHEMA = "1.1"
-ICA_MAX_ITERATIONS = 1000
+ICA_PROVENANCE_SCHEMA = "1.2"
 MAX_ICA_CHANNELS = 256
 MAX_ICA_CHANNEL_SAMPLES = 25_000_000
 MAX_COMPONENTS = 256
@@ -204,6 +203,11 @@ def _component_diagnostics(
 def fit_ica(
     raw: Any,
     *,
+    method: str,
+    component_policy: str,
+    max_iterations: int,
+    reject_by_annotation: bool,
+    decim: int,
     random_state: int,
     staging_dir: Path,
     source_identity: str,
@@ -214,6 +218,16 @@ def fit_ica(
 
     channels, _sfreq, sample_count = _raw_bounds(raw)
     excluded_bad_channels = _bad_eeg_channels(raw)
+    if method != "fastica":
+        raise MneIcaError("The experimental EEG node currently supports FastICA only.")
+    if component_policy != "all_eeg_channels":
+        raise MneIcaError("The supported ICA component policy is all_eeg_channels.")
+    if type(max_iterations) is not int or not 10 <= max_iterations <= 5000:
+        raise MneIcaError("The ICA maximum iteration setting must be between 10 and 5000.")
+    if type(reject_by_annotation) is not bool:
+        raise MneIcaError("The ICA annotation rejection setting must be a boolean.")
+    if type(decim) is not int or not 1 <= decim <= 16:
+        raise MneIcaError("The ICA decimation factor must be between 1 and 16.")
     if not 0 <= random_state <= 2**32 - 1:
         raise MneIcaError("The run seed must fit MNE's unsigned 32-bit random-state range.")
     mne = import_module("mne")
@@ -235,9 +249,9 @@ def fit_ica(
     cancel_check()
     ica = mne.preprocessing.ICA(
         n_components=None,
-        method="fastica",
+        method=method,
         random_state=random_state,
-        max_iter=ICA_MAX_ITERATIONS,
+        max_iter=max_iterations,
         fit_params=None,
         allow_ref_meg=False,
         verbose="ERROR",
@@ -250,20 +264,20 @@ def fit_ica(
             ica.fit(
                 raw.copy(),
                 picks=channels,
-                reject_by_annotation=False,
-                decim=1,
+                reject_by_annotation=reject_by_annotation,
+                decim=decim,
                 verbose="ERROR",
             )
     except Exception as exc:
         raise MneIcaError(f"MNE could not fit ICA to this recording: {exc}") from exc
     if any(issubclass(item.category, ConvergenceWarning) for item in captured):
         raise MneIcaError(
-            f"FastICA did not converge within {ICA_MAX_ITERATIONS} iterations. "
+            f"FastICA did not converge within {max_iterations} iterations. "
             "No reviewable model was saved. Review channel selection, data rank, filtering, "
             "and recording quality before retrying."
         )
     fit_iterations_value = getattr(ica, "n_iter_", None)
-    if type(fit_iterations_value) is not int or not 1 <= fit_iterations_value < ICA_MAX_ITERATIONS:
+    if type(fit_iterations_value) is not int or not 1 <= fit_iterations_value < max_iterations:
         raise MneIcaError(
             "MNE did not report a converged FastICA iteration count. No reviewable model was saved."
         )
@@ -296,13 +310,14 @@ def fit_ica(
             "operation": "fit_ica",
             "source_content_identity": source_identity,
             "input_artifact_id": input_artifact_id,
-            "method": "fastica",
+            "method": method,
             "n_components": None,
+            "component_policy": component_policy,
             "fitted_components": component_count,
             "random_state": random_state,
-            "max_iter": ICA_MAX_ITERATIONS,
-            "reject_by_annotation": False,
-            "decim": 1,
+            "max_iter": max_iterations,
+            "reject_by_annotation": reject_by_annotation,
+            "decim": decim,
             "picks": channels,
             "channels": list(ica.ch_names),
             "excluded_bad_channels": excluded_bad_channels,

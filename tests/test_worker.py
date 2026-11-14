@@ -406,9 +406,12 @@ def test_failure_skips_downstream_and_fails_run(client: TestClient, tmp_path: Pa
     assert not list((project / "runs" / started["run_id"] / "artifacts").rglob("*"))
 
 
-def test_future_eeg_nodes_remain_outside_the_worker_allowlist() -> None:
+def test_eeg_analysis_nodes_are_in_the_worker_allowlist() -> None:
     assert _worker_manifest("eeg.ica_review") is not None
-    assert _worker_manifest("eeg.epochs") is None
+    assert _worker_manifest("eeg.epochs") is not None
+    assert _worker_manifest("eeg.erp_average") is not None
+    assert _worker_manifest("eeg.psd") is not None
+    assert _worker_manifest("output.report") is not None
 
 
 def test_start_rejects_invalid_workflows_and_bad_requests(

@@ -47,11 +47,9 @@ def migrate_project_workflow_dict(data: dict[str, Any]) -> dict[str, Any]:
     edge_list = edges if isinstance(edges, list) else []
     legacy_ica_sources = _legacy_ica_review_sources(nodes, edge_list)
     migrated_nodes = [
-        _migrate_legacy_filter_node(node)
-        if not _is_legacy_ica_review_node(node)
-        else _migrate_legacy_ica_review_node(node)
+        _migrate_legacy_ica_review_node(node)
         if isinstance(node, dict) and node.get("id") in legacy_ica_sources
-        else node
+        else _migrate_legacy_analysis_node(_migrate_legacy_filter_node(node))
         for node in nodes
     ]
     additions: list[dict[str, Any]] = []
@@ -161,6 +159,141 @@ def _migrate_legacy_ica_review_node(value: dict[str, Any]) -> dict[str, Any]:
     migrated["pauses_for_review"] = manifest.review_behavior == "required"
     migrated["ports"] = [port.model_dump(mode="json") for port in manifest.ports]
     migrated["parameters"] = []
+    return migrated
+
+
+_LEGACY_ANALYSIS_NODES: dict[str, dict[str, Any]] = {
+    "eeg.epochs": {
+        "label": "Epochs",
+        "category": "Processing",
+        "description": "Create event-locked epochs using explicit time bounds.",
+        "ports": [
+            ("reviewed", "Reviewed EEG", "input", "reviewed_eeg"),
+            ("epochs", "Epochs", "output", "epochs"),
+        ],
+        "parameters": [("event", "Event name"), ("tmin", "Start (s)"), ("tmax", "End (s)")],
+        "additional_values": {
+            "baseline_enabled": True,
+            "baseline_start": -0.2,
+            "baseline_end": 0.0,
+            "reject_eeg_peak_to_peak_uv": 0.0,
+            "reject_by_annotation": True,
+        },
+    },
+    "eeg.erp_average": {
+        "label": "ERP Average",
+        "category": "Analysis",
+        "description": "Average selected epochs to form an evoked response.",
+        "ports": [
+            ("epochs", "Epochs", "input", "epochs"),
+            ("evoked", "Evoked", "output", "evoked"),
+        ],
+        "parameters": [],
+        "additional_values": {},
+    },
+    "eeg.psd": {
+        "label": "PSD",
+        "category": "Analysis",
+        "description": "Estimate a power spectrum from the reviewed epochs.",
+        "ports": [
+            ("epochs", "Epochs", "input", "epochs"),
+            ("spectrum", "Spectrum", "output", "spectrum"),
+        ],
+        "parameters": [],
+        "additional_values": {
+            "fmin_hz": 1.0,
+            "fmax_hz": 40.0,
+            "n_fft": 256,
+            "n_per_seg": 256,
+            "n_overlap": 128,
+            "window": "hamming",
+        },
+    },
+    "output.report": {
+        "label": "Report",
+        "category": "Output",
+        "description": "Combine analysis artifacts into a future methods and results report.",
+        "ports": [
+            ("evoked", "Evoked", "input", "evoked"),
+            ("spectrum", "Spectrum", "input", "spectrum"),
+            ("report", "Report", "output", "report"),
+        ],
+        "parameters": [],
+        "additional_values": {},
+    },
+}
+
+
+def _migrate_legacy_analysis_node(value: Any) -> Any:
+    """Upgrade exact pre-implementation Step 8 placeholders, preserving chosen values."""
+
+    if not isinstance(value, dict):
+        return value
+    node_type = value.get("type")
+    if not isinstance(node_type, str):
+        return value
+    legacy = _LEGACY_ANALYSIS_NODES.get(node_type)
+    if legacy is None:
+        return value
+    ports = value.get("ports")
+    parameters = value.get("parameters")
+    if (
+        value.get("label") != legacy["label"]
+        or value.get("category") != legacy["category"]
+        or value.get("description") != legacy["description"]
+        or value.get("pauses_for_review", False) is not False
+        or not isinstance(ports, list)
+        or not isinstance(parameters, list)
+    ):
+        return value
+    expected_ports = legacy["ports"]
+    if len(ports) != len(expected_ports):
+        return value
+    for port, expected in zip(ports, expected_ports, strict=True):
+        if (
+            not isinstance(port, dict)
+            or set(port) - {"id", "label", "direction", "data_type", "required"}
+            or (port.get("id"), port.get("label"), port.get("direction"), port.get("data_type"))
+            != expected
+            or port.get("required", True) is not True
+        ):
+            return value
+    expected_parameters = legacy["parameters"]
+    if len(parameters) != len(expected_parameters):
+        return value
+    preserved: dict[str, Any] = {}
+    for parameter, expected in zip(parameters, expected_parameters, strict=True):
+        if (
+            not isinstance(parameter, dict)
+            or set(parameter) - {"id", "label", "value", "required", "description"}
+            or (parameter.get("id"), parameter.get("label")) != expected
+            or parameter.get("required") is not True
+            or parameter.get("description") is not None
+        ):
+            return value
+        preserved[str(expected[0])] = parameter.get("value")
+
+    manifest = NODE_REGISTRY_BY_ID.get(node_type)
+    if manifest is None:
+        return value
+    values = dict(legacy["additional_values"])
+    values.update(preserved)
+    migrated = deepcopy(value)
+    migrated["label"] = manifest.label
+    migrated["category"] = manifest.category
+    migrated["description"] = manifest.description
+    migrated["pauses_for_review"] = manifest.review_behavior == "required"
+    migrated["ports"] = [port.model_dump(mode="json") for port in manifest.ports]
+    migrated["parameters"] = [
+        {
+            "id": schema.id,
+            "label": schema.label,
+            "value": values.get(schema.id, schema.default),
+            "required": schema.required,
+            "description": schema.description,
+        }
+        for schema in manifest.parameters
+    ]
     return migrated
 
 

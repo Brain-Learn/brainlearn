@@ -348,6 +348,69 @@ export interface RunResponse {
   qc_reviews?: QCReviewRecord[];
 }
 
+export type CohortRunState =
+  "running" | "waiting_for_review" | "succeeded" | "failed" | "cancelled";
+
+export type CohortRecordingState =
+  | "selected"
+  | "running"
+  | "waiting_for_review"
+  | "processed"
+  | "excluded"
+  | "failed"
+  | "cancelled";
+
+export interface CohortRecordingRun {
+  recording_path: string;
+  participant: string;
+  session: string | null;
+  run: string | null;
+  state: CohortRecordingState;
+  input_identity: string | null;
+  input_files: Array<{ path: string; byte_size: number; sha256: string }>;
+  child_run_id: string | null;
+  parameters: Record<string, unknown>;
+  qc_review_ids: string[];
+  outputs: Array<{
+    node_id: string;
+    node_type: string;
+    port_id: string;
+    artifact_id: string;
+    sha256: string;
+  }>;
+  failure_reason: string | null;
+}
+
+export interface CohortRunRecord {
+  schema_version: "1.2";
+  id: string;
+  state: CohortRunState;
+  dataset_path: string;
+  dataset_id: string | null;
+  dataset_version: string | null;
+  workflow_id: string;
+  workflow_identity: string;
+  workflow: Workflow | null;
+  created_at: string;
+  started_at: string;
+  finished_at: string | null;
+  seed: number;
+  parameters: Record<string, Record<string, unknown>>;
+  recordings: CohortRecordingRun[];
+  selected_count: number;
+  processed_count: number;
+  excluded_count: number;
+  failed_count: number;
+  cancelled_count: number;
+  processed_participant_count: number;
+  report_path: string | null;
+  report_sha256: string | null;
+  summary_path: string | null;
+  summary_sha256: string | null;
+  citations: Array<{ title: string; doi?: string; url?: string }>;
+  failure_reason: string | null;
+}
+
 export interface QCReviewRecord {
   schema_version: "1.0";
   id: string;
@@ -518,6 +581,7 @@ export interface BidsEegRecording {
   session: string | null;
   task: string;
   format: string | null;
+  recording_type?: "continuous" | "discontinuous" | "epoched" | null;
   status: "ready" | "incomplete_metadata" | "unsupported";
   sampling_frequency_hz: number | null;
   eeg_reference: string | null;

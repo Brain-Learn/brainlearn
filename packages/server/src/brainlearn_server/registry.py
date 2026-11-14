@@ -1,9 +1,8 @@
 """Node manifests for the editable graph and its allowlisted worker.
 
-The curated BIDS EEG input, read-only inspection, and experimental filter
-execute through explicit worker adapters. Later EEG operations remain
-illustrative. The ``demo.*`` manifests are explicitly non-scientific
-demonstration nodes whose
+Curated BIDS EEG inspection, explicit QC, filtering, ICA review, event epoching,
+ERP/PSD summaries, and descriptive reports execute through allowlisted adapters.
+The ``demo.*`` manifests are explicitly non-scientific demonstration nodes whose
 ports and versions derive from the authoritative worker contract in
 :mod:`brainlearn_server.demo_nodes`.
 """
@@ -206,13 +205,19 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
         node_version="0.1.0",
         label="Bad Channel Review",
         description=(
-            "Pause for a researcher to record EEG channels for exclusion. The decision is saved "
-            "with run, node, input, and source identities; the source recording is not modified."
+            "Pause for an explicit bad-channel decision, then pass that recording-specific "
+            "decision downstream with the current source identity; channels are never interpolated."
         ),
         category="Quality control",
         status="experimental",
         ports=[
             _port("raw", "Raw EEG", PortDirection.INPUT, ScientificType.RAW_EEG),
+            _port(
+                "reviewed",
+                "QC-reviewed EEG reference",
+                PortDirection.OUTPUT,
+                ScientificType.RAW_EEG,
+            ),
         ],
         review_behavior="required",
         license=EXAMPLE_LICENSE,
@@ -326,11 +331,11 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.ica_fit",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="Fit ICA",
         description=(
-            "Fit an MNE ICA model and inspect component maps, source time courses, spectra, "
-            "and diagnostics without rejecting components."
+            "Fit an MNE ICA model using explicit provisional settings and inspect component "
+            "maps, source time courses, spectra, and diagnostics without rejecting components."
         ),
         category="Preprocessing",
         status="experimental",
@@ -340,6 +345,57 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
             _port("diagnostics", "ICA components", PortDirection.OUTPUT, ScientificType.REPORT),
             _port("provenance", "Fit provenance", PortDirection.OUTPUT, ScientificType.REPORT),
         ],
+        parameters=[
+            ParameterSchema(
+                id="method",
+                label="ICA method",
+                value_type="string",
+                default=None,
+                required=True,
+                description="Provisional method; FastICA is currently the only supported option.",
+                options=["fastica"],
+            ),
+            ParameterSchema(
+                id="component_policy",
+                label="Component count policy",
+                value_type="string",
+                default=None,
+                required=True,
+                description=(
+                    "Provisional policy: pass n_components=None to MNE, using all selected "
+                    "EEG channels."
+                ),
+                options=["all_eeg_channels"],
+            ),
+            ParameterSchema(
+                id="max_iterations",
+                label="Maximum ICA iterations",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Provisional FastICA convergence limit.",
+                minimum=10,
+                maximum=5000,
+            ),
+            ParameterSchema(
+                id="reject_by_annotation",
+                label="Reject BAD annotated spans during ICA fitting",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Provisional setting. False includes BAD annotated spans in the fit.",
+            ),
+            ParameterSchema(
+                id="decim",
+                label="ICA decimation factor",
+                value_type="integer",
+                default=None,
+                required=True,
+                description="Provisional sampling factor passed to MNE ICA fitting.",
+                minimum=1,
+                maximum=16,
+            ),
+        ],
         license=EXAMPLE_LICENSE,
         software_dependencies=_software_dependencies(
             _MNE_DEPENDENCY, _MNE_BIDS_DEPENDENCY, _SCIKIT_LEARN_DEPENDENCY
@@ -347,35 +403,89 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.epochs",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="Epochs",
-        description="Create event-locked epochs using explicit time bounds.",
+        description=(
+            "Create event-locked MNE epochs using an exact annotation label and explicit "
+            "provisional timing, baseline, and rejection settings. Event diagnostics are saved."
+        ),
         category="Processing",
+        status="experimental",
         ports=[
             _port("reviewed", "Reviewed EEG", PortDirection.INPUT, ScientificType.REVIEWED_EEG),
             _port("epochs", "Epochs", PortDirection.OUTPUT, ScientificType.EPOCHS),
+            _port(
+                "diagnostics",
+                "Event and epoch diagnostics",
+                PortDirection.OUTPUT,
+                ScientificType.REPORT,
+            ),
         ],
         parameters=[
             ParameterSchema(
                 id="event",
-                label="Event name",
+                label="Exact event label",
                 value_type="string",
-                default="stimulus",
+                default=None,
                 required=True,
+                description="Choose one exact label shown by Event Diagnostics.",
             ),
             ParameterSchema(
                 id="tmin",
-                label="Start (s)",
+                label="Epoch start (s)",
                 value_type="number",
-                default=-0.2,
+                default=None,
                 required=True,
+                description="Provisional epoch start relative to the selected event.",
             ),
             ParameterSchema(
                 id="tmax",
-                label="End (s)",
+                label="Epoch end (s)",
                 value_type="number",
-                default=0.8,
+                default=None,
                 required=True,
+                description="Provisional epoch end relative to the selected event.",
+            ),
+            ParameterSchema(
+                id="baseline_enabled",
+                label="Apply baseline correction",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Select whether the configured baseline interval is applied.",
+            ),
+            ParameterSchema(
+                id="baseline_start",
+                label="Baseline start (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit baseline start relative to the event.",
+            ),
+            ParameterSchema(
+                id="baseline_end",
+                label="Baseline end (s)",
+                value_type="number",
+                default=None,
+                required=True,
+                description="Explicit baseline end relative to the event.",
+            ),
+            ParameterSchema(
+                id="reject_eeg_peak_to_peak_uv",
+                label="EEG peak-to-peak rejection (µV; 0 disables)",
+                value_type="number",
+                default=None,
+                required=True,
+                minimum=0,
+                description="Explicit MNE epoch rejection threshold in microvolts; 0 disables.",
+            ),
+            ParameterSchema(
+                id="reject_by_annotation",
+                label="Reject annotated bad spans",
+                value_type="boolean",
+                default=None,
+                required=True,
+                description="Choose whether epochs overlapping BAD annotations are rejected.",
             ),
         ],
         license=EXAMPLE_LICENSE,
@@ -383,10 +493,14 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.erp_average",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="ERP Average",
-        description="Average selected epochs to form an evoked response.",
+        description=(
+            "Average the retained epochs and report the per-time-point sample SD across epochs "
+            "for this recording."
+        ),
         category="Analysis",
+        status="experimental",
         ports=[
             _port("epochs", "Epochs", PortDirection.INPUT, ScientificType.EPOCHS),
             _port("evoked", "Evoked", PortDirection.OUTPUT, ScientificType.EVOKED),
@@ -396,26 +510,81 @@ _EEG_MANIFESTS: tuple[NodeManifest, ...] = (
     ),
     NodeManifest(
         id="eeg.psd",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="PSD",
-        description="Estimate a power spectrum from the reviewed epochs.",
+        description=(
+            "Estimate Welch PSD from the same retained epoch artifact used by ERP and report "
+            "per-recording mean and sample SD across epochs."
+        ),
         category="Analysis",
+        status="experimental",
         ports=[
             _port("epochs", "Epochs", PortDirection.INPUT, ScientificType.EPOCHS),
             _port("spectrum", "Spectrum", PortDirection.OUTPUT, ScientificType.SPECTRUM),
+        ],
+        parameters=[
+            ParameterSchema(
+                id="fmin_hz",
+                label="Minimum frequency (Hz)",
+                value_type="number",
+                default=None,
+                required=True,
+            ),
+            ParameterSchema(
+                id="fmax_hz",
+                label="Maximum frequency (Hz)",
+                value_type="number",
+                default=None,
+                required=True,
+            ),
+            ParameterSchema(
+                id="n_fft", label="FFT points", value_type="integer", default=None, required=True
+            ),
+            ParameterSchema(
+                id="n_per_seg",
+                label="Samples per segment",
+                value_type="integer",
+                default=None,
+                required=True,
+            ),
+            ParameterSchema(
+                id="n_overlap",
+                label="Overlap samples",
+                value_type="integer",
+                default=None,
+                required=True,
+            ),
+            ParameterSchema(
+                id="window",
+                label="Welch window",
+                value_type="string",
+                default=None,
+                required=True,
+                description="Explicit window: hamming, hann, or boxcar.",
+            ),
         ],
         license=EXAMPLE_LICENSE,
         software_dependencies=_software_dependencies(_MNE_DEPENDENCY),
     ),
     NodeManifest(
         id="output.report",
-        node_version="0.1.0",
+        node_version="0.2.0",
         label="Report",
-        description="Combine analysis artifacts into a future methods and results report.",
+        description=(
+            "Build a self-contained descriptive HTML report from executed run parameters, "
+            "QC decisions, ERP and PSD artifacts, methods placeholders, and deduplicated citations."
+        ),
         category="Output",
+        status="experimental",
         ports=[
             _port("evoked", "Evoked", PortDirection.INPUT, ScientificType.EVOKED),
             _port("spectrum", "Spectrum", PortDirection.INPUT, ScientificType.SPECTRUM),
+            _port(
+                "diagnostics",
+                "Event and epoch diagnostics",
+                PortDirection.INPUT,
+                ScientificType.REPORT,
+            ),
             _port("report", "Report", PortDirection.OUTPUT, ScientificType.REPORT),
         ],
         license=EXAMPLE_LICENSE,

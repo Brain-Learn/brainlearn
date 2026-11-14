@@ -1,0 +1,881 @@
+#!/usr/bin/env python3
+"""Direct MNE replay for one exported BrainLearn descriptive EEG cohort.
+
+This file intentionally contains no BrainLearn UI or session-token dependency.
+Saved bad-channel decisions require explicit acknowledgement and matching
+source hashes. ICA is refitted; its components require a new human review.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import html
+import importlib.metadata
+import json
+import os
+import platform
+import tempfile
+import warnings
+from datetime import UTC, datetime
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any
+
+import mne
+import mne_bids
+import numpy as np
+from sklearn.exceptions import ConvergenceWarning
+
+HERE = Path(__file__).resolve().parent
+CONFIG_PATH = HERE / "config.json"
+
+
+class QCRejected(ValueError):
+    """A researcher explicitly rejected a recording at a fresh QC pause."""
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _locked_versions(config: dict[str, Any]) -> dict[str, str]:
+    environment = config.get("direct_replay_environment")
+    expected_digest = environment.get("lockfile_sha256") if isinstance(environment, dict) else None
+    lock_bytes = (HERE / "environment.lock").read_bytes()
+    if (
+        not isinstance(expected_digest, str)
+        or hashlib.sha256(lock_bytes).hexdigest() != expected_digest
+    ):
+        raise RuntimeError("The exported environment.lock does not match the recorded SHA-256.")
+    versions: dict[str, str] = {}
+    for line in lock_bytes.decode("utf-8").splitlines():
+        if line and not line[0].isspace() and "==" in line:
+            name, constraint = line.split("==", maxsplit=1)
+            versions[name] = constraint.split(maxsplit=1)[0]
+    return versions
+
+
+def _check_versions(config: dict[str, Any]) -> dict[str, str]:
+    expected = _locked_versions(config)
+    mismatches = []
+    installed: dict[str, str] = {}
+    for name, version in expected.items():
+        actual = _installed_version(name)
+        if actual == "not installed":
+            continue
+        if actual != version:
+            mismatches.append(f"{name}=={version} (found {actual})")
+        else:
+            installed[name] = actual
+    if mismatches:
+        raise RuntimeError(
+            "Install the exported environment.lock; mismatched packages: " + ", ".join(mismatches)
+        )
+    return installed
+
+
+def _installed_version(distribution: str) -> str:
+    try:
+        return importlib.metadata.version(distribution)
+    except importlib.metadata.PackageNotFoundError:
+        return "not installed"
+
+
+def load_config() -> dict[str, Any]:
+    config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    if config.get("format_version") != "1.0":
+        raise ValueError("Unsupported exported cohort configuration.")
+    return config
+
+
+def _safe_source(root: Path, relative: str) -> Path:
+    path = PurePosixPath(relative)
+    windows_path = PureWindowsPath(relative)
+    if (
+        path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or ".." in path.parts
+        or ".." in windows_path.parts
+        or not path.parts
+    ):
+        raise ValueError("Source paths must stay inside the selected BIDS dataset.")
+    current = root
+    for part in path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("BIDS source paths may not contain symlinks.")
+    if not current.is_file() or current.stat().st_nlink > 1:
+        raise ValueError("BIDS source must be a regular, single-link file.")
+    return current
+
+
+def _verify_sources(entry: dict[str, Any], root: Path) -> None:
+    if not entry.get("input_files"):
+        raise ValueError("This recording has no pinned source-file identity.")
+    total = 0
+    for item in entry["input_files"]:
+        path = _safe_source(root, item["path"])
+        before = path.stat()
+        total += before.st_size
+        if total > 10 * 1024**3:
+            raise ValueError("Source files exceed the 10 GiB identity limit.")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        after = path.stat()
+        if (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise ValueError("A source file changed while its identity was verified.")
+        if after.st_size != item["byte_size"] or digest.hexdigest() != item["sha256"]:
+            raise ValueError(f"Pinned source checksum changed: {item['path']}")
+    identity_payload = {
+        "schema_version": "bids-eeg-input-1.1",
+        "recording_path": entry["recording_path"],
+        "files": entry["input_files"],
+    }
+    canonical = json.dumps(
+        identity_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    digest = hashlib.sha256(b"brainlearn-v1:artifact:" + canonical).hexdigest()
+    expected_identity = f"brainlearn-v1:artifact:{digest}"
+    if expected_identity != entry.get("input_identity"):
+        raise ValueError("The saved recording identity does not match its pinned source files.")
+
+
+def _parameters(config: dict[str, Any], node_type: str) -> dict[str, Any]:
+    workflow = config["workflow"]
+    for node in workflow["nodes"]:
+        if node["type"] == node_type:
+            return {item["id"]: item.get("value") for item in node["parameters"]}
+    raise ValueError(f"The workflow snapshot has no {node_type} node.")
+
+
+def _decision(entry: dict[str, Any], node_type: str) -> dict[str, Any]:
+    decision = entry.get("qc_decisions", {}).get(node_type)
+    if not isinstance(decision, dict) or decision.get("decision") != "approved":
+        raise ValueError(
+            f"A current approved {node_type} decision is required for {entry['recording_path']}."
+        )
+    reviewer = decision.get("reviewer")
+    if not isinstance(reviewer, str) or not reviewer.strip():
+        raise ValueError(f"The saved {node_type} decision does not name a reviewer.")
+    if node_type == "eeg.bad_channel_review" and decision.get(
+        "source_content_identity"
+    ) != entry.get("input_identity"):
+        raise ValueError(
+            f"The saved bad-channel decision for {entry['recording_path']} is stale; "
+            "rescan the source and review it again."
+        )
+    return decision
+
+
+def inspect_inputs(
+    config: dict[str, Any],
+    dataset_root: Path,
+    *,
+    recording_paths: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    unresolved_root = dataset_root.expanduser()
+    if unresolved_root.is_symlink():
+        raise ValueError("Choose a real local BIDS directory, not a symlink.")
+    root = unresolved_root.resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Choose a real local BIDS directory, not a symlink.")
+    result = []
+    expected_signature: tuple[float, tuple[str, ...]] | None = None
+    source_entries = list(config["recordings"])
+    if recording_paths is not None:
+        selected = set(recording_paths)
+        source_entries = [item for item in source_entries if item["recording_path"] in selected]
+    for entry in source_entries:
+        if entry["original_state"] == "excluded":
+            continue
+        try:
+            _verify_sources(entry, root)
+            recording = _safe_source(root, entry["recording_path"])
+            bids_path = mne_bids.get_bids_path_from_fname(recording)
+            raw = mne_bids.read_raw_bids(bids_path, verbose="ERROR")
+        except Exception as exc:
+            result.append(
+                {
+                    "recording_path": entry["recording_path"],
+                    "status": "failed",
+                    "reason": f"{type(exc).__name__}: source identity or BIDS metadata "
+                    "could not be verified.",
+                }
+            )
+            continue
+        try:
+            eeg_names = tuple(
+                name
+                for name, kind in zip(raw.ch_names, raw.get_channel_types(), strict=True)
+                if kind == "eeg"
+            )
+            signature = (float(raw.info["sfreq"]), eeg_names)
+            incompatible = expected_signature is not None and signature != expected_signature
+            if expected_signature is None and eeg_names:
+                expected_signature = signature
+            labels = sorted(set(str(label) for label in raw.annotations.description))
+            result.append(
+                {
+                    "recording_path": entry["recording_path"],
+                    "status": "incompatible" if incompatible else "ready",
+                    "reason": "Selected recordings have incompatible EEG channel or sampling "
+                    "metadata. No resampling or interpolation is performed."
+                    if incompatible
+                    else None,
+                    "sampling_frequency_hz": signature[0],
+                    "eeg_channels": list(eeg_names),
+                    "event_labels": labels,
+                    "original_state": entry["original_state"],
+                }
+            )
+        finally:
+            raw.close()
+    return result
+
+
+def show_recorded_qc(config: dict[str, Any]) -> list[dict[str, Any]]:
+    rows = []
+    for entry in config["recordings"]:
+        decisions = entry.get("qc_decisions", {})
+        rows.append(
+            {
+                "recording_path": entry["recording_path"],
+                "bad_channel_review": decisions.get("eeg.bad_channel_review"),
+                "historical_ica_review_requires_new_review": decisions.get("eeg.ica_review"),
+                "original_state": entry["original_state"],
+                "failure_reason": entry.get("failure_reason"),
+            }
+        )
+    return rows
+
+
+def _atomic_json(path: Path, value: Any) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+            stream.write(
+                json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, indent=2)
+                + "\n"
+            )
+            stream.flush()
+            os.fsync(stream.fileno())
+        if path.exists() or path.is_symlink():
+            raise FileExistsError(f"Refusing to replace existing export output {path.name!r}.")
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _review_ica(
+    ica: Any, raw: Any, entry: dict[str, Any], *, show: bool
+) -> tuple[list[int], str, str]:
+    if show:
+        try:
+            ica.plot_components(inst=raw, show=True)
+        except Exception as exc:
+            print(
+                f"Component topographies unavailable ({type(exc).__name__}); "
+                "inspect the channel weights below."
+            )
+            print(
+                json.dumps(
+                    {
+                        "channels": ica.ch_names,
+                        "weights": np.asarray(ica.get_components()).tolist(),
+                    },
+                    indent=2,
+                )[:12000]
+            )
+        try:
+            ica.plot_properties(raw, picks=list(range(int(ica.n_components_))), show=True)
+        except Exception as exc:
+            print(f"Component source/spectrum plots unavailable ({type(exc).__name__}).")
+    print(f"\nFresh ICA fit for {entry['recording_path']}: {ica.n_components_} components.")
+    print(
+        "Historical component exclusions are not applied; inspect the fresh fit "
+        "above before deciding."
+    )
+    decision = input("Fresh ICA QC decision [approve/reject]: ").strip().lower()
+    reviewer = input("Reviewer name/identifier: ").strip()
+    if decision in {"reject", "rejected"}:
+        raise QCRejected("The researcher rejected this recording at the fresh ICA review.")
+    if decision not in {"approve", "approved"} or not reviewer:
+        raise ValueError("ICA processing requires an explicit fresh approval and reviewer.")
+    raw_indices = input(
+        "Fresh component indices to exclude (zero-based, comma-separated; empty means none): "
+    ).strip()
+    try:
+        exclusions = sorted({int(item.strip()) for item in raw_indices.split(",") if item.strip()})
+    except ValueError as exc:
+        raise ValueError("ICA component choices must be non-negative integers.") from exc
+    if any(item < 0 or item >= int(ica.n_components_) for item in exclusions):
+        raise ValueError("An ICA component choice is outside the current fit.")
+    return exclusions, reviewer, "approved"
+
+
+def _run_recording(
+    config: dict[str, Any],
+    entry: dict[str, Any],
+    root: Path,
+    output: Path,
+    *,
+    reuse_recorded_bad_channel_qc: bool,
+    show_ica_diagnostics: bool,
+) -> dict[str, Any]:
+    started_at = _utc_now()
+    _verify_sources(entry, root)
+    bad_review = _decision(entry, "eeg.bad_channel_review")
+    if not reuse_recorded_bad_channel_qc:
+        raise ValueError(
+            "Set reuse_recorded_bad_channel_qc=True only after inspecting the "
+            "recorded source-bound decision."
+        )
+    recording = _safe_source(root, entry["recording_path"])
+    raw = mne_bids.read_raw_bids(mne_bids.get_bids_path_from_fname(recording), verbose="ERROR")
+    try:
+        eeg_names = [
+            name
+            for name, kind in zip(raw.ch_names, raw.get_channel_types(), strict=True)
+            if kind == "eeg"
+        ]
+        excluded_bad = list(bad_review.get("excluded_channel_names", []))
+        invalid = sorted(set(excluded_bad) - set(eeg_names))
+        if invalid:
+            raise ValueError(f"Recorded bad channel {invalid[0]!r} is absent from this recording.")
+        raw.info["bads"] = sorted(set(raw.info["bads"]) | set(excluded_bad))
+
+        filter_params = _parameters(config, "eeg.filter")
+        raw.load_data(verbose="ERROR")
+        raw.filter(
+            l_freq=float(filter_params["low_hz"]),
+            h_freq=float(filter_params["high_hz"]),
+            picks=eeg_names,
+            method="fir",
+            phase="zero",
+            fir_design="firwin",
+            fir_window="hamming",
+            filter_length="auto",
+            l_trans_bandwidth="auto",
+            h_trans_bandwidth="auto",
+            skip_by_annotation=("edge", "bad_acq_skip"),
+            pad="reflect_limited",
+            verbose="ERROR",
+        )
+        notch_text = str(filter_params.get("notch_hz", "")).strip()
+        notch_frequencies = [
+            float(value.strip()) for value in notch_text.split(",") if value.strip()
+        ]
+        if notch_frequencies:
+            raw.notch_filter(
+                freqs=notch_frequencies,
+                picks=eeg_names,
+                filter_length="auto",
+                notch_widths=float(filter_params["notch_width_hz"]),
+                trans_bandwidth=1.0,
+                method="fir",
+                phase="zero",
+                fir_window="hamming",
+                fir_design="firwin",
+                skip_by_annotation=("edge", "bad_acq_skip"),
+                pad="reflect_limited",
+                verbose="ERROR",
+            )
+
+        fit_params = _parameters(config, "eeg.ica_fit")
+        node_seeds = entry.get("node_seeds", {})
+        seed = node_seeds.get("eeg.ica_fit")
+        if type(seed) is not int:
+            raise ValueError("The cohort run did not record an ICA seed for this recording.")
+        eeg_raw = raw.copy().pick("eeg")
+        channels = [
+            name
+            for name, kind in zip(eeg_raw.ch_names, eeg_raw.get_channel_types(), strict=True)
+            if kind == "eeg" and name not in eeg_raw.info["bads"]
+        ]
+        ica = mne.preprocessing.ICA(
+            n_components=None,
+            method=str(fit_params["method"]),
+            random_state=seed,
+            max_iter=int(fit_params["max_iterations"]),
+            fit_params=None,
+            allow_ref_meg=False,
+            verbose="ERROR",
+        )
+        with warnings.catch_warnings(record=True) as captured:
+            warnings.simplefilter("always", ConvergenceWarning)
+            ica.fit(
+                eeg_raw,
+                picks=channels,
+                reject_by_annotation=bool(fit_params["reject_by_annotation"]),
+                decim=int(fit_params["decim"]),
+                verbose="ERROR",
+            )
+        if any(issubclass(item.category, ConvergenceWarning) for item in captured):
+            raise ValueError(
+                "Fresh FastICA fit did not converge within the recorded iteration limit."
+            )
+        if type(ica.n_iter_) is not int or not 1 <= ica.n_iter_ < int(fit_params["max_iterations"]):
+            raise ValueError(
+                "MNE did not report a converged FastICA iteration count within the recorded limit."
+            )
+        exclusions, reviewer, decision = _review_ica(ica, eeg_raw, entry, show=show_ica_diagnostics)
+        ica_reviewed_at = _utc_now()
+        reviewed = raw.copy()
+        ica.apply(reviewed, exclude=exclusions, verbose="ERROR")
+
+        epoch_params = _parameters(config, "eeg.epochs")
+        event_label = str(epoch_params["event"])
+        events, event_id = mne.events_from_annotations(
+            reviewed, event_id={event_label: 1}, regexp=None, verbose="ERROR"
+        )
+        if event_label not in event_id or len(events) == 0:
+            raise ValueError(f"No usable event onsets were found for {event_label!r}.")
+        baseline = (
+            (float(epoch_params["baseline_start"]), float(epoch_params["baseline_end"]))
+            if bool(epoch_params["baseline_enabled"])
+            else None
+        )
+        reject_value = float(epoch_params["reject_eeg_peak_to_peak_uv"])
+        if reject_value < 0:
+            raise ValueError("EEG peak-to-peak rejection must be zero or positive in µV.")
+        reject = {"eeg": reject_value * 1e-6} if reject_value > 0 else None
+        epochs = mne.Epochs(
+            reviewed,
+            events,
+            event_id={event_label: event_id[event_label]},
+            tmin=float(epoch_params["tmin"]),
+            tmax=float(epoch_params["tmax"]),
+            baseline=baseline,
+            picks="eeg",
+            preload=True,
+            reject=reject,
+            reject_by_annotation=bool(epoch_params["reject_by_annotation"]),
+            event_repeated="error",
+            on_missing="raise",
+            verbose="ERROR",
+        )
+        if len(epochs) == 0:
+            raise ValueError(
+                "Zero epochs were retained; inspect event bounds, annotation "
+                "rejection, and rejection settings."
+            )
+        data_uv = np.asarray(epochs.get_data(picks="eeg", units="uV", verbose="ERROR"), dtype=float)
+        erp_mean = data_uv.mean(axis=0)
+        erp_sd = data_uv.std(axis=0, ddof=1) if len(data_uv) > 1 else np.zeros_like(erp_mean)
+        psd_params = _parameters(config, "eeg.psd")
+        spectrum = epochs.compute_psd(
+            method="welch",
+            fmin=float(psd_params["fmin_hz"]),
+            fmax=float(psd_params["fmax_hz"]),
+            picks="eeg",
+            n_fft=int(psd_params["n_fft"]),
+            n_per_seg=int(psd_params["n_per_seg"]),
+            n_overlap=int(psd_params["n_overlap"]),
+            window=str(psd_params["window"]),
+            average="mean",
+            remove_dc=True,
+            verbose="ERROR",
+        )
+        psd_data = np.asarray(spectrum.get_data(), dtype=float) * 1e12
+        psd_mean = psd_data.mean(axis=0)
+        psd_sd = psd_data.std(axis=0, ddof=1) if len(psd_data) > 1 else np.zeros_like(psd_mean)
+        result = {
+            "participant": entry["participant"],
+            "recording_path": entry["recording_path"],
+            "state": "processed",
+            "started_at": started_at,
+            "input_identity": entry["input_identity"],
+            "input_files": entry["input_files"],
+            "event_label": event_label,
+            "selected_event_count": int(len(events)),
+            "retained_epoch_count": int(len(epochs)),
+            "dropped_epoch_count": int(len(events) - len(epochs)),
+            "bad_channel_review": {
+                "decision": bad_review["decision"],
+                "reviewer": bad_review["reviewer"],
+                "note": bad_review.get("note", ""),
+                "created_at": bad_review.get("created_at"),
+                "source_content_identity": bad_review["source_content_identity"],
+                "reused_after_explicit_acknowledgement": True,
+                "excluded_channel_names": excluded_bad,
+                "review_id": bad_review["review_id"],
+            },
+            "fresh_ica_review": {
+                "decision": decision,
+                "reviewer": reviewer,
+                "reviewed_at": ica_reviewed_at,
+                "excluded_components": exclusions,
+                "fit_seed": seed,
+            },
+            "node_seeds": node_seeds,
+            "channel_names": list(epochs.ch_names),
+            "times_seconds": [float(value) for value in epochs.times],
+            "erp_mean_uv": erp_mean.tolist(),
+            "erp_within_epoch_sd_uv": erp_sd.tolist(),
+            "frequencies_hz": [float(value) for value in spectrum.freqs],
+            "psd_mean_uv2_per_hz": psd_mean.tolist(),
+            "psd_within_epoch_sd_uv2_per_hz": psd_sd.tolist(),
+            "software": {
+                **{
+                    name: version
+                    for name, version in _locked_versions(config).items()
+                    if _installed_version(name) == version
+                },
+            },
+        }
+        _verify_sources(entry, root)
+        result["finished_at"] = _utc_now()
+        return result
+    finally:
+        raw.close()
+
+
+def run_workflow(
+    config: dict[str, Any],
+    dataset_root: Path,
+    *,
+    reuse_recorded_bad_channel_qc: bool = False,
+    show_ica_diagnostics: bool = True,
+    selected_recordings: list[str] | None = None,
+    output_dir: Path | None = None,
+) -> dict[str, Any]:
+    software = _check_versions(config)
+    started_at = _utc_now()
+    environment = {
+        "operating_system": platform.system(),
+        "architecture": platform.machine(),
+        "python_version": platform.python_version(),
+        "packages": software,
+        "accelerator": "cpu",
+    }
+    root = dataset_root.expanduser().resolve(strict=True)
+    source_entries = list(config["recordings"])
+    if selected_recordings is not None:
+        unknown = sorted(
+            set(selected_recordings) - {item["recording_path"] for item in source_entries}
+        )
+        if unknown:
+            raise ValueError(f"Recording was not in the exported selection: {unknown[0]}")
+        selected = set(selected_recordings)
+        source_entries = [item for item in source_entries if item["recording_path"] in selected]
+    inspections = inspect_inputs(
+        config,
+        dataset_root,
+        recording_paths=[item["recording_path"] for item in source_entries],
+    )
+    allowed = {item["recording_path"]: item for item in inspections}
+    entries = [
+        item
+        for item in source_entries
+        if allowed.get(item["recording_path"], {}).get("status") == "ready"
+    ]
+    target = output_dir or HERE / "outputs" / f"direct-{config['source_cohort']['cohort_id']}"
+    if target.exists() or target.is_symlink():
+        raise FileExistsError("The output directory already exists; choose a new --output-dir.")
+    target.mkdir(parents=True, exist_ok=False)
+    participant_dir = target / "participants"
+    participant_dir.mkdir()
+    results: list[dict[str, Any]] = []
+    failures: list[dict[str, str]] = []
+    excluded = 0
+    cancelled = 0
+    exclusions: list[dict[str, str]] = []
+    for entry in source_entries:
+        if entry["recording_path"] not in {item["recording_path"] for item in entries}:
+            if entry["original_state"] == "excluded":
+                excluded += 1
+                exclusions.append(
+                    {
+                        "participant": entry["participant"],
+                        "recording_path": entry["recording_path"],
+                        "reason": entry.get("failure_reason")
+                        or "The recording was excluded before processing.",
+                    }
+                )
+            elif entry["original_state"] == "cancelled":
+                cancelled += 1
+            elif entry["original_state"] != "cancelled":
+                report = allowed.get(entry["recording_path"], {})
+                failures.append(
+                    {
+                        "participant": entry["participant"],
+                        "recording_path": entry["recording_path"],
+                        "reason": report.get("reason")
+                        or entry.get("failure_reason")
+                        or "Recording was not eligible for replay.",
+                    }
+                )
+            continue
+        try:
+            result = _run_recording(
+                config,
+                entry,
+                root,
+                target,
+                reuse_recorded_bad_channel_qc=reuse_recorded_bad_channel_qc,
+                show_ica_diagnostics=show_ica_diagnostics,
+            )
+            if results and (
+                result["channel_names"] != results[0]["channel_names"]
+                or result["times_seconds"] != results[0]["times_seconds"]
+                or result["frequencies_hz"] != results[0]["frequencies_hz"]
+            ):
+                raise ValueError(
+                    "This recording's retained channel or time/frequency axes differ from "
+                    "the processed cohort members. Select compatible recordings or analyze "
+                    "separately; replay does not resample or interpolate."
+                )
+            filename = f"recording-{len(results) + 1:03d}.json"
+            result["output_file"] = f"participants/{filename}"
+            _atomic_json(participant_dir / filename, result)
+            results.append(result)
+        except QCRejected as exc:
+            print(f"{entry['recording_path']}: {exc}")
+            excluded += 1
+            exclusions.append(
+                {
+                    "participant": entry["participant"],
+                    "recording_path": entry["recording_path"],
+                    "reason": str(exc),
+                }
+            )
+        except Exception as exc:
+            print(f"{entry['recording_path']}: {type(exc).__name__}: {exc}")
+            failures.append(
+                {
+                    "participant": entry["participant"],
+                    "recording_path": entry["recording_path"],
+                    "reason": f"{type(exc).__name__}: {exc}",
+                }
+            )
+    if results:
+        channels = results[0]["channel_names"]
+        times = np.asarray(results[0]["times_seconds"], dtype=float)
+        freqs = np.asarray(results[0]["frequencies_hz"], dtype=float)
+        if any(
+            item["channel_names"] != channels
+            or not np.array_equal(item["times_seconds"], times)
+            or not np.array_equal(item["frequencies_hz"], freqs)
+            for item in results[1:]
+        ):
+            raise ValueError(
+                "Participant outputs have incompatible channel or time/frequency "
+                "axes; no cohort mean was written."
+            )
+        participant_level = []
+        participant_erps = []
+        participant_psds = []
+        for participant in sorted({item["participant"] for item in results}):
+            recordings = [item for item in results if item["participant"] == participant]
+            run_erps = np.asarray([item["erp_mean_uv"] for item in recordings], dtype=float)
+            run_psds = np.asarray([item["psd_mean_uv2_per_hz"] for item in recordings], dtype=float)
+            participant_erp = run_erps.mean(axis=0)
+            participant_psd = run_psds.mean(axis=0)
+            participant_erps.append(participant_erp)
+            participant_psds.append(participant_psd)
+            participant_level.append(
+                {
+                    "participant": participant,
+                    "recording_count": len(recordings),
+                    "recording_paths": [item["recording_path"] for item in recordings],
+                    "retained_epoch_count_by_recording": [
+                        item["retained_epoch_count"] for item in recordings
+                    ],
+                    "output_files": [item["output_file"] for item in recordings],
+                    "mean_erp_uv": participant_erp.tolist(),
+                    "mean_psd_uv2_per_hz": participant_psd.tolist(),
+                    "bad_channel_exclusions_by_recording": [
+                        item["bad_channel_review"]["excluded_channel_names"] for item in recordings
+                    ],
+                    "fresh_ica_exclusions_by_recording": [
+                        item["fresh_ica_review"]["excluded_components"] for item in recordings
+                    ],
+                }
+            )
+        erps = np.asarray(participant_erps, dtype=float)
+        psds = np.asarray(participant_psds, dtype=float)
+        erp_mean = erps.mean(axis=0).tolist()
+        erp_sd = (erps.std(axis=0, ddof=1) if len(erps) > 1 else np.zeros_like(erps[0])).tolist()
+        psd_mean = psds.mean(axis=0).tolist()
+        psd_sd = (psds.std(axis=0, ddof=1) if len(psds) > 1 else np.zeros_like(psds[0])).tolist()
+    else:
+        channels = []
+        times = np.asarray([], dtype=float)
+        freqs = np.asarray([], dtype=float)
+        erp_mean = []
+        erp_sd = []
+        psd_mean = []
+        psd_sd = []
+        participant_level = []
+    summary = {
+        "schema_version": "1.0",
+        "source_cohort_id": config["source_cohort"]["cohort_id"],
+        "started_at": started_at,
+        "finished_at": _utc_now(),
+        "seed": config["source_cohort"].get("seed"),
+        "environment": environment,
+        "software": software,
+        "counts": {
+            "selected": len(source_entries),
+            "processed": len(results),
+            "excluded": excluded,
+            "failed": len(failures),
+            "cancelled": cancelled,
+            "processed_participants": len(participant_level),
+        },
+        "failure_reasons": failures,
+        "exclusions": exclusions,
+        "channel_names": channels,
+        "times_seconds": times.tolist(),
+        "cohort_erp_mean_uv": erp_mean,
+        "cohort_erp_sd_between_participants_uv": erp_sd,
+        "frequencies_hz": freqs.tolist(),
+        "cohort_psd_mean_uv2_per_hz": psd_mean,
+        "cohort_psd_sd_between_participants_uv2_per_hz": psd_sd,
+        "participant_level": participant_level,
+        "citations": config["citations"],
+    }
+    _atomic_json(target / "summary.json", summary)
+    methods = json.dumps(config["parameters"], ensure_ascii=False, sort_keys=True, indent=2)
+    report = "\n".join(
+        [
+            '<!doctype html><html lang="en"><meta charset="utf-8">',
+            "<title>Descriptive EEG replay</title><body>",
+            "<h1>Descriptive EEG replay</h1>",
+            "<p>Experimental, research-only output. No clinical or inferential claim. "
+            "Review methods and QC decisions before interpretation.</p>",
+            "<h2>Denominators</h2><pre>",
+            html.escape(json.dumps(summary["counts"], indent=2)),
+            "</pre><h2>Methods and settings</h2><pre>",
+            html.escape(methods),
+            "</pre><h2>Software environment</h2><pre>",
+            html.escape(json.dumps(environment, indent=2, sort_keys=True)),
+            "</pre><h2>Failures</h2><pre>",
+            html.escape(json.dumps(failures, indent=2)),
+            "</pre><h2>Exclusions</h2><pre>",
+            html.escape(json.dumps(exclusions, indent=2)),
+            "</pre><h2>Cohort ERP (µV; participant mean and SD)</h2><pre>",
+            html.escape(
+                json.dumps(
+                    {
+                        "channel_names": summary["channel_names"],
+                        "times_seconds": summary["times_seconds"],
+                        "mean_uv": summary["cohort_erp_mean_uv"],
+                        "between_participant_sd_uv": summary[
+                            "cohort_erp_sd_between_participants_uv"
+                        ],
+                    },
+                    indent=2,
+                )
+            ),
+            "</pre><h2>Cohort PSD (µV²/Hz; participant mean and SD)</h2><pre>",
+            html.escape(
+                json.dumps(
+                    {
+                        "channel_names": summary["channel_names"],
+                        "frequencies_hz": summary["frequencies_hz"],
+                        "mean_uv2_per_hz": summary["cohort_psd_mean_uv2_per_hz"],
+                        "between_participant_sd_uv2_per_hz": summary[
+                            "cohort_psd_sd_between_participants_uv2_per_hz"
+                        ],
+                    },
+                    indent=2,
+                )
+            ),
+            "</pre><h2>Participant-level results</h2><pre>",
+            html.escape(
+                json.dumps(
+                    [
+                        {
+                            key: item[key]
+                            for key in (
+                                "participant",
+                                "recording_count",
+                                "recording_paths",
+                                "retained_epoch_count_by_recording",
+                                "output_files",
+                                "mean_erp_uv",
+                                "mean_psd_uv2_per_hz",
+                                "bad_channel_exclusions_by_recording",
+                                "fresh_ica_exclusions_by_recording",
+                            )
+                        }
+                        for item in summary["participant_level"]
+                    ],
+                    indent=2,
+                )
+            ),
+            "</pre><h2>Citations</h2><pre>",
+            html.escape(json.dumps(config["citations"], indent=2)),
+            "</pre><p>Human review: confirm event meaning, filtering choices, "
+            "fresh ICA component decisions, and study-specific limitations.</p>",
+            "</body></html>",
+        ]
+    )
+    (target / "report.html").write_text(report, encoding="utf-8")
+    return {"output_dir": str(target), "summary": summary}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Replay a BrainLearn EEG cohort directly with MNE."
+    )
+    parser.add_argument(
+        "--dataset-root",
+        type=Path,
+        default=Path("./dataset"),
+        help="Local BIDS dataset directory; never copied into this export.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="New output directory; existing paths are never overwritten.",
+    )
+    parser.add_argument(
+        "--recording",
+        action="append",
+        default=None,
+        help="Recording path from the saved cohort; repeat to select a subset.",
+    )
+    parser.add_argument(
+        "--reuse-recorded-bad-channel-qc",
+        action="store_true",
+        help="Explicitly reuse source-hash-bound bad-channel choices; "
+        "ICA decisions are always reviewed again.",
+    )
+    args = parser.parse_args()
+    config = load_config()
+    try:
+        result = run_workflow(
+            config,
+            args.dataset_root,
+            reuse_recorded_bad_channel_qc=args.reuse_recorded_bad_channel_qc,
+            selected_recordings=args.recording,
+            output_dir=args.output_dir,
+        )
+    except Exception as exc:
+        print(f"Direct MNE replay stopped: {type(exc).__name__}: {exc}")
+        return 1
+    print(f"Replay complete: {result['output_dir']}")
+    if result["summary"]["counts"]["processed"] == 0:
+        print("No recording succeeded; review summary.json and report.html for denominators.")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

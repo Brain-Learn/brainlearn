@@ -8,6 +8,17 @@ from brainlearn_core.archives import (
     detect_archive_format,
     extract_archive,
 )
+from brainlearn_core.cohort import (
+    COHORT_RUN_SCHEMA_VERSION,
+    SUPPORTED_COHORT_RUN_VERSIONS,
+    CohortInputFile,
+    CohortOutputReference,
+    CohortRecordingRun,
+    CohortRecordingState,
+    CohortRunRecord,
+    CohortRunState,
+    migrate_cohort_run_dict,
+)
 from brainlearn_core.datasets import (
     DATASET_SCHEMA_VERSION,
     LOCAL_PROVIDER,
@@ -176,6 +187,13 @@ from brainlearn_core.schema import (
 from brainlearn_core.validation import ValidationIssue, ValidationResult, validate_workflow
 
 __all__ = [
+    "COHORT_RUN_SCHEMA_VERSION",
+    "CohortInputFile",
+    "CohortOutputReference",
+    "CohortRecordingRun",
+    "CohortRecordingState",
+    "CohortRunRecord",
+    "CohortRunState",
     "ArtifactRecord",
     "CacheEntry",
     "CacheOutput",
@@ -283,6 +301,7 @@ __all__ = [
     "RunState",
     "SUPPORTED_DATASET_VERSIONS",
     "SUPPORTED_DOWNLOAD_VERSIONS",
+    "SUPPORTED_COHORT_RUN_VERSIONS",
     "ScientificType",
     "SoftwareDependencyMetadata",
     "ScriptedDownloadSource",
@@ -311,6 +330,7 @@ __all__ = [
     "extract_archive",
     "migrate_artifact_dict",
     "migrate_cache_entry_dict",
+    "migrate_cohort_run_dict",
     "migrate_catalog_entry_dict",
     "migrate_dataset_lock_dict",
     "migrate_download_dict",

@@ -1,4 +1,8 @@
 document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".pst-scrollable-table-container > table").forEach((table) => {
+    table.setAttribute("tabindex", "0");
+  });
+
   document.querySelectorAll(".sphx-glr-thumbcontainer").forEach((card) => {
     const link = card.querySelector("a.reference.internal");
     const title = card.querySelector(".sphx-glr-thumbnail-title")?.textContent?.trim();

@@ -97,6 +97,7 @@ def test_discovers_recording_and_reports_metadata_without_changing_source(tmp_pa
     assert found.subject == "01"
     assert found.task == "Rest"
     assert found.format == "edf"
+    assert found.recording_type is None
     assert found.sampling_frequency_hz == 500
     assert found.eeg_reference == "average"
     assert found.eeg_channel_count == 2
@@ -105,6 +106,39 @@ def test_discovers_recording_and_reports_metadata_without_changing_source(tmp_pa
     assert found.event_types == ("deviant", "standard")
     assert hashlib.sha256(recording.read_bytes()).hexdigest() == before
     assert project.is_dir()
+
+
+def test_epoched_recording_type_is_reported_and_raw_inspection_is_rejected(
+    tmp_path: Path,
+):
+    project, root = _project(tmp_path)
+    recording_path = _write_valid_dataset(root)
+    sidecar = recording_path.with_suffix(".json")
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    metadata["RecordingType"] = "epoched"
+    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+    service = BidsEegDiscoveryService(store)
+
+    discovery = service.discover(str(project), "raw-data/study")
+
+    assert discovery.recordings[0].recording_type == "epoched"
+    with pytest.raises(BidsSignalInspectionError, match="require continuous EEG"):
+        service.inspect_signal(str(project), "raw-data/study", discovery.recordings[0].path)
+
+
+def test_invalid_recording_type_is_reported_as_incomplete_metadata(tmp_path: Path):
+    _, root = _project(tmp_path)
+    recording_path = _write_valid_dataset(root)
+    sidecar = recording_path.with_suffix(".json")
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    metadata["RecordingType"] = ["continuous"]
+    sidecar.write_text(json.dumps(metadata), encoding="utf-8")
+
+    discovery = discover_bids_eeg(root, "raw-data/study")
+
+    assert discovery.recordings[0].status == "incomplete_metadata"
+    assert discovery.recordings[0].recording_type is None
+    assert discovery.recordings[0].issues[0].code == "invalid_recording_type"
 
 
 def test_event_timing_identity_changes_when_onset_or_duration_changes(tmp_path: Path):
