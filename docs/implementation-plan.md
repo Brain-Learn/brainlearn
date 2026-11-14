@@ -665,27 +665,21 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 | 2026-11-14 | Owner-authorized Step 8 to Step 9 sequencing waiver | Recorded; approval gates unchanged | The product owner directed a self-review of Step 8 followed by proceeding to Step 9 before PR #74 receives independent monitor review. This waiver changes sequencing only: PR #74 stays open, self-review is not monitor approval, and Step 7/Step 8 parent and scientific-review gates remain unchecked. Step 9 exports must label the EEG workflow experimental; its clean-environment completion gate remains blocked on scientific certification. | PR #74 |
 | 2026-11-14 | Step 9 portable Python/notebook cohort export | Engineering gate locally verified; PR #76 open; hosted CI, scientific, and monitor gates pending | Added the authenticated `POST /api/cohorts/export` endpoint and a terminal-cohort UI download. The deterministic archive contains the saved graph/configuration, notebook, methods README, exact hashed direct-MNE lock, standalone MNE workflow, BrainLearn CLI runner, citations, expected-output guide, and run/QC provenance; it does not contain EEG inputs, outputs, or tokens. Provenance retains recording identities, source checksums, parameters, node settings/versions, run environment, seeds, QC decisions, output IDs/media/paths/hashes, failures, and citations. Direct mode verifies pinned source hashes and recomputed BIDS identities, checks locked package versions, requires explicit acknowledgement before reusing source-bound bad-channel decisions, refits ICA and requests fresh human review, rejects POSIX/Windows path traversal, and rejects incompatible result axes without resampling or interpolation. The BrainLearn runner verifies source identity before contacting the local service and restricts token-bearing requests to loopback URLs. Its HTML report includes cohort-level ERP/PSD means and between-participant SDs; the report and JSON summary preserve failure/exclusion reasons and denominators, aggregate repeated runs within each participant before cohort means/SDs, and return failure when no recording succeeds. Regression evidence: archive bytes are deterministic across repeated exports; secret/personal-path probes reject; export API auth is required; a failed two-recording cohort yields selected=2, processed=0, failed=2 and an HTML report; the generated direct workflow agrees with a separately written direct-MNE path on the CC0 synthetic BIDS fixture at `rtol=1e-7`, `atol=1e-12`, with source hashes unchanged; a multi-recording aggregation regression gives equal weight to participants; and a clean Python 3.12.13 environment processed the synthetic recording with 1 retained epoch after explicit test-only QC input, preserving QC timestamps and all nine source checksums. Server wheel build confirmed the lock and all export templates are packaged. Final local gate: locked Python sync and `uv lock --check`; Ruff and formatting (127 files); strict mypy (44 source files); pytest 855 passed, 9 skipped, 2 upstream deprecation warnings; generated-script lint also passed; frontend ESLint/Prettier, Vitest 186 tests/22 files, Vite build (1,852 modules; existing 534.07 kB chunk advisory), production audit 0 vulnerabilities; strict Sphinx HTML and linkcheck; responsive/axe checks for 8 pages at 375 px and 1440 px; and `git diff --check`. No pinned human cohort or public-reference sample was replayed by the exported direct project in this work unit, and synthetic QC inputs are test-only. Step 7, Step 8, and Step 9 parent/scientific-certification gates stay unchecked; the full clean-environment gate remains dependent on independent methods certification. | PR #76 |
 
+| 2026-11-14 | Owner-directed Step 9 stack merge into PR #74 | PR #76 merged to the feature branch; combined PR #74 checks and independent reviews pending | After re-reviewing the unchanged PR #76 head `f0c192a7b561ddb2ecee2ab42039510b944a1d37`, confirming no review comments, and verifying both hosted checks passed, the product owner explicitly directed merge. Squash-merged PR #76 as `92daaae04a8c0a58d3da082018fc42d48a806168` into `codex/step8-eeg-cohort`, the base branch of PR #74. This updates PR #74's head; PR #74 remains open against `main` and its checks are rerunning on the combined Step 8/9 head. The owner-directed merge is not independent monitor review or scientific approval. Step 7, Step 8, and Step 9 parent/scientific-certification gates remain unchecked. `git diff --check` passed. | PR #74 |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 9 — complete Python project and notebook export under the owner sequencing waiver
+### Combined Step 8/9 review on PR #74
 
-Review Step 9 PR #76 and reproduce its local gate before approval; repair any
-findings on that same PR. Keep PR #74 open and do not merge it as part of this
-sequencing waiver. Preserve the Step 7, Step 8, and Step 9 parent/scientific
-gates as unchecked. Keep all exported analysis claims experimental until
-independent EEG methods review certifies the workflow. The Step 9 clean-second-
-environment completion gate remains unsatisfied until certification is met,
-even though export mechanics and synthetic engineering replay passed.
-
-**Export scope:** Export a completed cohort's workflow snapshot, explicit
-settings, recording identities, decisions, results descriptions, environment,
-and citations. Generated direct-library code must not depend on the browser;
-BrainLearn-runner replay may use the local service and CLI but must not embed a
-session token. Do not bundle input EEG or output artifacts. Use relative paths
-or clear user-supplied path placeholders, and record which replay claims are
-exact and which are tolerance-based. The reference remains OpenNeuro
-`ds005284` v1.0.0, participants `sub-001` through `sub-005`; its reference
-checksums and numerical parity are engineering evidence only.
+Review the combined Step 8 cohort workflow and Step 9 Python/notebook export
+at the exact current PR #74 head. Reproduce the required local gate and record
+independent monitoring findings in `REVIEW.md` and this plan. Repair findings
+on PR #74's branch and rerun checks on the final head. Keep PR #74 open until
+monitor review is complete. Keep Step 7, Step 8, and Step 9 parent and
+scientific-certification gates unchecked; do not describe the owner-directed
+Step 9 stack merge or engineering verification as independent review or
+scientific approval. The EEG methods decision remains pending, and the
+exported project has not been replayed on a pinned human cohort.
