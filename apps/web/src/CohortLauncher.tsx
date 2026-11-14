@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   cancelCohort,
+  downloadCohortProject,
   downloadCohortResult,
   openCohort,
   recoverCohorts,
@@ -322,6 +323,26 @@ export function CohortLauncher({
     }
   };
 
+  const savePythonProject = async () => {
+    if (!cohort || !projectPath || !token) return;
+    const requestGeneration = generation.current;
+    setResultPending(true);
+    try {
+      const blob = await downloadCohortProject(projectPath, cohort.id, token);
+      if (requestGeneration !== generation.current) return;
+      download(blob, `${cohort.id}-python-project.zip`);
+    } catch (reason) {
+      if (requestGeneration !== generation.current) return;
+      setMessage(
+        reason instanceof Error
+          ? reason.message
+          : "Unable to export the cohort Python project.",
+      );
+    } finally {
+      if (requestGeneration === generation.current) setResultPending(false);
+    }
+  };
+
   const activeRecording = cohort?.recordings.find((item) =>
     ["running", "waiting_for_review"].includes(item.state),
   );
@@ -437,6 +458,14 @@ export function CohortLauncher({
                 Download summary JSON
               </button>
             </div>
+          )}
+          {["succeeded", "failed", "cancelled"].includes(cohort.state) && (
+            <button
+              disabled={resultPending}
+              onClick={() => void savePythonProject()}
+            >
+              {resultPending ? "Exporting…" : "Export Python project"}
+            </button>
           )}
           {ACTIVE_COHORT_STATES.has(cohort.state) && (
             <button disabled={pending} onClick={() => void stop()}>

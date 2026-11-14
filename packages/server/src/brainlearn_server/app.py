@@ -53,6 +53,7 @@ from brainlearn_server.bids_eeg import (
 )
 from brainlearn_server.capabilities import SystemCapabilities, inspect_system_capabilities
 from brainlearn_server.cohort import CohortExecutionError, CohortRunService
+from brainlearn_server.cohort_export import CohortExportError, build_cohort_project_archive
 from brainlearn_server.datasets import (
     DatasetListResponse,
     list_dataset_page,
@@ -1410,6 +1411,13 @@ class CohortResultRequest(BaseModel):
     kind: Literal["report", "summary"]
 
 
+class CohortExportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1)
+    cohort_id: str = Field(min_length=1)
+
+
 class RunCancelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1551,6 +1559,38 @@ def cohort_result(
         content=data,
         media_type=media_type,
         headers={"Content-Disposition": f'inline; filename="{payload.cohort_id}-{payload.kind}"'},
+    )
+
+
+@app.post("/api/cohorts/export")
+def export_cohort_project(
+    payload: CohortExportRequest, _auth: None = Depends(require_session_token)
+) -> Response:
+    """Download a portable Python/notebook project for a terminal cohort run."""
+
+    try:
+        cohort = cohorts.get(payload.path, payload.cohort_id)
+        run_records: dict[str, RunRecord] = {}
+        qc_records = {}
+        for recording in cohort.recordings:
+            if recording.child_run_id is None:
+                continue
+            child = workers.runs.get_run(payload.path, recording.child_run_id)
+            run_records[child.id] = child
+            qc_records[child.id] = workers.runs.list_qc_reviews(payload.path, child.id)
+        archive = build_cohort_project_archive(cohort, run_records, qc_records)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except CohortExportError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except (OSError, ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{cohort.id}-python-project.zip"'},
     )
 
 

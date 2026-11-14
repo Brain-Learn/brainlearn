@@ -161,3 +161,21 @@ export async function downloadCohortResult(
     throw await readError(response, `Unable to open cohort ${kind}`);
   return response.blob();
 }
+
+export async function downloadCohortProject(
+  path: string,
+  cohortId: string,
+  token: string,
+): Promise<Blob> {
+  const response = await fetch("/api/cohorts/export", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ path, cohort_id: cohortId }),
+  });
+  if (!response.ok)
+    throw await readError(
+      response,
+      "Unable to export the cohort Python project",
+    );
+  return response.blob();
+}

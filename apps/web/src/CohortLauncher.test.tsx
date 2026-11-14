@@ -14,6 +14,7 @@ import type { BidsEegDiscovery, CohortRunRecord, Workflow } from "./types";
 const mocked = vi.hoisted(() => ({
   cancelCohort: vi.fn(),
   discoverBidsEeg: vi.fn(),
+  downloadCohortProject: vi.fn(),
   downloadCohortResult: vi.fn(),
   openCohort: vi.fn(),
   openRun: vi.fn(),
@@ -23,6 +24,7 @@ const mocked = vi.hoisted(() => ({
 
 vi.mock("./cohorts", () => ({
   cancelCohort: mocked.cancelCohort,
+  downloadCohortProject: mocked.downloadCohortProject,
   downloadCohortResult: mocked.downloadCohortResult,
   openCohort: mocked.openCohort,
   recoverCohorts: mocked.recoverCohorts,
@@ -118,6 +120,9 @@ function cohortRecord(
 beforeEach(() => {
   mocked.cancelCohort.mockReset();
   mocked.discoverBidsEeg.mockReset();
+  mocked.downloadCohortProject
+    .mockReset()
+    .mockResolvedValue(new Blob(["project"]));
   mocked.downloadCohortResult.mockReset();
   mocked.openCohort.mockReset();
   mocked.openRun.mockReset();
@@ -125,7 +130,11 @@ beforeEach(() => {
   mocked.startCohort.mockReset();
 });
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 test("blocks a second cohort while the current project has an active run", async () => {
   const active = cohortRecord("cohort-running", "running");
@@ -239,6 +248,21 @@ test("clears a previous project's cohort when switching projects", async () => {
   expect(
     await screen.findByText("cohort-completed · succeeded"),
   ).toBeInTheDocument();
+  vi.stubGlobal("URL", {
+    createObjectURL: vi.fn(() => "blob:exported-project"),
+    revokeObjectURL: vi.fn(),
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+  fireEvent.click(
+    screen.getByRole("button", { name: "Export Python project" }),
+  );
+  await waitFor(() =>
+    expect(mocked.downloadCohortProject).toHaveBeenCalledWith(
+      "/project-one",
+      "cohort-completed",
+      "session-token",
+    ),
+  );
 
   rerender(<CohortLauncher {...props} projectPath="/project-two" />);
   await waitFor(() =>
