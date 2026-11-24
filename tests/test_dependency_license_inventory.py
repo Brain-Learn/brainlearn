@@ -65,15 +65,55 @@ def test_python_group_closure_includes_transitive_and_direct_dependencies() -> N
             {
                 "name": "brainlearn-workspace",
                 "source": {"virtual": "."},
-                "dependencies": [{"name": "brainlearn-core"}],
-                "dev-dependencies": {"eeg": [{"name": "mne"}]},
+                "dependencies": [{"name": "brainlearn-core"}, {"name": "brainlearn-server"}],
+                "dev-dependencies": {
+                    "audit": [{"name": "pip-audit"}],
+                    "eeg": [{"name": "mne"}],
+                },
             },
             {
                 "name": "brainlearn-core",
                 "dependencies": [{"name": "pydantic"}],
             },
+            {
+                "name": "brainlearn-server",
+                "dependencies": [{"name": "uvicorn", "extra": ["standard"]}],
+            },
             {"name": "pydantic", "dependencies": [{"name": "typing-extensions"}]},
             {"name": "typing-extensions"},
+            {
+                "name": "uvicorn",
+                "dependencies": [{"name": "h11"}],
+                "optional-dependencies": {
+                    "standard": [
+                        {"name": "httptools"},
+                        {"name": "python-dotenv"},
+                        {"name": "pyyaml"},
+                        {"name": "uvloop"},
+                        {"name": "watchfiles"},
+                        {"name": "websockets"},
+                    ]
+                },
+            },
+            {"name": "h11"},
+            {"name": "httptools"},
+            {"name": "python-dotenv"},
+            {"name": "pyyaml"},
+            {"name": "uvloop"},
+            {"name": "watchfiles", "dependencies": [{"name": "anyio"}]},
+            {"name": "anyio"},
+            {"name": "websockets"},
+            {
+                "name": "pip-audit",
+                "dependencies": [{"name": "cachecontrol", "extra": ["filecache"]}],
+            },
+            {
+                "name": "cachecontrol",
+                "dependencies": [{"name": "msgpack"}],
+                "optional-dependencies": {"filecache": [{"name": "filelock"}]},
+            },
+            {"name": "msgpack"},
+            {"name": "filelock"},
             {"name": "mne", "dependencies": [{"name": "numpy"}]},
             {"name": "numpy"},
         ]
@@ -81,7 +121,22 @@ def test_python_group_closure_includes_transitive_and_direct_dependencies() -> N
 
     groups = _python_group_closures(lock)
 
-    assert groups["runtime"] == {"brainlearn-core", "pydantic", "typing-extensions"}
+    assert groups["runtime"] == {
+        "brainlearn-core",
+        "brainlearn-server",
+        "pydantic",
+        "typing-extensions",
+        "uvicorn",
+        "h11",
+        "httptools",
+        "python-dotenv",
+        "pyyaml",
+        "uvloop",
+        "watchfiles",
+        "anyio",
+        "websockets",
+    }
+    assert groups["audit"] == {"pip-audit", "cachecontrol", "msgpack", "filelock"}
     assert groups["eeg"] == {"mne", "numpy"}
 
 
@@ -189,6 +244,13 @@ def test_repository_inventory_covers_all_lockfiles_and_exposes_review_items() ->
         item["name"] == "mne" and item["dependency_groups"] == ["eeg"]
         for item in inventory["packages"]
     )
+    python_packages = {
+        item["name"]: item for item in inventory["packages"] if item["ecosystem"] == "python"
+    }
+    for name in {"httptools", "python-dotenv", "uvloop", "watchfiles", "websockets"}:
+        assert "runtime" in python_packages[name]["dependency_groups"]
+    assert {"runtime", "docs"} <= set(python_packages["pyyaml"]["dependency_groups"])
+    assert "audit" in python_packages["filelock"]["dependency_groups"]
     assert all(item["license"]["status"] for item in inventory["packages"])
 
 

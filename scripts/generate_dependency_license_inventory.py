@@ -135,28 +135,56 @@ def _python_group_closures(lock: Mapping[str, Any]) -> dict[str, set[str]]:
     if root is None:
         raise ValueError("uv.lock is missing the workspace root package")
 
-    roots: dict[str, list[str]] = {
-        "runtime": [str(canonicalize_name(item["name"])) for item in root.get("dependencies", [])]
+    roots: dict[str, list[tuple[str, set[str]]]] = {
+        "runtime": [
+            (
+                str(canonicalize_name(item["name"])),
+                {str(canonicalize_name(extra)) for extra in item.get("extra", [])},
+            )
+            for item in root.get("dependencies", [])
+        ]
     }
     roots.update(
         {
-            group: [str(canonicalize_name(item["name"])) for item in members]
+            group: [
+                (
+                    str(canonicalize_name(item["name"])),
+                    {str(canonicalize_name(extra)) for extra in item.get("extra", [])},
+                )
+                for item in members
+            ]
             for group, members in root.get("dev-dependencies", {}).items()
         }
     )
 
     closures: dict[str, set[str]] = {}
-    for group, group_roots in roots.items():
+    for group, group_root_states in roots.items():
         reached: set[str] = set()
-        pending = list(group_roots)
+        pending = list(group_root_states)
+        processed_states: set[tuple[str, frozenset[str]]] = set()
         while pending:
-            name = pending.pop()
-            if name in reached or name not in packages:
+            name, active_extras = pending.pop()
+            if name not in packages:
                 continue
             reached.add(name)
+            state = (name, frozenset(active_extras))
+            if state in processed_states:
+                continue
+            processed_states.add(state)
+            package = packages[name]
+            dependencies = list(package.get("dependencies", []))
+            optional_dependencies = {
+                str(canonicalize_name(extra)): members
+                for extra, members in package.get("optional-dependencies", {}).items()
+            }
+            for extra in active_extras:
+                dependencies.extend(optional_dependencies.get(extra, []))
             pending.extend(
-                str(canonicalize_name(dependency["name"]))
-                for dependency in packages[name].get("dependencies", [])
+                (
+                    str(canonicalize_name(dependency["name"])),
+                    {str(canonicalize_name(extra)) for extra in dependency.get("extra", [])},
+                )
+                for dependency in dependencies
             )
         closures[group] = reached
     return closures
