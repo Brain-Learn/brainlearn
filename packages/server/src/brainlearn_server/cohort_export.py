@@ -18,7 +18,7 @@ class CohortExportError(ValueError):
 
 
 _ABSOLUTE_PATH = re.compile(
-    r"(?<![:\w/<])(?:(?:\\\\|//)[^\s\"']+|/(?:[^/\s\"'<>]+/)+[^/\s\"'<>]+|"
+    r"(?<![.:\w/<])(?:(?:\\\\|//)[^\s\"']+|/(?:[^/\s\"'<>]+/)*[^/\s\"'<>]+/?|"
     r"[A-Za-z]:[\\/][^\s\"']+)"
 )
 _PATH_SCAN_EXEMPT_FILES = frozenset(

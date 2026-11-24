@@ -237,8 +237,12 @@ def test_cohort_export_rejects_secrets_and_unsafe_paths() -> None:
             {"notes.json": json.dumps({"note": r"\\lab-files\users\alice\study\raw.edf"}).encode()}
         )
     for path in (
+        "/root",
+        "/root/",
         "/root/mohammad/private/study/raw.bdf",
+        "/srv",
         "/srv/lab/studies/private/raw.bdf",
+        "/opt",
         "/opt/research/private/raw.bdf",
     ):
         redacted = _redact_failure(f"could not read {path}")
