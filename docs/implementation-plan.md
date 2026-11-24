@@ -246,7 +246,7 @@ Completion gate: a second clean environment runs the exported Python project wit
 
 - [x] Add GitHub Actions for Python lint/type/tests and frontend lint/tests/build.
 - [x] Add Linux, macOS, and Windows clean-install smoke tests.
-- [ ] Pin third-party actions to commit SHAs and minimize permissions.
+- [x] Pin third-party actions to commit SHAs and minimize permissions.
 - [ ] Add schema compatibility and generated-code integration jobs.
 - [ ] Add scheduled scientific reference tests.
 - [ ] Add dependency-license inventory and production vulnerability scanning.
@@ -684,16 +684,24 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-11-24 | PR #78 independent monitoring review — Step 10 platform smoke | Approved for the clean-install smoke subitem only | Independently reviewed code head `78c52fa99c6a66e22e048ddd61362d2b86b28072` and plan head `90c565203ae36c390a844924109daaa9d5da4664` against main `1072511903fc961f23c670080e12da5d6466b16d`. Confirmed the `ubuntu-24.04`/`macos-15`/`windows-2025` matrix maps to x64 Linux/arm64 macOS/x64 Windows, all four action pins match their exact public tags, and workflow permissions are only `contents: read`. In a clean detached macOS arm64 checkout, locked Python 3.12.14 EEG sync passed; the workflow's API/CLI tests passed 16 tests with 2 upstream warnings; installed CLI `--help` passed; clean npm install passed; and the production build passed under Node 22.23.5 (1,852 modules; existing 534.07 kB advisory). Hosted matrix plus Python/frontend checks passed on code head in run `45367997816`; docs passed in `45367997736`, Pages skipped. All checks also passed after the plan update on `90c565203ae36c390a844924109daaa9d5da4664`: platform/standard CI run `45368679848`, docs run `45368679920`, Pages skipped. The smoke tests cover API through TestClient and CLI helpers/entry point, not a live GUI/service cohort execution or scientific/numerical equivalence. The verified platform-smoke leaf remains checked; Step 10 parent and Step 7/8/9 scientific-certification gates remain unchecked. PR #78 remains open; no merge. | PR #78 |
 
+
+| 2026-11-24 | PR #78 merge after Step 10 smoke review | Merged; Step 10 parent remains open | After the independent monitor approved the platform-smoke subitem and Python/frontend/docs/platform jobs passed on final review-record head `e1fa5f26e35fa26008034b537e30685f529a3a87` (Actions runs `45369213448` and `45369213461`), squash-merged PR #78 as `75a9aa356ad4488b93d303126e230e90c287307b`. The smoke validates installation and basic API/CLI/UI build behavior, not scientific certification or cross-platform numerical agreement. Step 7/8/9 scientific-certification gates and the Step 10 parent remain unchecked. | PR #78 |
+
+| 2026-11-24 | Step 10 action-pin and permission guard | Implemented and locally verified; hosted checks pending | Added `scripts/check_action_security.py` to parse every repository workflow, require third-party `uses` references to pin a full 40-character commit SHA, and require top-level permissions to be exactly `contents: read`. It permits only narrower inherited read/none job permissions plus the existing docs deploy exception (`pages: write`, `id-token: write`) only for main pushes or manual dispatch on `main`, never for pull requests or other refs. Added six regression tests and made the audit run in the standard Python CI job. Independently resolved all nine distinct current action version tags with `git ls-remote`; every tag commit matches its checked-in SHA. Local gate: audit script passed; focused security tests 6 passed; Ruff passed; format check passed (129 files); strict mypy passed (44 files); pytest passed (861, 9 skipped, 2 upstream warnings); lock check passed; frontend lint/format/Vitest (186/22), Vite build (1,852 modules; existing ~534 kB advisory), and production audit (0 vulnerabilities) passed; strict Sphinx HTML/linkcheck and responsive/axe (8 pages × 375/1440 px) passed; `git diff --check` passed. Hosted CI and independent review pending; the Step 10 action-pin/permissions leaf remains unchecked, as does the Step 10 parent. No scientific or application behavior changed. | PR #79 |
+
+| 2026-11-24 | Step 10 action-pin and permissions hosted verification | Workflow audit and all current PR checks passed | On PR #79 code head `e90b8c27109cf5d398223a27c68a77cf8e4fa9c9`, the action/permissions audit and full Python quality/tests passed in Actions run `45372003546`. Frontend and all three clean-install platform jobs passed in the same run. The strict documentation build/linkcheck passed in run `45372003326`; Pages deployment was skipped as expected. The Step 10 action-pin/permission leaf is checked; Step 10 parent and Step 7/8/9 scientific-certification gates remain unchecked pending independent monitoring and scientific review. | PR #79 |
+
+| 2026-11-24 | PR #79 independent monitoring review — Step 10 action pins and permissions | Approved for the action-pin/least-permissions subitem only; final review-record hosted checks pending | Independently reviewed code head `e90b8c27109cf5d398223a27c68a77cf8e4fa9c9` and evidence head `2bb77fa6fe2eb1833f5b2e17afb32e5b17d436a4` against main `75a9aa356ad4488b93d303126e230e90c287307b`. The YAML-aware audit covers all three workflows, requires full 40-character SHA pins, verifies read-only inherited permissions, and permits the Pages write exception only for main pushes/manual dispatch on `main`. All nine distinct action tags resolve to their checked-in SHAs. Six focused regressions and explicit tag-only/digest/full-SHA/inherited-read probes passed. In a clean detached checkout on macOS arm64 with Python 3.12.14, lock/sync, action audit, Ruff, format (129 files), strict mypy (38 source files), pytest (861 passed, 9 skipped, 2 upstream warnings), frontend ESLint/Prettier, Vitest (186 tests/22 files), build (1,852 modules; existing 534.07 kB advisory), production audit (0 vulnerabilities), strict Sphinx HTML/linkcheck, responsive/axe (8 pages × 375/1440 px), and `git diff --check` passed. Full-tree `npm ci` reported 7 moderate findings; the production-only audit passed, and dependency files are unchanged in this PR. Hosted checks passed on code head in runs `45372003546` and `45372003326` (Pages skipped); the documentation evidence head was plan-only. The action-pin/permissions leaf remains checked; Step 10 parent and Step 7/8/9 scientific-certification gates remain unchecked. Keep PR #79 open until checks pass on the final review-record head; no merge. | PR #79 |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 10 — Audit and enforce pinned GitHub Actions
+### Step 10 — Add schema compatibility and generated-code integration jobs
 
-Audit all repository GitHub Actions workflows, retain full-SHA action pins,
-and add an automated guard against introducing tag-only third-party actions.
-Verify workflow permissions are minimal, especially for pull-request jobs.
-Keep Step 7, Step 8, and Step 9 parent/scientific-certification gates
-unchecked; the Step 10 platform smoke does not establish EEG scientific
-approval or numerical certification.
+Add CI coverage for schema compatibility and generated-code integration, using
+the existing locked environments and bounded fixtures. Keep the job least-
+privilege and do not claim EEG scientific certification from engineering
+compatibility tests. Step 7/8/9 scientific-certification gates remain
+unchecked, and the Step 10 parent remains open.
