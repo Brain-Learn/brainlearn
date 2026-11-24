@@ -2428,5 +2428,16 @@ hosted macOS check as passed.
 
 This approves only the persisted-schema and generated-code CI subitem. Keep
 the Step 10 parent and Step 7/8/9 scientific-certification gates unchecked.
-The review-record commit must pass the required hosted checks before merge;
-the parent retains the merge decision.
+
+Final review-record head `7ea44e7e0d666d11d6516437d56081fb79912b78` passed
+the required Python and frontend checks plus schema, generated-code, Linux,
+macOS, and Windows jobs in Actions run `45378356263`, attempt 2. Documentation
+passed in run `45378356129`; Pages deployment was skipped as expected. On
+attempt 1, the existing `runFlow.test.tsx` test failed once at line 199
+(185/186 frontend tests passed) and the macOS job was canceled after waiting
+without a runner. Neither result reproduced: the same-head attempt 2 passed all
+186 frontend tests and all platform jobs. No source changed between attempts.
+The initial assertion appears timing-sensitive; it should be investigated if
+it recurs. All final-head checks are green, so the approved subitem is ready for
+the parent to merge. The Step 10 parent and Step 7/8/9 scientific-certification
+gates remain unchecked.
