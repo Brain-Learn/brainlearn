@@ -43,9 +43,11 @@ uv run --locked --all-packages --group eeg brainlearn-launch --startup-timeout 6
 `--check` starts both services, verifies the API health endpoint and the Vite
 page, then stops them. It does not run an EEG workflow or certify scientific
 behavior; it also suppresses the temporary API token from its startup output.
-The launcher uses strict ports so it will report a conflict instead of
-silently choosing a port that the API security and Vite proxy settings do not
-expect.
+The launcher first checks that the fixed ports are free and uses a transient
+instance marker from each child process for readiness, so an old service
+cannot make the check pass. It uses strict ports and reports a conflict
+instead of silently choosing a port that the API security and Vite proxy
+settings do not expect.
 
 ## Scope of this spike
 

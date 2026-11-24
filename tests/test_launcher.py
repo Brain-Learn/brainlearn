@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -25,9 +26,11 @@ def test_build_services_keeps_api_and_interface_on_loopback(tmp_path: Path) -> N
     assert backend.command == (sys.executable, "-m", "brainlearn_server")
     assert backend.cwd == root
     assert backend.ready_url == "http://127.0.0.1:8000/api/health"
+    assert backend.port == 8000
     assert frontend.command[-3:] == ("--host", "127.0.0.1", "--strictPort")
     assert frontend.cwd == root / "apps" / "web"
     assert frontend.ready_url == "http://127.0.0.1:5173"
+    assert frontend.port == 5173
 
 
 def test_build_services_explains_missing_frontend_dependencies(tmp_path: Path) -> None:
@@ -42,6 +45,7 @@ def test_launcher_check_starts_both_services_and_stops_without_opening_browser(
     root = _checkout(tmp_path)
     started: list[tuple[tuple[str, ...], Path]] = []
     stdout_options: list[object] = []
+    instance_ids: list[str] = []
     ready: list[str] = []
     stopped: list[object] = []
     processes = [object(), object()]
@@ -51,15 +55,19 @@ def test_launcher_check_starts_both_services_and_stops_without_opening_browser(
         assert isinstance(cwd, Path)
         started.append((command, cwd))
         stdout_options.append(kwargs["stdout"])
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        instance_ids.append(env[launcher.INSTANCE_ID_ENV])
         return processes[len(started) - 1]
 
     monkeypatch.setattr(launcher, "_find_checkout_root", lambda _path: root)
     monkeypatch.setattr(launcher.shutil, "which", lambda _program: "/usr/bin/node")
+    monkeypatch.setattr(launcher, "_assert_port_available", lambda _service: None)
     monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(
         launcher,
         "_wait_until_ready",
-        lambda service, _process, _timeout: ready.append(service.ready_url),
+        lambda service, _process, _timeout, _instance: ready.append(service.ready_url),
     )
     monkeypatch.setattr(launcher, "_stop_processes", lambda items: stopped.extend(items))
     monkeypatch.setattr(
@@ -76,6 +84,7 @@ def test_launcher_check_starts_both_services_and_stops_without_opening_browser(
     ]
     assert [cwd for _command, cwd in started] == [root, root / "apps" / "web"]
     assert stdout_options == [subprocess.DEVNULL, None]
+    assert len(set(instance_ids)) == 1
     assert stopped == processes
 
 
@@ -85,6 +94,7 @@ def test_wait_until_ready_reports_a_child_that_exits_before_health() -> None:
         command=("python",),
         cwd=Path("/tmp"),
         ready_url="http://127.0.0.1:8000/api/health",
+        port=8000,
     )
 
     class ExitedProcess:
@@ -92,7 +102,47 @@ def test_wait_until_ready_reports_a_child_that_exits_before_health() -> None:
             return 1
 
     with pytest.raises(launcher.LauncherError, match="port is already in use"):
-        launcher._wait_until_ready(service, ExitedProcess(), 1.0)  # type: ignore[arg-type]
+        launcher._wait_until_ready(service, ExitedProcess(), 1.0, "test-instance")  # type: ignore[arg-type]
+
+
+def test_wait_until_ready_rechecks_child_after_http_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = launcher._Service(
+        name="Python API",
+        command=("python",),
+        cwd=Path("/tmp"),
+        ready_url="http://127.0.0.1:8000/api/health",
+        port=8000,
+    )
+
+    class ExitsAfterProbe:
+        calls = 0
+
+        def poll(self) -> int | None:
+            self.calls += 1
+            return None if self.calls == 1 else 1
+
+    monkeypatch.setattr(launcher, "_http_ready", lambda _url, _instance_id: True)
+    with pytest.raises(launcher.LauncherError, match="exited with status 1 while becoming ready"):
+        launcher._wait_until_ready(service, ExitsAfterProbe(), 1.0, "test-instance")  # type: ignore[arg-type]
+
+
+def test_port_preflight_rejects_an_existing_loopback_listener() -> None:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        service = launcher._Service(
+            name="Python API",
+            command=("python",),
+            cwd=Path("/tmp"),
+            ready_url=f"http://127.0.0.1:{port}/api/health",
+            port=port,
+        )
+
+        with pytest.raises(launcher.LauncherError, match="already in use"):
+            launcher._assert_port_available(service)
 
 
 def test_stopping_services_kills_a_process_that_ignores_termination() -> None:
