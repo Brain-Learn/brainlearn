@@ -2100,3 +2100,150 @@ own final-head checks before merge.
 Step 7 remains unchecked and scientifically unapproved. Step 8 remains
 unchecked; the product owner has authorized it as the next implementation
 assignment under the recorded waiver.
+
+## Combined Step 8/9 PR #74 engineering findings
+
+Review date: 2026-11-14
+
+Status: **Three engineering findings repaired on PR #74; independent GitHub
+review and EEG methods decision remain pending.** Audited combined PR #74 at
+head `0c711b08accd6ba1867a5b4eb73da42150d141bc` against `main`. At the start
+of this review, the PR had no reviewer comments or approvals. The configured
+GitHub account owns the PR, so GitHub rejected a formal request-changes review
+on its own PR. Inline findings and a summary were posted by that same account;
+they document the local audit and are not independent monitor feedback or
+approval.
+
+The audit found and repaired three engineering defects on the existing PR
+branch:
+
+1. The exact BrainLearn replay rejected preflight-excluded cohort rows with no
+   readable input files before the service could re-inspect them. Replay now
+   skips identity hashing only for rows marked excluded with no files, while
+   keeping those rows in the config and cohort denominator. A regression also
+   confirms selected rows with missing identities still fail.
+2. The export personal-path scanner missed UNC paths after JSON escaping.
+   Its path guard now rejects UNC paths, covered by a serialized QC-note
+   regression.
+3. Direct replay recorded but did not verify the exported lockfile digest.
+   It now hashes `environment.lock` and compares it with
+   `direct_replay_environment.lockfile_sha256` before checking installed
+   package versions. Correct and mismatched lock hashes are covered by the
+   exported-workflow tests.
+
+No processing method, parameter, or scientific claim changed. The final local
+gate passed: locked Python sync and `uv lock --check`; Ruff and formatting
+(127 files); strict mypy (38 source files); pytest (855 passed, 9 skipped, 2
+upstream deprecation warnings); the pinned `ds005284` reference (5 passed);
+generated export-script lint; wheel build and 5/5 packaged export-resource
+checks; frontend ESLint/Prettier, Vitest (186 tests in 22 files), production
+build (1,852 modules; existing 534.07 kB chunk advisory), and production
+audit (0 vulnerabilities); strict Sphinx HTML build and linkcheck; responsive
+and axe checks for 8 pages at 375 px and 1440 px; docs audit (0
+vulnerabilities); and `git diff --check`. The initial full pytest attempt
+identified one synthetic aggregate fixture without the newly required lock
+digest; that fixture was updated and the complete suite then passed. No
+pinned human cohort was replayed by the exported direct project.
+
+PR #74 remains open for an independent reviewer. Step 7, Step 8, and Step 9
+parent and scientific-certification gates remain unchecked. The EEG methods
+decision remains pending; this engineering review does not certify the
+workflow.
+
+## Combined Step 8/9 independent monitoring review — PR #74
+
+Review date: 2026-11-24
+
+Scope: exact PR #74 head `88690c81deb4a0f4b9fc41d25af59a2b6f7d379b`, compared
+with `main` at `ccb7a3b67f25cb497b8d6571ca1a7a8a8a843436`, including the cohort
+workflow, portable Python/notebook export, and the provisional Nov 9 meeting
+notes.
+
+Status: **changes requested**. The core clean local and hosted gates pass, but
+the export's absolute-path protection is incomplete:
+
+1. **[P2] Reject and redact arbitrary POSIX absolute paths in exported text.**
+   `cohort_export.py` only recognizes enumerated POSIX prefixes such as
+   `/Users/`, `/home/`, and `/tmp/`. On this Linux environment,
+   `_redact_failure("/root/mohammad/private/study/raw.bdf")` returned the
+   original path and `_check_no_secrets` accepted it. QC notes, node/child
+   failure messages, and cohort failure reasons flow through these helpers
+   into the exported provenance, so a valid local path under `/root`, `/data`,
+   `/srv`, or `/opt` can escape into the archive. Replace the incomplete
+   allowlist with a robust absolute-path redaction/rejection strategy and add
+   regressions for non-enumerated POSIX roots, including a serialized export
+   field.
+
+The meeting-notes change is appropriately labeled provisional and
+transcript-derived. It says that no code commit, BrainLearn-specific settings,
+or overall methods decision were reviewed, and does not change processing
+defaults or imply scientific approval. No scientific certification is inferred
+from this consultation.
+
+Independent verification on the exact head:
+
+- Locked Python 3.12 sync, Ruff, formatting (127 files), and strict mypy (44
+  source files) passed.
+- `uv run --locked pytest`: 855 passed, 9 skipped, 2 upstream warnings.
+- The pinned `ds005284` direct-MNE reference suite passed all 5 cases after
+  independently retrieving the five pinned BDFs to `/tmp` and verifying their
+  manifest sizes and SHA-256 values; the tests also checked unchanged source
+  checksums.
+- Frontend ESLint, Prettier, Vitest (186 tests in 22 files), Vite build, and
+  production audit passed (0 vulnerabilities). The build retains the existing
+  ~534 kB chunk advisory.
+- Strict Sphinx HTML build and linkcheck passed; the responsive/axe check
+  passed for 8 pages at 375 px and 1440 px; docs audit found 0 vulnerabilities.
+- Hosted Python, frontend, and documentation checks passed on this head in
+  Actions runs `45359348686` and `45359348738`; GitHub Pages deployment was
+  skipped as expected. `git diff --check` passed.
+- PR #74 remains open. GitHub reports no review decision; the six existing
+  review submissions are `COMMENTED` by the PR author, and the three existing
+  inline threads are resolved. They do not constitute an independent GitHub
+  approval.
+
+Reopen the Step 9 subitem for preventing unintended absolute personal paths
+until the path-guard defect is repaired and verified. Keep Step 7, Step 8, and
+Step 9 parent/scientific-certification gates unchecked. Do not merge PR #74.
+
+## Combined Step 8/9 final monitoring review — PR #74
+
+Review date: 2026-11-24
+
+Scope: final code head `5f6cbb5bc1ffc630abc5019daceddf3e69fb90d9`, compared with
+`main` at `ccb7a3b67f25cb497b8d6571ca1a7a8a8a843436`.
+
+Status: **approved for the engineering review gate**. The remaining path
+redaction defect from the first review is fixed. Independent probes confirm
+that `/root`, `/root/`, `/srv`, `/opt`, and nested private paths are redacted
+from failure text and rejected when unredacted in serialized provenance.
+Relative paths such as `./dataset` remain accepted. Path scanning applies to
+data-bearing metadata members; secret scanning still applies to every archive
+member, including static scripts, notebook templates, and the lockfile. The
+generated README examples are `./dataset`, `./brainlearn-project`, and
+`datasets/your-bids-dataset`, with no `/path/to/...` placeholders. The
+failed-cohort export integration test passes.
+
+The exact-head local gate passed: `uv lock --check`; Ruff; format check (127
+files); strict mypy (38 source files); pytest (855 passed, 9 skipped, 2
+upstream deprecation warnings); the pinned `ds005284` direct-MNE reference (5
+passed, with unchanged source checksums); focused export probes; frontend
+ESLint/Prettier, Vitest (186 tests in 22 files), production build (1,852
+modules; existing 534.07 kB chunk advisory), and production audit (0
+vulnerabilities); strict Sphinx HTML/linkcheck; responsive/axe checks (8 pages
+at 375 px and 1440 px); docs audit (0 vulnerabilities); server wheel build
+with all 5 required export resources; generated workflow/replay script lint;
+and `git diff --check`.
+
+Hosted checks passed on this exact head: Python and frontend in Actions run
+`45364976598`; documentation in `45364976606`; GitHub Pages deployment was
+skipped as expected. PR #74 remains open. The connected review/comment APIs
+returned HTTP 403; the final status is recorded here and will also be posted
+as a PR conversation comment through `gh`, under the PR-author identity. That
+comment is not a separate GitHub reviewer approval.
+
+This approval covers only the Step 8/9 engineering implementation and its
+reproducibility/privacy gates. The Nov 9 consultation remains provisional and
+does not constitute independent scientific methods review. No pinned human
+cohort was replayed by the exported standalone project. Keep Step 7, Step 8,
+and Step 9 parent and scientific-certification gates unchecked; do not merge.

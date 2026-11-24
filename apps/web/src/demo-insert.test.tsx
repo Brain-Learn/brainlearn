@@ -290,7 +290,7 @@ test("palette distinguishes executable demonstrations from EEG examples", async 
   await screen.findByRole("button", { name: /Copy/ });
   expect(
     screen.getByText(
-      /BIDS import, signal inspection, and the MNE filter run locally/,
+      /The EEG cohort workflow runs locally through BIDS inspection/,
     ),
   ).toBeInTheDocument();
   for (const manifest of demoRegistry) {

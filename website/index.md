@@ -7,15 +7,15 @@ BrainLearn documentation
   <h2 id="bl-hero-title">Build neuroscience workflows you can inspect and replay.</h2>
   <p class="bl-lede">BrainLearn is a visual workflow builder for EEG research. Connect typed analysis steps, inspect what each step produces, record quality-control decisions, and keep the workflow beside your data.</p>
   <div class="bl-hero-actions">
-    <a class="sd-btn sd-btn-primary" href="quickstart.html">Start the 10-minute EEG walkthrough</a>
+    <a class="sd-btn sd-btn-primary" href="eeg-cohort.html">Run the experimental cohort walkthrough</a>
     <a class="sd-btn sd-btn-outline-primary" href="auto_examples/index.html">Explore examples</a>
   </div>
-  <p class="bl-status-line"><span class="bl-status">Experimental</span> The BIDS import, signal inspection, and MNE filter path runs locally. The broader EEG workflow is still under development and independent methods review.</p>
+  <p class="bl-status-line"><span class="bl-status">Experimental</span> A descriptive EEG cohort path is under engineering verification. Its processing settings are provisional and have not received independent methods approval.</p>
 </section>
 ```
 
 ```{image} _static/images/workflow-map.svg
-:alt: BrainLearn's current experimental path from a BIDS EEG recording through signal inspection and MNE filtering; later analysis stages are marked planned.
+:alt: BrainLearn's experimental EEG cohort path from BIDS recordings through explicit quality review, filtering, ICA, event-locked epochs, ERP, PSD, and a descriptive report.
 :class: bl-workflow-map
 ```
 
@@ -23,7 +23,7 @@ BrainLearn documentation
 
 BrainLearn is being built for researchers who want a visual workflow without giving up inspectability. The first runnable path reads one project-local BIDS EEG recording, records its metadata, applies a version-pinned MNE-Python filter, and saves a Python export with provenance.
 
-The project is early-stage software. There is no stable release yet, and the demonstrated filter has been compared with direct MNE calls on a deterministic synthetic recording. That engineering comparison does not establish that any filter is suitable for a study.
+The project is early-stage software. There is no stable release yet. The cohort workflow and its comparison with direct MNE calls are under engineering verification; these checks do not establish that the settings are suitable for a study.
 
 ::::{grid} 1 2 2 2
 :gutter: 3
@@ -32,7 +32,14 @@ The project is early-stage software. There is no stable release yet, and the dem
 :link: quickstart
 :link-type: doc
 
-Install from source and run the synthetic EEG filter path locally.
+Install from source and learn the local synthetic EEG filter path.
+:::
+
+:::{grid-item-card} EEG cohort walkthrough
+:link: eeg-cohort
+:link-type: doc
+
+Run the experimental five-participant BIDS cohort path with explicit per-recording QC.
 :::
 
 :::{grid-item-card} Examples
@@ -63,9 +70,9 @@ Browse the maintained Python workflow-definition API.
 | --- | --- |
 | Visual graph editing and workflow validation | Available in the source checkout |
 | Local project save/open, BIDS EEG discovery, and dataset inspection | Implemented; research-data handling remains local |
-| MNE-Python band-pass and optional notch filtering | Experimental; bounded to one recording and documented in the walkthrough |
-| Standalone Python filter export | Available for the demonstrated filter path |
-| ICA review, epoching, ERP, PSD, and complete reports | Not yet a certified end-to-end workflow |
+| MNE-Python band-pass and optional notch filtering | Experimental; explicit parameters and per-recording QC |
+| Cohort execution, event-locked epochs, ERP, PSD, and HTML report | Under engineering verification on the pinned five-participant sample |
+| Independent EEG methods approval and scientific certification | Pending; no scientific approval is claimed |
 | Stable release and external pilot evidence | Not available yet |
 
 See {doc}`status` for the exact maturity boundary and next project gates.
@@ -84,6 +91,7 @@ BrainLearn is research software. It is not a medical device and does not provide
 :maxdepth: 2
 
 quickstart
+eeg-cohort
 user-guide
 workflow-model
 quality-control

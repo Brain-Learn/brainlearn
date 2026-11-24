@@ -70,6 +70,7 @@ class BidsEegRecording(BaseModel):
     session: str | None = None
     task: str
     format: str | None = None
+    recording_type: Literal["continuous", "discontinuous", "epoched"] | None = None
     status: Literal["ready", "incomplete_metadata", "unsupported"]
     sampling_frequency_hz: float | None = None
     eeg_reference: str | None = None
@@ -916,6 +917,28 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     )
                 )
                 sampling_frequency = None
+            recording_type_raw = metadata.get("RecordingType")
+            recording_type: Literal["continuous", "discontinuous", "epoched"] | None = None
+            if recording_type_raw is not None:
+                if not isinstance(recording_type_raw, str) or recording_type_raw not in {
+                    "continuous",
+                    "discontinuous",
+                    "epoched",
+                }:
+                    recording_issues.append(
+                        BidsEegIssue(
+                            code="invalid_recording_type",
+                            message=(
+                                "RecordingType must be 'continuous', 'discontinuous', or "
+                                "'epoched'. Correct the applicable *_eeg.json sidecar."
+                            ),
+                            path=relative,
+                        )
+                    )
+                else:
+                    recording_type = cast(
+                        Literal["continuous", "discontinuous", "epoched"], recording_type_raw
+                    )
             eeg_reference_raw = metadata.get("EEGReference")
             eeg_reference = (
                 eeg_reference_raw.strip()
@@ -1099,6 +1122,7 @@ def discover_bids_eeg(root: Path, dataset_path: str) -> BidsEegDiscovery:
                     session=session,
                     task=task,
                     format=file_format,
+                    recording_type=recording_type,
                     status=recording_status,
                     sampling_frequency_hz=sampling_frequency,
                     eeg_reference=eeg_reference,
@@ -1256,6 +1280,23 @@ class BidsEegDiscoveryService:
             ) from exc
 
     @staticmethod
+    def _require_continuous_recording(recording: BidsEegRecording) -> None:
+        if recording.recording_type == "epoched":
+            raise BidsSignalInspectionError(
+                f"Recording {recording.path} is declared RecordingType='epoched'. This workflow's "
+                "filter and ICA nodes require continuous EEG. Select a continuous recording or "
+                "use an explicitly designed epoched-data workflow; BrainLearn will not convert "
+                "or reinterpret these trials as continuous data."
+            )
+        if recording.recording_type == "discontinuous":
+            raise BidsSignalInspectionError(
+                f"Recording {recording.path} is declared RecordingType='discontinuous'. This "
+                "workflow requires continuous EEG because its filter and ICA nodes do not "
+                "preserve acquisition segment boundaries. Select a continuous recording or "
+                "use a workflow designed for discontinuous data."
+            )
+
+    @staticmethod
     def _inspection_from_raw(
         raw: Any, recording_relative: str, file_format: str
     ) -> BidsEegSignalInspection:
@@ -1293,6 +1334,7 @@ class BidsEegDiscoveryService:
         root, recording_relative, recording = self._resolve_signal_recording(
             raw_project_path, relative_dataset_path, recording_path
         )
+        self._require_continuous_recording(recording)
         raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
         try:
             return self._inspection_from_raw(raw, recording_relative, recording.format or "EEG")
@@ -1321,6 +1363,7 @@ class BidsEegDiscoveryService:
         root, recording_relative, recording = self._resolve_signal_recording(
             raw_project_path, relative_dataset_path, recording_path
         )
+        self._require_continuous_recording(recording)
         raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
         try:
             names = list(raw.ch_names)
@@ -1380,6 +1423,7 @@ class BidsEegDiscoveryService:
         root, recording_relative, recording = self._resolve_signal_recording(
             raw_project_path, relative_dataset_path, recording_path
         )
+        self._require_continuous_recording(recording)
         raw = self._open_signal_raw(root, recording_relative, recording.format or "EEG")
         try:
             np = import_module("numpy")

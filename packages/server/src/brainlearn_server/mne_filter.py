@@ -63,6 +63,27 @@ def filter_bids_eeg(ctx: NodeContext) -> list[StagedOutput]:
     _require_cancel(ctx)
     if ctx.project_path is None or ctx.project_store is None:
         raise ControlledFailure("Band-pass filtering requires an open BrainLearn project.")
+    excluded_channel_names: list[str] = []
+    run_record = None
+    review_nodes = []
+    if ctx.run_store is not None and ctx.run_id is not None:
+        run_record = ctx.run_store.get_run(ctx.project_path, ctx.run_id)
+        review_nodes = [
+            node for node in run_record.node_runs if node.node_type == "eeg.bad_channel_review"
+        ]
+        if len(review_nodes) > 1:
+            raise ControlledFailure(
+                "A recording workflow may contain only one bad-channel decision node."
+            )
+        for node in review_nodes:
+            review = next((item for item in ctx.qc_reviews if item.node_run_id == node.id), None)
+            if review is None or review.decision != "approved":
+                raise ControlledFailure(
+                    "The workflow contains a bad-channel review, but no current approved "
+                    "decision is available. Complete that recording's explicit QC review first."
+                )
+            excluded_channel_names.extend(review.excluded_channel_names)
+        excluded_channel_names = sorted(set(excluded_channel_names))
     try:
         source_reference = json.loads(ctx.inputs["raw"].read_text(encoding="utf-8"))
     except (KeyError, OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -75,6 +96,47 @@ def filter_bids_eeg(ctx: NodeContext) -> list[StagedOutput]:
         or not isinstance(source_reference.get("source_content_identity"), str)
     ):
         raise ControlledFailure("The upstream inspected EEG reference is invalid.")
+    if review_nodes:
+        if run_record is None:
+            raise ControlledFailure("The current recording run could not be verified.")
+        current_filter = next(
+            (node for node in run_record.node_runs if node.id == ctx.node_run_id), None
+        )
+        sources = current_filter.settings.get("input_sources", {}) if current_filter else {}
+        raw_source = sources.get("raw", {}) if isinstance(sources, dict) else {}
+        source_node = next(
+            (node for node in run_record.node_runs if node.id == raw_source.get("node")),
+            None,
+        )
+        if source_node is None or source_node.id != review_nodes[0].id:
+            raise ControlledFailure(
+                "Connect the Bad Channel Review output to the filter input so the recorded "
+                "decision is applied to this recording."
+            )
+        review = next(
+            (item for item in ctx.qc_reviews if item.node_run_id == review_nodes[0].id), None
+        )
+        recorded_review = source_reference.get("bad_channel_review")
+        expected_names = sorted(review.excluded_channel_names) if review is not None else []
+        if (
+            review is None
+            or review.decision != "approved"
+            or not isinstance(recorded_review, dict)
+            or recorded_review.get("review_id") != review.id
+            or recorded_review.get("source_content_identity")
+            != source_reference["source_content_identity"]
+            or recorded_review.get("excluded_channel_names") != expected_names
+        ):
+            raise ControlledFailure(
+                "The connected bad-channel QC artifact does not match the current approved "
+                "decision. Reinspect and review this recording before filtering."
+            )
+        excluded_channel_names = expected_names
+    elif "bad_channel_review" in source_reference:
+        raise ControlledFailure(
+            "This EEG reference carries an unrecognized bad-channel QC decision. Re-run Inspect "
+            "Signal and connect an approved Bad Channel Review node."
+        )
 
     low_hz = _parameter(ctx, "low_hz", 1.0)
     high_hz = _parameter(ctx, "high_hz", 40.0)
@@ -120,6 +182,7 @@ def filter_bids_eeg(ctx: NodeContext) -> list[StagedOutput]:
                 recording_path=recording_relative,
                 source_files=[item.model_dump(mode="json") for item in identity_before.files],
                 cancel_check=lambda: _require_cancel(ctx),
+                excluded_channel_names=excluded_channel_names,
             )
         except MneFilterError as exc:
             raise ControlledFailure(str(exc)) from exc

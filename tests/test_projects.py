@@ -53,6 +53,14 @@ def _example_workflow() -> dict[str, object]:
     return json.loads((FIXTURES / "workflow-1.0.json").read_text(encoding="utf-8"))
 
 
+def _current_workflow() -> dict[str, object]:
+    return json.loads(
+        (Path(__file__).parents[1] / "examples" / "eeg-first-look.workflow.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
 def test_project_and_workflow_fixtures_migrate_and_round_trip() -> None:
     project_raw = json.loads((FIXTURES / "project-1.0.json").read_text(encoding="utf-8"))
     workflow_raw = _example_workflow()
@@ -96,6 +104,7 @@ def test_legacy_filter_node_migrates_without_mutating_saved_workflow() -> None:
     assert len(legacy_filter["ports"]) == 2  # type: ignore[index]
     assert len(legacy_ica["ports"]) == 2  # type: ignore[index]
     fit = next(node for node in workflow.nodes if node.type == "eeg.ica_fit")
+    assert all(parameter.value is None for parameter in fit.parameters)
     migrated_ica = next(node for node in workflow.nodes if node.id == "ica")
     assert {port.id for port in migrated_ica.ports} == {"raw", "fit", "reviewed", "provenance"}
     assert any(
@@ -105,7 +114,29 @@ def test_legacy_filter_node_migrates_without_mutating_saved_workflow() -> None:
         and edge.target.port_id == "fit"
         for edge in workflow.edges
     )
-    assert validate_workflow(workflow, NODE_REGISTRY_BY_ID).valid
+    migrated_epochs = next(node for node in workflow.nodes if node.type == "eeg.epochs")
+    epoch_parameters = {item.id: item.value for item in migrated_epochs.parameters}
+    assert epoch_parameters["event"] == "stimulus"
+    assert epoch_parameters["baseline_enabled"] is True
+    assert epoch_parameters["reject_eeg_peak_to_peak_uv"] == 0.0
+    migrated_psd = next(node for node in workflow.nodes if node.type == "eeg.psd")
+    assert {item.id: item.value for item in migrated_psd.parameters} == {
+        "fmin_hz": 1.0,
+        "fmax_hz": 40.0,
+        "n_fft": 256,
+        "n_per_seg": 256,
+        "n_overlap": 128,
+        "window": "hamming",
+    }
+    assert Workflow.model_validate_json(workflow.model_dump_json()) == workflow
+    validation = validate_workflow(workflow, NODE_REGISTRY_BY_ID)
+    missing_fit_settings = [
+        issue
+        for issue in validation.issues
+        if issue.node_id == fit.id and issue.code == "missing_required_parameter"
+    ]
+    assert len(missing_fit_settings) == 5
+    assert all("Choose a value before running" in issue.message for issue in missing_fit_settings)
 
 
 def test_project_migration_preserves_customized_filter_when_upgrading_legacy_ica() -> None:
@@ -145,7 +176,7 @@ def test_create_open_save_round_trip_and_survives_restart(
     client: TestClient, tmp_path: Path
 ) -> None:
     project_dir = tmp_path / "demo-project"
-    workflow = _example_workflow()
+    workflow = _current_workflow()
 
     created = client.post(
         "/api/projects/create",
@@ -189,7 +220,7 @@ def test_create_open_save_round_trip_and_survives_restart(
 
 def test_previous_recovery_keeps_last_valid_workflow(client: TestClient, tmp_path: Path) -> None:
     project_dir = tmp_path / "validity-history"
-    valid = _example_workflow()
+    valid = _current_workflow()
     assert (
         client.post(
             "/api/projects/create",

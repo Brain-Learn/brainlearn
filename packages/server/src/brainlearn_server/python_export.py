@@ -724,9 +724,10 @@ def render_eeg_ica_python(
     component_count = fit_provenance.get("fitted_components")
     if (
         fit_provenance.get("operation") != "fit_ica"
-        or fit_provenance.get("schema_version") != "1.1"
+        or fit_provenance.get("schema_version") != "1.2"
         or fit_provenance.get("input_artifact_id") != artifact_ids.get("raw")
         or fit_provenance.get("method") != "fastica"
+        or fit_provenance.get("component_policy") != "all_eeg_channels"
         or fit_provenance.get("converged") is not True
         or fit_provenance.get("max_iter") != 1000
         or fit_provenance.get("random_state") != seed

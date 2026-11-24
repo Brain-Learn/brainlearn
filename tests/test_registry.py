@@ -34,6 +34,27 @@ def test_registry_manifests_round_trip_and_have_unique_identity() -> None:
     assert len({item.id for item in restored}) == len(restored) == 15
 
 
+def test_ica_template_records_explicit_provisional_fit_settings() -> None:
+    manifests = {manifest.id: manifest for manifest in NODE_REGISTRY}
+    schema = {parameter.id: parameter for parameter in manifests["eeg.ica_fit"].parameters}
+    workflow = Workflow.model_validate_json(EXAMPLE.read_text(encoding="utf-8"))
+    fit = next(node for node in workflow.nodes if node.type == "eeg.ica_fit")
+    values = {parameter.id: parameter.value for parameter in fit.parameters}
+
+    assert values == {
+        "method": "fastica",
+        "component_policy": "all_eeg_channels",
+        "max_iterations": 1000,
+        "reject_by_annotation": False,
+        "decim": 1,
+    }
+    assert schema["method"].options == ["fastica"]
+    assert schema["component_policy"].options == ["all_eeg_channels"]
+    assert all(schema[parameter_id].required for parameter_id in values)
+    assert all(schema[parameter_id].default is None for parameter_id in values)
+    assert validate_workflow(workflow, manifests).valid
+
+
 def test_eeg_manifests_record_upstream_dependency_metadata() -> None:
     manifests = {manifest.id: manifest for manifest in NODE_REGISTRY}
 

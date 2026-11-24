@@ -189,6 +189,7 @@ def test_adapter_direct_mne_and_generated_script_agree_and_preserve_source(
 
     provenance = json.loads((context.staging_dir / by_port["provenance"].relative_path).read_text())
     assert provenance["parameters"] == {
+        "excluded_bad_channels": [],
         "high_hz": 70.0,
         "low_hz": 1.0,
         "notch_frequencies_hz": [50.0],

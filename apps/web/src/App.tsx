@@ -34,6 +34,7 @@ import {
 } from "./api";
 import type { ExampleInfo } from "./api";
 import { DatasetLibrary } from "./DatasetLibrary";
+import { CohortLauncher } from "./CohortLauncher";
 import { parseEEGFilterPreview } from "./filterPreview";
 import { parseEEGICAComponentDiagnostics } from "./icaDiagnostics";
 import {
@@ -1813,10 +1814,10 @@ function App() {
         </div>
         <div className="library-note">
           Select a manifest to add it, drag it onto the canvas at an exact
-          position, or focus it and press Enter. BIDS import, signal inspection,
-          and the MNE filter run locally as experimental EEG processing. Later
-          analysis nodes remain illustrative. Demonstration nodes are
-          non-scientific examples.
+          position, or focus it and press Enter. The EEG cohort workflow runs
+          locally through BIDS inspection, explicit QC, filtering, ICA review,
+          epochs, ERP, PSD, and reporting. Its settings are experimental.
+          Demonstration nodes are non-scientific examples.
         </div>
         <div className="panel-heading">
           <span>Examples</span>
@@ -1842,6 +1843,15 @@ function App() {
             {exampleMessage}
           </div>
         )}
+        <CohortLauncher
+          onChildRun={(response) => {
+            applyRunResponse(response);
+            setRunPath(response.path);
+          }}
+          projectPath={activeProjectPath}
+          token={sessionToken}
+          workflow={workflow}
+        />
         <DatasetLibrary projectPath={activeProjectPath} token={sessionToken} />
         <div className="panel-heading">
           <span>Local project</span>

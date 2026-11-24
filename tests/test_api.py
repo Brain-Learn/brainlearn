@@ -68,6 +68,10 @@ def test_registry_lists_versioned_manifests() -> None:
         "eeg.filter",
         "eeg.ica_fit",
         "eeg.ica_review",
+        "eeg.epochs",
+        "eeg.erp_average",
+        "eeg.psd",
+        "output.report",
     }
     assert all(
         status == "example" for node_id, status in statuses.items() if node_id.startswith("demo.")

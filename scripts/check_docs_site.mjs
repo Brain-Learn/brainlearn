@@ -50,6 +50,7 @@ const browser = await chromium.launch({ headless: true });
 const routes = [
   "/index.html",
   "/quickstart.html",
+  "/eeg-cohort.html",
   "/auto_examples/index.html",
   "/auto_examples/plot_synthetic_filter.html",
   "/api.html",

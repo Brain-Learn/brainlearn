@@ -262,6 +262,70 @@ article[aria-label="Dataset details"] h4:focus {
   font-size: 10px;
   line-height: 1.5;
 }
+.cohort-panel {
+  display: grid;
+  gap: 10px;
+  margin: 14px;
+  padding: 0 0 12px;
+  color: #cbd8e8;
+  border: 1px solid #26374b;
+  border-radius: 8px;
+  background: #0a1320;
+  overflow: hidden;
+}
+.cohort-panel .panel-heading {
+  height: 40px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+.cohort-panel > p,
+.cohort-panel > label,
+.cohort-panel > button,
+.cohort-panel > .cohort-recordings,
+.cohort-panel > .cohort-status,
+.cohort-panel > .project-message {
+  margin-left: 10px;
+  margin-right: 10px;
+}
+.cohort-panel .muted,
+.cohort-panel p,
+.cohort-panel li {
+  color: #91a2b8;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.cohort-recordings,
+.cohort-status {
+  display: grid;
+  gap: 8px;
+}
+.cohort-recording {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid #27364a;
+  border-radius: 6px;
+  background: #101e2e;
+  overflow-wrap: anywhere;
+}
+.cohort-recording span {
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+}
+.cohort-recording small {
+  color: #718198;
+}
+.cohort-status ul {
+  display: grid;
+  gap: 5px;
+  max-height: 180px;
+  margin: 0;
+  padding-left: 16px;
+  overflow: auto;
+}
 .canvas {
   position: relative;
   min-width: 0;

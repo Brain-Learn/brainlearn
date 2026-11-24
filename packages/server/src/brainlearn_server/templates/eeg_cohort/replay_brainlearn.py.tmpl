@@ -1,0 +1,236 @@
+#!/usr/bin/env python3
+"""Replay the saved graph through BrainLearn's loopback service and CLI."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.metadata
+import ipaddress
+import json
+import subprocess
+import sys
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import Any
+from urllib.parse import urlsplit
+
+
+def load_config() -> dict[str, Any]:
+    config = json.loads(
+        Path(__file__).resolve().with_name("config.json").read_text(encoding="utf-8")
+    )
+    if not isinstance(config, dict) or config.get("format_version") != "1.0":
+        raise ValueError("Unsupported exported cohort configuration.")
+    return config
+
+
+def _loopback_service_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Service URL must be a valid loopback HTTP(S) URL.") from exc
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("Service URL must be a valid loopback HTTP(S) URL.")
+    try:
+        is_loopback = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        is_loopback = hostname.lower() == "localhost"
+    if not is_loopback:
+        raise ValueError(
+            "BrainLearn-runner replay only sends the session token to a loopback service."
+        )
+    _ = port  # Access above rejects invalid port syntax and out-of-range values.
+    return value.rstrip("/")
+
+
+def _dataset_root(project: Path, value: str) -> Path:
+    relative = PurePosixPath(value)
+    windows_path = PureWindowsPath(value)
+    if (
+        not value
+        or relative.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or ".." in relative.parts
+        or ".." in windows_path.parts
+    ):
+        raise ValueError("Dataset root must be a safe project-relative path.")
+    current = project
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Dataset paths may not contain symlinks.")
+    root = current.resolve(strict=True)
+    if not root.is_dir() or not root.is_relative_to(project):
+        raise ValueError("Dataset root must stay inside the selected BrainLearn project.")
+    return root
+
+
+def _safe_source(root: Path, relative: str) -> Path:
+    posix_path = PurePosixPath(relative)
+    windows_path = PureWindowsPath(relative)
+    if (
+        posix_path.is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+        or ".." in posix_path.parts
+        or ".." in windows_path.parts
+        or not posix_path.parts
+    ):
+        raise ValueError("Pinned BIDS files must stay inside the selected dataset.")
+    current = root
+    for part in posix_path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError("Pinned BIDS files may not contain symlinks.")
+    if not current.is_file() or current.stat().st_nlink > 1:
+        raise ValueError("Pinned BIDS files must be regular, single-link files.")
+    return current
+
+
+def _verify_source_identities(dataset_root: Path, recordings: list[dict[str, Any]]) -> None:
+    for recording in recordings:
+        input_files = recording.get("input_files")
+        if recording.get("original_state") == "excluded" and not input_files:
+            # Preserve preflight exclusions in the replay denominator without
+            # requiring an identity for files that could not be read.
+            continue
+        if not isinstance(input_files, list) or not input_files:
+            raise ValueError(
+                f"No pinned input-file identity for {recording.get('recording_path')}."
+            )
+        total = 0
+        for item in input_files:
+            if not isinstance(item, dict) or not isinstance(item.get("path"), str):
+                raise ValueError("A pinned BIDS input file has invalid path metadata.")
+            path = _safe_source(dataset_root, item["path"])
+            before = path.stat()
+            total += before.st_size
+            if total > 10 * 1024**3:
+                raise ValueError("Pinned source files exceed the 10 GiB identity limit.")
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            after = path.stat()
+            if (
+                before.st_dev,
+                before.st_ino,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            ) != (
+                after.st_dev,
+                after.st_ino,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            ):
+                raise ValueError("A pinned BIDS file changed during identity verification.")
+            if after.st_size != item.get("byte_size") or digest.hexdigest() != item.get("sha256"):
+                raise ValueError(f"Pinned source checksum changed: {item['path']}")
+        identity_payload = {
+            "schema_version": "bids-eeg-input-1.1",
+            "recording_path": recording.get("recording_path"),
+            "files": input_files,
+        }
+        canonical = json.dumps(
+            identity_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        digest = hashlib.sha256(b"brainlearn-v1:artifact:" + canonical).hexdigest()
+        expected = f"brainlearn-v1:artifact:{digest}"
+        if expected != recording.get("input_identity"):
+            raise ValueError(
+                f"Pinned source identity changed for {recording.get('recording_path')}."
+            )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Exact BrainLearn-runner cohort replay.")
+    parser.add_argument(
+        "--project", type=Path, required=True, help="Existing local BrainLearn project directory."
+    )
+    parser.add_argument(
+        "--dataset-root", required=True, help="BIDS folder relative to that project."
+    )
+    parser.add_argument(
+        "--service-url", default="http://127.0.0.1:8000", help="Loopback BrainLearn service URL."
+    )
+    args = parser.parse_args()
+    try:
+        service_url = _loopback_service_url(args.service_url)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    config = load_config()
+    runner_environment = config.get("runner_environment")
+    source_cohort = config.get("source_cohort")
+    recordings = config.get("recordings")
+    if not isinstance(runner_environment, dict) or not isinstance(source_cohort, dict):
+        print("The exported cohort configuration is incomplete.", file=sys.stderr)
+        return 2
+    if not isinstance(recordings, list):
+        print("The exported cohort selection is incomplete.", file=sys.stderr)
+        return 2
+    try:
+        project = args.project.expanduser().resolve(strict=True)
+        dataset_root = _dataset_root(project, args.dataset_root)
+        _verify_source_identities(dataset_root, recordings)
+    except (OSError, ValueError) as exc:
+        print(f"Input identity check failed: {exc}", file=sys.stderr)
+        return 2
+    required = runner_environment.get("brainlearn-server")
+    try:
+        installed = importlib.metadata.version("brainlearn-server")
+    except importlib.metadata.PackageNotFoundError:
+        installed = None
+    if required and installed != required:
+        print(
+            f"Install the recorded BrainLearn server version {required}; "
+            f"found {installed or 'not installed'}.",
+            file=sys.stderr,
+        )
+        return 2
+    workflow = Path(__file__).resolve().with_name("workflow.json")
+    command = [
+        "brainlearn-cohort",
+        "--project",
+        str(project),
+        "--workflow",
+        str(workflow),
+        "--dataset-root",
+        args.dataset_root,
+        "--service-url",
+        service_url,
+        "--seed",
+        str(source_cohort["seed"]),
+    ]
+    if source_cohort.get("dataset_id"):
+        command.extend(
+            [
+                "--dataset-id",
+                source_cohort["dataset_id"],
+                "--dataset-version",
+                source_cohort["dataset_version"],
+            ]
+        )
+    for item in recordings:
+        command.extend(["--recording", item["recording_path"]])
+    print(
+        "Starting the local BrainLearn CLI. QC decisions will be requested "
+        "interactively again; no session token is stored in this project."
+    )
+    return subprocess.run(command, check=False).returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

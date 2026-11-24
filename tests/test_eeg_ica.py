@@ -48,6 +48,13 @@ PUBLIC_FIXTURE_ENV = "BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE"
 TEST_TOKEN = "step7-ica-test-token-0123456789"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
 MAX_ABSOLUTE_DIFFERENCE_UV = 3e-5
+ICA_TEST_PARAMETERS = {
+    "method": "fastica",
+    "component_policy": "all_eeg_channels",
+    "max_iterations": 1000,
+    "reject_by_annotation": False,
+    "decim": 1,
+}
 
 
 @pytest.fixture(autouse=True)
@@ -90,6 +97,14 @@ def _ica_workflow(
     )
     high_parameter["value"] = high_hz
     fit = instantiate_registered_node("eeg.ica_fit", "ica-fit", CanvasPosition(x=850, y=80))
+    fit = fit.model_copy(
+        update={
+            "parameters": [
+                parameter.model_copy(update={"value": ICA_TEST_PARAMETERS[parameter.id]})
+                for parameter in fit.parameters
+            ]
+        }
+    )
     review = instantiate_registered_node(
         "eeg.ica_review", "ica-review", CanvasPosition(x=1050, y=180)
     )
@@ -243,6 +258,7 @@ def test_ica_fit_fails_closed_on_nonconvergence_and_preexisting_outputs(
     with pytest.raises(MneIcaError, match="FastICA did not converge"):
         fit_ica(
             unstable,
+            **ICA_TEST_PARAMETERS,
             random_state=0,
             staging_dir=nonconverged_dir,
             source_identity="test-source",
@@ -261,6 +277,7 @@ def test_ica_fit_fails_closed_on_nonconvergence_and_preexisting_outputs(
     with pytest.raises(MneIcaError, match="already exists or is unsafe"):
         fit_ica(
             raw,
+            **ICA_TEST_PARAMETERS,
             random_state=0,
             staging_dir=staging,
             source_identity="test-source",
@@ -274,12 +291,15 @@ def test_ica_fit_fails_closed_on_nonconvergence_and_preexisting_outputs(
 
 def test_ica_provenance_requires_current_schema_and_convergence() -> None:
     valid = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "operation": "fit_ica",
         "input_artifact_id": "raw-artifact",
         "method": "fastica",
+        "component_policy": "all_eeg_channels",
         "converged": True,
         "max_iter": 1000,
+        "reject_by_annotation": False,
+        "decim": 1,
         "iterations": 999,
         "fitted_components": 2,
         "channels": ["Cz", "Oz"],
@@ -287,6 +307,13 @@ def test_ica_provenance_requires_current_schema_and_convergence() -> None:
         "excluded_bad_channels": ["Pz"],
     }
     assert is_current_converged_fit_provenance(valid, "raw-artifact")
+    expected_parameters = {
+        **ICA_TEST_PARAMETERS,
+    }
+    assert is_current_converged_fit_provenance(valid, "raw-artifact", expected_parameters)
+    assert not is_current_converged_fit_provenance(
+        valid, "raw-artifact", {**expected_parameters, "max_iterations": 999}
+    )
     for field, invalid_value in (
         ("schema_version", "1.0"),
         ("converged", False),
@@ -360,6 +387,7 @@ def test_ica_fit_records_only_good_eeg_channels_and_explicit_bad_exclusions(
     staging = tmp_path / "bad-channel-fit"
     result = fit_ica(
         raw,
+        **ICA_TEST_PARAMETERS,
         random_state=0,
         staging_dir=staging,
         source_identity="test-source",
@@ -374,6 +402,16 @@ def test_ica_fit_records_only_good_eeg_channels_and_explicit_bad_exclusions(
     assert provenance["channels"] == ["Cz", "Oz"]
     assert provenance["picks"] == ["Cz", "Oz"]
     assert provenance["excluded_bad_channels"] == ["Pz"]
+    assert all(
+        provenance[key] == value
+        for key, value in (
+            ("method", ICA_TEST_PARAMETERS["method"]),
+            ("component_policy", ICA_TEST_PARAMETERS["component_policy"]),
+            ("max_iter", ICA_TEST_PARAMETERS["max_iterations"]),
+            ("reject_by_annotation", ICA_TEST_PARAMETERS["reject_by_annotation"]),
+            ("decim", ICA_TEST_PARAMETERS["decim"]),
+        )
+    )
     assert diagnostics["channels"] == ["Cz", "Oz"]
     assert diagnostics["excluded_bad_channels"] == ["Pz"]
     assert provenance["iterations"] == diagnostics["fit_iterations"]
@@ -1065,10 +1103,11 @@ def test_ica_python_renderer_requires_approved_review_for_its_graph() -> None:
             "source_files": source_files,
         },
         fit_provenance={
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "operation": "fit_ica",
             "input_artifact_id": "brainlearn-v1:artifact:" + "1" * 64,
             "method": "fastica",
+            "component_policy": "all_eeg_channels",
             "converged": True,
             "fitted_components": 2,
             "random_state": 0,
