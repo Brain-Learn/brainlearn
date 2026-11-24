@@ -104,6 +104,7 @@ contracts
 citation
 releases
 status
+dependency-licenses
 contributing
 governance
 decisions/0001-documentation-stack
