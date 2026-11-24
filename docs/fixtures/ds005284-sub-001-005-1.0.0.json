@@ -1,0 +1,231 @@
+{
+  "schema_version": "1.0",
+  "provider": "OpenNeuro",
+  "dataset_id": "ds005284",
+  "snapshot": "1.0.0",
+  "snapshot_created": "2024-06-26T09:15:50Z",
+  "snapshot_tree_sha1": "71e72dd42cd756fa530d0e3e4b710aba06a8b581",
+  "snapshot_metadata_api": "https://openneuro.org/crn/graphql",
+  "title": "26 By Biosemi",
+  "modality": "eeg",
+  "bids_version": "1.1.1",
+  "snapshot_landing_page": "https://openneuro.org/datasets/ds005284/versions/1.0.0",
+  "license": {
+    "name": "CC0 1.0 Universal",
+    "spdx": "CC0-1.0",
+    "evidence": [
+      {
+        "url": "https://openneuro.org/crn/graphql",
+        "claim": "The ds005284:1.0.0 snapshot metadata declares License=CC0 and DOI 10.18112/openneuro.ds005284.v1.0.0."
+      }
+    ]
+  },
+  "citations": [
+    {
+      "kind": "dataset",
+      "text": "Zhao, X., Zhou, J., Zhang, L., Duan, H., Wei, S., Bi, Y., & Hu, L. (2024). 26 By Biosemi. OpenNeuro, ds005284, version 1.0.0.",
+      "doi": "10.18112/openneuro.ds005284.v1.0.0",
+      "url": "https://openneuro.org/datasets/ds005284/versions/1.0.0"
+    },
+    {
+      "kind": "associated_publication",
+      "text": "Lu, X., Thompson, W. F., Zhang, L., & Hu, L. (2019). Music Reduces Pain Unpleasantness: Evidence from an EEG Study. Journal of Pain Research, 12, 3331–3342.",
+      "doi": "10.2147/JPR.S212080",
+      "url": "https://doi.org/10.2147/JPR.S212080"
+    }
+  ],
+  "fixture": {
+    "description": "Five checksum-verified raw BDF recordings (sub-001 through sub-005) and the BIDS dataset/recording sidecars required for direct-MNE epoch, ERP, and PSD parity. Public data bytes are downloaded during scheduled or manually dispatched checks and are not stored in this repository.",
+    "expected_total_bytes": 331377555,
+    "subjects": [
+      "001",
+      "002",
+      "003",
+      "004",
+      "005"
+    ],
+    "task": "26ByBiosemi",
+    "event_label": "condition 54",
+    "files": [
+      {
+        "path": "dataset_description.json",
+        "byte_size": 559,
+        "sha256": "83ee628a450e5fe07f4f48fe22cd70a6dfe3fef21d10e21540a6f2283255010a",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/83e97b11556376cd3b45724316b7d96606c6289b?filename=dataset_description.json"
+      },
+      {
+        "path": "participants.json",
+        "byte_size": 671,
+        "sha256": "daa0263bf216da7c2955482c3c5c3f5cf54ae2f0129fc754f3629bdf8b64ef58",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/e2404e932c85aea27ce4cca18558885826f27776?filename=participants.json"
+      },
+      {
+        "path": "participants.tsv",
+        "byte_size": 948,
+        "sha256": "f625a728bd1c07e64b5c5a558ffb39fcc1d689e8fd15cc64574ad37c38c29863",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/852791e98a4a2b7c436e3676c2dce7cb0bdc8309?filename=participants.tsv"
+      },
+      {
+        "path": "task-26ByBiosemi_events.json",
+        "byte_size": 427,
+        "sha256": "93e5d5c4cb3842bba731abd82b845907bb93515d62b685de1c04c4c8466e2f86",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/9acf8a52cd2311942c76058fdfd13a7bb014852c?filename=task-26ByBiosemi_events.json"
+      },
+      {
+        "path": "sub-001/eeg/sub-001_task-26ByBiosemi_channels.tsv",
+        "byte_size": 944,
+        "sha256": "9e67fd2f067c7da952e2a264ccc45f68b61aac4f5a08fb592cd7b9c77ebaea6f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/362ac8d2fc2eb1e0c91f29feaaa240bde76ceef1?filename=sub-001_task-26ByBiosemi_channels.tsv"
+      },
+      {
+        "path": "sub-001/eeg/sub-001_task-26ByBiosemi_eeg.json",
+        "byte_size": 613,
+        "sha256": "28cedf99aac38ab19808269ee4bb2acef2670a254d160fc13f4e3815d7fb0d88",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/9ee7cee16c5d78620d4d7f96e49a7beb83048848?filename=sub-001_task-26ByBiosemi_eeg.json"
+      },
+      {
+        "path": "sub-001/eeg/sub-001_task-26ByBiosemi_electrodes.tsv",
+        "byte_size": 1963,
+        "sha256": "8a44389c3d85e0aac1b0d7235f0e6c688abd2a2c3392d58a8f05553875ab2f13",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0f4207fe6e3dd6b1064ab288427040e8c49e7b41?filename=sub-001_task-26ByBiosemi_electrodes.tsv"
+      },
+      {
+        "path": "sub-001/eeg/sub-001_task-26ByBiosemi_events.tsv",
+        "byte_size": 1142,
+        "sha256": "53bd460a305cf87648265db8398ae289d86c743687e0ddae92615b8daa466768",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/ebd7138eca4361cdf77893062a934d187c299f42?filename=sub-001_task-26ByBiosemi_events.tsv"
+      },
+      {
+        "path": "sub-001/eeg/sub-001_task-26ByBiosemi_eeg.bdf",
+        "byte_size": 65511936,
+        "sha256": "a3dcbdc69c5cd2b47c19cd2fcbe27ddbca0baa3deca6881b37e8e02fed970cda",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/SHA256E-s65511936--a3dcbdc69c5cd2b47c19cd2fcbe27ddbca0baa3deca6881b37e8e02fed970cda.bdf?filename=sub-001_task-26ByBiosemi_eeg.bdf"
+      },
+      {
+        "path": "sub-002/eeg/sub-002_task-26ByBiosemi_channels.tsv",
+        "byte_size": 944,
+        "sha256": "9e67fd2f067c7da952e2a264ccc45f68b61aac4f5a08fb592cd7b9c77ebaea6f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/362ac8d2fc2eb1e0c91f29feaaa240bde76ceef1?filename=sub-002_task-26ByBiosemi_channels.tsv"
+      },
+      {
+        "path": "sub-002/eeg/sub-002_task-26ByBiosemi_eeg.json",
+        "byte_size": 613,
+        "sha256": "93468a91be6945fbb3d2a3d9ab169cb62d314e1bb32069f126b82ba8f956c66a",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/bdd06bcdaedd4d4d756130ee97dde34ed28b325a?filename=sub-002_task-26ByBiosemi_eeg.json"
+      },
+      {
+        "path": "sub-002/eeg/sub-002_task-26ByBiosemi_electrodes.tsv",
+        "byte_size": 1963,
+        "sha256": "8a44389c3d85e0aac1b0d7235f0e6c688abd2a2c3392d58a8f05553875ab2f13",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0f4207fe6e3dd6b1064ab288427040e8c49e7b41?filename=sub-002_task-26ByBiosemi_electrodes.tsv"
+      },
+      {
+        "path": "sub-002/eeg/sub-002_task-26ByBiosemi_events.tsv",
+        "byte_size": 652,
+        "sha256": "89d1207735133c02b702be12a79a50b3a5eed231b8d363724f7bc5222d38ddf2",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/dfa38f5ed939a1746131c60fc5eeac747f2edfbd?filename=sub-002_task-26ByBiosemi_events.tsv"
+      },
+      {
+        "path": "sub-002/eeg/sub-002_task-26ByBiosemi_eeg.bdf",
+        "byte_size": 65711616,
+        "sha256": "a8f700a4b3c50420d9c357e698653deb73419f6a39ec9ddc52fafdf2c03f4b25",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/SHA256E-s65711616--a8f700a4b3c50420d9c357e698653deb73419f6a39ec9ddc52fafdf2c03f4b25.bdf?filename=sub-002_task-26ByBiosemi_eeg.bdf"
+      },
+      {
+        "path": "sub-003/eeg/sub-003_task-26ByBiosemi_channels.tsv",
+        "byte_size": 944,
+        "sha256": "9e67fd2f067c7da952e2a264ccc45f68b61aac4f5a08fb592cd7b9c77ebaea6f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/362ac8d2fc2eb1e0c91f29feaaa240bde76ceef1?filename=sub-003_task-26ByBiosemi_channels.tsv"
+      },
+      {
+        "path": "sub-003/eeg/sub-003_task-26ByBiosemi_eeg.json",
+        "byte_size": 613,
+        "sha256": "882931d7ea9f9b44208cc4ac403fa2b18492d26d0bbec50445ca0932085f87af",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/8df8ee8a2877ed4906b90b6acd00cd3e6dc46a82?filename=sub-003_task-26ByBiosemi_eeg.json"
+      },
+      {
+        "path": "sub-003/eeg/sub-003_task-26ByBiosemi_electrodes.tsv",
+        "byte_size": 1963,
+        "sha256": "8a44389c3d85e0aac1b0d7235f0e6c688abd2a2c3392d58a8f05553875ab2f13",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0f4207fe6e3dd6b1064ab288427040e8c49e7b41?filename=sub-003_task-26ByBiosemi_electrodes.tsv"
+      },
+      {
+        "path": "sub-003/eeg/sub-003_task-26ByBiosemi_events.tsv",
+        "byte_size": 652,
+        "sha256": "6713b3e7cb0371df314975bdd63732889dcccb42fd74175bf9187a2a4aefffd7",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/8b07e4045a496d4c8fd6faf870038c723b44d239?filename=sub-003_task-26ByBiosemi_events.tsv"
+      },
+      {
+        "path": "sub-003/eeg/sub-003_task-26ByBiosemi_eeg.bdf",
+        "byte_size": 65911296,
+        "sha256": "4c2fb27bc6e73d3e0aca19bdba1f85b905bd8ec48335f10bdf6d07e83d5fd47f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/SHA256E-s65911296--4c2fb27bc6e73d3e0aca19bdba1f85b905bd8ec48335f10bdf6d07e83d5fd47f.bdf?filename=sub-003_task-26ByBiosemi_eeg.bdf"
+      },
+      {
+        "path": "sub-004/eeg/sub-004_task-26ByBiosemi_channels.tsv",
+        "byte_size": 944,
+        "sha256": "9e67fd2f067c7da952e2a264ccc45f68b61aac4f5a08fb592cd7b9c77ebaea6f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/362ac8d2fc2eb1e0c91f29feaaa240bde76ceef1?filename=sub-004_task-26ByBiosemi_channels.tsv"
+      },
+      {
+        "path": "sub-004/eeg/sub-004_task-26ByBiosemi_eeg.json",
+        "byte_size": 613,
+        "sha256": "a5cf3d8934955b6124cfbb30fa23c81371f8176cde753317186d80980870720d",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/ae1bbfe2e1d716164e1257c5716ad167b3027a4d?filename=sub-004_task-26ByBiosemi_eeg.json"
+      },
+      {
+        "path": "sub-004/eeg/sub-004_task-26ByBiosemi_electrodes.tsv",
+        "byte_size": 1963,
+        "sha256": "8a44389c3d85e0aac1b0d7235f0e6c688abd2a2c3392d58a8f05553875ab2f13",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0f4207fe6e3dd6b1064ab288427040e8c49e7b41?filename=sub-004_task-26ByBiosemi_electrodes.tsv"
+      },
+      {
+        "path": "sub-004/eeg/sub-004_task-26ByBiosemi_events.tsv",
+        "byte_size": 652,
+        "sha256": "03366bb15a68f93af97dbefdb109d4501d24d91cd8e29a50e7b32b9d88cae2c6",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/150d145f73803dfef3e35d3dab5e2e81becb5a31?filename=sub-004_task-26ByBiosemi_events.tsv"
+      },
+      {
+        "path": "sub-004/eeg/sub-004_task-26ByBiosemi_eeg.bdf",
+        "byte_size": 65112576,
+        "sha256": "e0e5984ece35f742585106c63642dbdf96c833ddaa9a574193855cafb3d7b50c",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/SHA256E-s65112576--e0e5984ece35f742585106c63642dbdf96c833ddaa9a574193855cafb3d7b50c.bdf?filename=sub-004_task-26ByBiosemi_eeg.bdf"
+      },
+      {
+        "path": "sub-005/eeg/sub-005_task-26ByBiosemi_channels.tsv",
+        "byte_size": 944,
+        "sha256": "9e67fd2f067c7da952e2a264ccc45f68b61aac4f5a08fb592cd7b9c77ebaea6f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/362ac8d2fc2eb1e0c91f29feaaa240bde76ceef1?filename=sub-005_task-26ByBiosemi_channels.tsv"
+      },
+      {
+        "path": "sub-005/eeg/sub-005_task-26ByBiosemi_eeg.json",
+        "byte_size": 613,
+        "sha256": "33bfab481817758ae98637fa00fece4e3578ddb5351f8a6f16ed800c84341f4f",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0d730d983e3fecb5a5c23085aedb8f95da372073?filename=sub-005_task-26ByBiosemi_eeg.json"
+      },
+      {
+        "path": "sub-005/eeg/sub-005_task-26ByBiosemi_electrodes.tsv",
+        "byte_size": 1963,
+        "sha256": "8a44389c3d85e0aac1b0d7235f0e6c688abd2a2c3392d58a8f05553875ab2f13",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/0f4207fe6e3dd6b1064ab288427040e8c49e7b41?filename=sub-005_task-26ByBiosemi_electrodes.tsv"
+      },
+      {
+        "path": "sub-005/eeg/sub-005_task-26ByBiosemi_events.tsv",
+        "byte_size": 652,
+        "sha256": "dc52d3628b55452ace0603db2c6407aed4ae8764a0d67a2e2272267e326f2d05",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/ab1c4b045d2044635e36a572d77c33ecd0d88b4d?filename=sub-005_task-26ByBiosemi_events.tsv"
+      },
+      {
+        "path": "sub-005/eeg/sub-005_task-26ByBiosemi_eeg.bdf",
+        "byte_size": 69106176,
+        "sha256": "0d4ab10e6a1fef3723f9749ef3c42a17964cb56ff9717c371bda22b1fc53e3d8",
+        "source_url": "https://openneuro.org/crn/datasets/ds005284/objects/SHA256E-s69106176--0d4ab10e6a1fef3723f9749ef3c42a17964cb56ff9717c371bda22b1fc53e3d8.bdf?filename=sub-005_task-26ByBiosemi_eeg.bdf"
+      }
+    ]
+  },
+  "limitations": [
+    "This bounded five-participant subset supports numerical engineering parity with direct MNE calls; it does not establish scientific approval of the dataset, event definition, epoch window, baseline, annotation rejection, or PSD settings.",
+    "The scheduled comparison uses the predeclared settings and tolerances in tests/test_pinned_ds005284_reference.py and verifies that the public source BDF checksums remain unchanged.",
+    "The dataset is used for research software testing only; do not use it for diagnosis, treatment, participant scoring, or clinical claims."
+  ]
+}

@@ -17,7 +17,7 @@ jobs:
   smoke:
     name: Pinned OpenNeuro integration smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -53,16 +53,29 @@ jobs:
 
       - name: Retrieve sample-bearing public EEG reference
         run: >-
-          uv run python scripts/fetch_bids_eeg_fixture.py
+          uv run --locked python scripts/fetch_bids_eeg_fixture.py
           "$RUNNER_TEMP/ds007338-eegeyenet"
           --manifest docs/fixtures/ds007338-sub-EP10-1.0.0.json
 
       - name: Compare BrainLearn, direct MNE, and Python export on public samples
         run: >-
-          uv run --group eeg pytest -q
+          uv run --locked --group eeg pytest -q
           tests/test_eeg_ica.py::test_public_bids_eeg_ica_matches_direct_mne_and_generated_export
         env:
           BRAINLEARN_PUBLIC_BIDS_EEG_FIXTURE: ${{ runner.temp }}/ds007338-eegeyenet
+
+      - name: Retrieve the pinned five-participant ERP reference
+        run: >-
+          uv run python scripts/fetch_bids_eeg_fixture.py
+          "$RUNNER_TEMP/ds005284"
+          --manifest docs/fixtures/ds005284-sub-001-005-1.0.0.json
+
+      - name: Compare epochs, ERP, and PSD with direct MNE on five participants
+        run: >-
+          uv run --group eeg pytest -q
+          tests/test_pinned_ds005284_reference.py
+        env:
+          BRAINLEARN_DS005284_ROOT: ${{ runner.temp }}/ds005284
 
       - name: Upload diagnostic drift log on failure
         if: failure()

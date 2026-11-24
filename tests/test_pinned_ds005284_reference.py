@@ -1,7 +1,9 @@
 """Pinned real-data parity against separately written direct MNE operations.
 
 Set ``BRAINLEARN_DS005284_ROOT`` to an extracted OpenNeuro ds005284:1.0.0
-sample containing sub-001 through sub-005 to enable this integration test.
+sample containing sub-001 through sub-005 to enable this integration test. The
+scheduled fixture subset and checksums are documented in
+``docs/fixtures/ds005284-sub-001-005-1.0.0.json``.
 """
 
 from __future__ import annotations
