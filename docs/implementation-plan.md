@@ -677,19 +677,20 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-11-24 | Step 8/9 final monitoring review — PR #74 | Approved for engineering monitoring; scientific gates remain open | Independently re-reviewed exact code head `5f6cbb5bc1ffc630abc5019daceddf3e69fb90d9` against `main` `ccb7a3b67f25cb497b8d6571ca1a7a8a8a843436`. The repaired matcher redacts `/root`, `/root/`, `/srv`, `/opt`, and nested POSIX paths; serialized provenance rejects unredacted values and accepts redacted values. Relative `./dataset` remains accepted. Static templates, notebook, and lockfile remain covered by the secret scanner while path scanning applies to data-bearing metadata; generated README examples are relative. Full local gate independently reproduced: lock check, Ruff, format (127), strict mypy (38), pytest (855 passed/9 skipped/2 upstream warnings), pinned ds005284 direct-MNE reference (5 passed; source hashes unchanged), focused export/API tests (2 passed), frontend ESLint/Prettier, Vitest (186/22), build (1,852 modules; existing 534.07 kB advisory), production audit (0 vulnerabilities), strict Sphinx HTML/linkcheck, responsive/axe (8 pages × 375/1440 px), docs audit (0 vulnerabilities), server wheel with all 5 export resources, generated-script lint, and `git diff --check`. Hosted Python/frontend checks passed in run `45364976598`, docs passed in `45364976606`; Pages deployment skipped as expected. The meeting notes remain provisional; no independent scientific methods decision or exported human-cohort replay is claimed. The PR-author account cannot create an independent GitHub review, and the connected review API returns HTTP 403; local monitor disposition is recorded in `REVIEW.md`, with a PR conversation comment under the author identity. Step 7, Step 8, and Step 9 parent/scientific-certification gates remain unchecked. PR #74 stays open; no merge. | PR #74 |
 
+| 2026-11-24 | PR #74 merge after final engineering review | Merged; science gates remain open | After the independent engineering disposition was recorded and Python/frontend/docs checks passed on monitor-record head `6e86d1a14a0c39e2b26e334b4cd50ecc4d5aceda` (Actions runs `45366023580` and `45366023577`), squash-merged PR #74 as `1072511903fc961f23c670080e12da5d6466b16d`. Step 7, Step 8, and Step 9 parent/scientific-certification gates remain unchecked. The EEG methods notes remain provisional, and the exported project has not been replayed on a pinned human cohort. | PR #74 |
+
+| 2026-11-24 | Step 10 cross-platform clean-install smoke slice | Implemented and locally verified; hosted matrix pending | Added a CI matrix for Ubuntu 24.04 x86-64, macOS 15 Apple Silicon, and Windows Server 2025 x86-64. Each runner installs the locked Python 3.12 EEG workspace and Node 22 frontend, exercises the local API/cohort CLI, and builds the frontend; actions remain pinned to full commit SHAs and repository permissions remain read-only. On macOS Apple Silicon, locked sync, API/CLI smoke tests (16 passed), installed CLI `--help`, `npm ci`, and Vite production build (1,852 modules; existing ~534 kB advisory) passed. Full local gate also passed: Ruff, formatting (127 files), strict mypy (44 files), pytest (855 passed, 9 skipped, 2 upstream warnings), frontend lint/format/Vitest (186 tests/22 files), production audit (0 vulnerabilities), lock check, strict Sphinx HTML/linkcheck, responsive/axe (8 pages × 375/1440 px), and `git diff --check`. Linux/macOS/Windows hosted matrix results remain pending, so the Step 10 platform-smoke leaf remains unchecked. This verifies installation and app startup paths only; it does not certify EEG methods or cross-platform numerical equivalence. | PR pending |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Combined Step 8/9 review on PR #74
+### Step 10 — Audit and enforce pinned GitHub Actions
 
-Review the combined Step 8 cohort workflow and Step 9 Python/notebook export
-at the exact current PR #74 head. Reproduce the required local gate and record
-independent monitoring findings in `REVIEW.md` and this plan. Repair findings
-on PR #74's branch and rerun checks on the final head. Keep PR #74 open until
-monitor review is complete. Keep Step 7, Step 8, and Step 9 parent and
-scientific-certification gates unchecked; do not describe the owner-directed
-Step 9 stack merge or engineering verification as independent review or
-scientific approval. The EEG methods decision remains pending, and the
-exported project has not been replayed on a pinned human cohort.
+Audit all repository GitHub Actions workflows, retain full-SHA action pins,
+and add an automated guard against introducing tag-only third-party actions.
+Verify workflow permissions are minimal, especially for pull-request jobs.
+Keep Step 7, Step 8, and Step 9 parent/scientific-certification gates
+unchecked; the Step 10 platform smoke does not establish EEG scientific
+approval or numerical certification.
