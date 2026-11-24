@@ -248,7 +248,7 @@ Completion gate: a second clean environment runs the exported Python project wit
 - [x] Add Linux, macOS, and Windows clean-install smoke tests.
 - [x] Pin third-party actions to commit SHAs and minimize permissions.
 - [x] Add schema compatibility and generated-code integration jobs.
-- [ ] Add scheduled scientific reference tests.
+- [x] Add scheduled scientific reference tests.
 - [ ] Add dependency-license inventory and production vulnerability scanning.
 - [ ] Build a launcher/installer spike without changing the core architecture.
 - [ ] Publish an explicit OS/architecture/backend support matrix.
@@ -701,17 +701,18 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-11-24 | Step 10 scheduled scientific reference tests | Implemented and locally verified; hosted workflow run and independent monitoring pending | Added a checksum-pinned `ds005284:1.0.0` subset manifest for sub-001 through sub-005 (29 files, 331,377,555 bytes), including the five raw BDFs and their BIDS metadata. The snapshot commit/tree identifier is `71e72dd42cd756fa530d0e3e4b710aba06a8b581`; the manifest records CC0-1.0 and dataset/publication citations. The fixture fetcher retrieved every file and verified its declared size and SHA-256; no public data bytes are stored in git. Extended the existing weekly/manual `dataset-smoke` workflow (no PR trigger) to fetch this subset and run the predeclared independent direct-MNE epoch/ERP/PSD comparisons; increased the bounded job timeout from 10 to 30 minutes to cover the additional ~331 MB transfer. The focused reference passed 5/5 on locked Python 3.12.14, MNE 1.13.2, MNE-BIDS 0.20.0, NumPy 2.5.3, and SciPy 1.18.1, with source BDF checksums unchanged. Full local verification: `uv lock --check`; action pin/permission audit; Ruff; format check (129 files); strict mypy (42 source files); full pytest (866 passed, 4 skipped, 2 upstream deprecation warnings, including the five real-data reference cases); frontend lint and Prettier; Vitest (186 tests/22 files); Vite build (1,852 modules; existing ~534 kB chunk advisory); production audit (0 vulnerabilities); strict Sphinx HTML and linkcheck; responsive/axe checks (8 pages × 375/1440 px); and `git diff --check`. The first full Vitest run had one transient assertion failure in existing `runFlow.test.tsx` (185/186); the focused rerun passed 4/4 and the subsequent full rerun passed 186/186 without source changes. A parallel local Sphinx HTML/linkcheck invocation collided in Sphinx-Gallery's shared generated file; the sequential linkcheck passed. `npm ci` reported 7 moderate findings in the unchanged frontend development dependency tree; the production-only audit passed. PR #81 code head is `643079a7019bdf19f7bb78aa7f8bf187a31637d6`; the scheduled hosted job and independent monitoring review remain pending. The Step 10 scheduled-reference leaf and Step 10 parent remain unchecked. No scientific method, setting, default, approval, or certification status changed. | PR #81 |
 
+| 2026-11-24 | PR #81 independent monitoring review — Step 10 scheduled ds005284 reference | Approved for the scheduled-reference subitem only; final review-record checks pending | Independently reviewed exact code head `a1c02487ca5871a1ee7e9367f9474ebcf005685e` against main `75285616f35867ea164a807ffb33d48b1b1c9f84`. In a clean macOS 27.2 arm64 checkout with Python 3.12.14, all 29 manifest files/331,377,555 bytes passed size and SHA-256 verification; the OpenNeuro GraphQL snapshot metadata matched the pinned tree, CC0 license, dataset DOI, BIDS version, and cited publication. The five-participant direct-MNE epoch/ERP/PSD reference passed 5/5 and the full suite with the fixture passed 866 (4 skipped, 2 upstream warnings). Ruff, format (129), strict mypy (42 source files), action audit, lock check, frontend lint/format/Vitest (186/22), production build and audit (0 vulnerabilities), strict Sphinx HTML/linkcheck, responsive/axe (8 pages × 375/1440 px), and `git diff --check` passed. The platform API/CLI smoke passed 16 tests and the installed CLI help succeeded. Hosted Python, frontend, schema, generated-code, and Linux/macOS/Windows jobs passed in run `45382865102`; docs passed in run `45382865247` and Pages was skipped. Manual Dataset Smoke run `45382882213` ran exact code head `a1c02487ca5871a1ee7e9367f9474ebcf005685e`, verified all five raw BDF hashes, and passed the direct-MNE test (5 passed) end to end. `npm ci` reported 7 moderate findings in the unchanged development dependency tree; the production-only audit was clean. The scheduled-reference leaf is checked. Keep the Step 10 parent and Step 7/8/9 scientific-certification gates unchecked. No scientific setting, default, method approval, or certification status changed. Do not merge until required checks pass on the final review-record head. | PR #81 |
+
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 10 — Add scheduled scientific reference tests
+### Step 10 — Add dependency-license inventory and production vulnerability scanning
 
-Run the existing direct-MNE epoch, ERP, and PSD parity test on the checksum-
-pinned ds005284 sub-001 through sub-005 subset in the trusted weekly/manual
-integration smoke workflow. Keep the public data outside git, the workflow
-read-only and off pull-request triggers, and the numerical result clearly
-labeled as engineering parity rather than scientific approval. Step 7/8/9
+Add a reproducible inventory of Python and frontend dependency licenses and
+production-dependency vulnerability checks. Keep dependency versions pinned,
+report unsupported or unknown licenses explicitly, and avoid automatic
+upgrades. This engineering work does not certify EEG methods; Step 7/8/9
 scientific-certification gates remain unchecked, and the Step 10 parent remains
 open.
