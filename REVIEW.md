@@ -2441,3 +2441,75 @@ The initial assertion appears timing-sensitive; it should be investigated if
 it recurs. All final-head checks are green, so the approved subitem is ready for
 the parent to merge. The Step 10 parent and Step 7/8/9 scientific-certification
 gates remain unchecked.
+
+## Step 10 scheduled ds005284 reference — PR #81
+
+Review date: 2026-11-24
+
+Scope: exact code head `a1c02487ca5871a1ee7e9367f9474ebcf005685e`, compared
+with main `75285616f35867ea164a807ffb33d48b1b1c9f84`.
+
+Status: **approved for the Step 10 scheduled scientific-reference subitem
+only**. I found no actionable issue in the reviewed workflow, manifest, or
+reference test. The plan leaves Step 10 and the Step 7/8/9 scientific gates
+unchecked.
+
+Dataset and workflow review:
+
+- The manifest pins only sub-001 through sub-005 from `ds005284:1.0.0`: 29
+  files totaling 331,377,555 bytes, including five raw BDFs and their BIDS
+  sidecars. It contains checksums and metadata, not data bytes. The fixture
+  fetcher rejects traversal and symlinks, restricts HTTPS hosts to OpenNeuro
+  and S3, validates redirect hosts, verifies every file's declared size and
+  SHA-256 before atomic installation, and refuses to overwrite mismatched
+  files.
+- I independently fetched all 29 files to `/tmp` in a clean checkout. Every
+  size and SHA-256 matched, including all five BDF checksums; the reference
+  test rechecks each BDF before and after processing. The fetched source files
+  remain outside the repository.
+- OpenNeuro's official GraphQL snapshot response for `ds005284:1.0.0` confirms
+  it is public, titled “26 By Biosemi”, created on 2024-06-26, has tree hash
+  `71e72dd42cd756fa530d0e3e4b710aba06a8b581`, declares `License: CC0`, and
+  reports DOI `10.18112/openneuro.ds005284.v1.0.0`. Its references list the
+  cited Lu et al. 2019 paper. The manifest's snapshot identity, BIDS version,
+  dataset DOI, license, and citation agree with that response.
+- The scheduled/manual-only workflow has `contents: read`, SHA-pinned actions,
+  no pull-request trigger, and a bounded 30-minute timeout. The new steps fetch
+  the pinned subset outside git and run the five-participant reference. The
+  test explicitly uses event `condition 54`, a -0.2 to 0.8 second epoch,
+  -0.2 to 0 baseline, annotation rejection, and zero peak-to-peak amplitude
+  rejection; PSD uses Welch 1–40 Hz with 256-sample FFT/segments, 128-sample
+  overlap, and a Hamming window. Epoch tolerance is 1e-12 V (zero relative
+  tolerance); ERP/PSD summaries use 1e-7 relative and 1e-12 absolute tolerance,
+  and PSD frequencies must match exactly. It compares BrainLearn outputs with
+  separately written direct-MNE calls and asserts source BDF checksums remain
+  unchanged. These are engineering parity settings, not scientific approvals.
+
+Independent clean-checkout gate: detached worktree at the exact code head on
+macOS 27.2 arm64 with Python 3.12.14. `uv lock --check`, locked EEG sync, the
+action security audit, Ruff, format check (129 files), and strict mypy (42
+source files) passed. The manifest fetcher verified all 29 objects. The five
+participant direct-MNE test passed all 5 cases; running the full suite with
+that fixture passed 866 tests with 4 skipped and 2 upstream deprecation
+warnings. Frontend ESLint/Prettier, Vitest (186 tests in 22 files), production
+build (1,852 modules; existing 534.07 kB chunk advisory), and production
+dependency audit (0 vulnerabilities) passed. Strict Sphinx HTML and linkcheck
+passed; responsive/axe passed for 8 pages at 375 px and 1440 px. `git diff --check`
+passed. `npm ci` reported 7 moderate findings in the unchanged
+development dependency tree.
+
+Hosted verification on the exact code head passed: Python, frontend, schema,
+generated-code, and Linux/macOS/Windows checks in Actions run `45382865102`;
+documentation passed in `45382865247`, with Pages skipped as expected. The
+manual Dataset Smoke dispatch also ran the exact head,
+`a1c02487ca5871a1ee7e9367f9474ebcf005685e`, and passed end to end in run
+`45382882213`. All fetch steps succeeded, including verification of the five
+BDF hashes, and the final direct-MNE epoch/ERP/PSD step passed all 5 cases.
+The workflow completed in about 2 minutes 20 seconds.
+
+This approval covers the scheduled reference-test workflow and manifest only.
+The results do not approve the event definition, epoch/baseline choices,
+rejection settings, PSD settings, clinical use, or any EEG method. Keep the
+Step 10 parent and Step 7/8/9 scientific-certification gates unchecked. The
+final review-record head must pass its hosted checks before the parent merges;
+I did not merge PR #81.
