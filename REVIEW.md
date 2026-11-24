@@ -2368,3 +2368,76 @@ The final review-record head still requires its hosted checks to pass before
 merge. This disposition approves only the action-pin and permission guard; it
 does not approve the Step 10 parent, scientific methods, or any EEG
 certification.
+
+## Step 10 schema compatibility and generated-code CI — PR #80
+
+Review date: 2026-11-24
+
+Scope: exact code head `f39411603a4dbdcadc986b60eaadd1a85f9bc609`, compared
+with main `b5496024043a54429760b73eda83dc2cb9356c4b`.
+
+Status: **approved for the Step 10 persisted-schema compatibility and
+generated-code integration subitem only**. I found no actionable issue in the
+reviewed diff, which changes only `.github/workflows/ci.yml` and the
+implementation plan. Step 10's parent, other remaining subitems, and all Step
+7/8/9 scientific-certification gates remain unchecked.
+
+Workflow review:
+
+- The two added jobs run on `ubuntu-24.04`, set up Python 3.12 and uv 0.12.5,
+  and install the locked workspace with the EEG dependency group. The existing
+  workflow-level `contents: read` permission is inherited; neither job adds a
+  permission, secret, external data fetch, action reference, or privileged
+  environment. The existing full-SHA action guard still passes.
+- The persisted-schema command covers workflow/project migrations, execution
+  and run records, datasets/downloads, cohort records, presentation settings,
+  and researcher decisions. The selected tests use fixtures and mock download
+  providers; the opt-in public-data tests remain skipped without their explicit
+  environment variable.
+- The generated-code job executes the selected filter, ICA review/export, and
+  standalone cohort replay cases. All use the checked-in synthetic BIDS
+  fixture and compare BrainLearn/direct-MNE/generated outputs while checking
+  source preservation. These are bounded engineering integration checks and
+  do not establish scientific certification.
+
+Independent clean-checkout reproduction: detached worktree at the exact code
+head on macOS 27.2 arm64, using Python 3.12.14. `uv lock --check` and locked
+EEG sync passed. The exact persisted-schema command passed 424 tests with 2
+upstream deprecation warnings; the exact generated-code command passed all 3
+tests with 2 warnings. Ruff, formatting (129 files), strict mypy (38 source
+files), the action security audit, and the full pytest suite passed (861
+passed, 9 skipped, 2 upstream warnings). The platform-smoke API/CLI tests
+passed 16 tests and installed `brainlearn-cohort --help` succeeded. Frontend
+ESLint/Prettier, Vitest (186 tests in 22 files), production build (1,852
+modules; existing 534.07 kB chunk advisory), and production audit (0
+vulnerabilities) passed; the local Node version was 24.22.1. Strict Sphinx
+HTML/linkcheck and responsive/axe checks passed for 8 pages at 375 px and
+1440 px. The full-tree npm install reported 7 moderate development-tree
+findings; dependency files are unchanged in this PR.
+
+Hosted checks on the code head passed: Python, schema compatibility,
+generated-code integration, frontend, Linux, and Windows jobs in Actions run
+`45374955698`; documentation passed in run `45374955592`, and Pages was
+skipped as expected. The macOS Apple Silicon smoke job was cancelled after 15
+minutes waiting for a runner (`runner_name` empty and no steps started; job
+`138378732402`). GitHub's PR check summary labels the cancellation as failed,
+but it did not execute a test and is not a reproducible code/test failure.
+The same API/CLI smoke and full local gate ran successfully on this macOS
+arm64 host. The job is outside required branch protection; do not describe the
+hosted macOS check as passed.
+
+This approves only the persisted-schema and generated-code CI subitem. Keep
+the Step 10 parent and Step 7/8/9 scientific-certification gates unchecked.
+
+Final review-record head `7ea44e7e0d666d11d6516437d56081fb79912b78` passed
+the required Python and frontend checks plus schema, generated-code, Linux,
+macOS, and Windows jobs in Actions run `45378356263`, attempt 2. Documentation
+passed in run `45378356129`; Pages deployment was skipped as expected. On
+attempt 1, the existing `runFlow.test.tsx` test failed once at line 199
+(185/186 frontend tests passed) and the macOS job was canceled after waiting
+without a runner. Neither result reproduced: the same-head attempt 2 passed all
+186 frontend tests and all platform jobs. No source changed between attempts.
+The initial assertion appears timing-sensitive; it should be investigated if
+it recurs. All final-head checks are green, so the approved subitem is ready for
+the parent to merge. The Step 10 parent and Step 7/8/9 scientific-certification
+gates remain unchecked.
