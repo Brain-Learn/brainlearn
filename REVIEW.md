@@ -2304,3 +2304,67 @@ This review does not approve the Step 10 parent, full platform certification,
 cross-platform numerical equivalence, or any EEG scientific method. Keep all
 Step 7/8/9 scientific-certification gates and the Step 10 parent unchecked; do
 not merge until this review record is pushed and its final-head checks pass.
+
+## Step 10 action-pin and permissions guard — PR #79
+
+Review date: 2026-11-24
+
+Scope: code head `e90b8c27109cf5d398223a27c68a77cf8e4fa9c9` and plan-evidence
+head `2bb77fa6fe2eb1833f5b2e17afb32e5b17d436a4`, compared with main at
+`75a9aa356ad4488b93d303126e230e90c287307b`.
+
+Status: **approved for the Step 10 action-pin and least-permissions subitem
+only**. I found no actionable code issue in the reviewed scope. The Step 10
+parent and all Step 7/8/9 scientific-certification gates remain unchecked.
+
+Workflow review:
+
+- `scripts/check_action_security.py` parses each top-level `.yml`/`.yaml`
+  workflow with `yaml.safe_load`, recursively inspects `uses` fields, requires
+  third-party references to end in exactly 40 hexadecimal SHA characters, and
+  permits only local relative actions without `..` path components. I verified
+  the audit covers all three repository workflows.
+- All nine distinct action references are full-SHA pins. I independently
+  resolved each release tag with `git ls-remote`; every tag target matches the
+  checked-in SHA and version comment: checkout `v7.0.1` →
+  `3d3c42e5aac5ba805825da76410c181273ba90b1`; configure-pages `v5.0.0` →
+  `983d7736d9b0ae728b81ab479565c72886d7745b`; deploy-pages `v4.0.5` →
+  `d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e`; download-artifact `v5.0.0` →
+  `634f93cb2916e3fdff6788551b99b062d0335ce0`; setup-node `v7.0.0` →
+  `820762786026740c76f36085b0efc47a31fe5020`; setup-python `v7.0.0` →
+  `5fda3b95a4ea91299a34e894583c3862153e4b97`; upload-artifact `v4.6.1` →
+  `4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1`; upload-pages-artifact
+  `v5.0.0` → `fc324d3547104276b827a68afc52ff2a11cc49c9`; setup-uv `v10.1.0` →
+  `bec219d24cd3e171d82865faccec33120bb574f4`.
+- Each workflow grants only top-level `contents: read`. The docs deployment
+  job is the sole write-permission exception and has exactly `pages: write`
+  plus `id-token: write`; its parsed condition permits only a push to `main` or
+  manual dispatch on `main`. The scanner rejects write-all, job-level content
+  writes, unpinned/tag-only action refs, the SHA-256 container-image digest
+  form, and a docs deployment condition that allows pull requests. Jobs without
+  a `permissions` key inherit the read-only workflow grant.
+- The six new regression tests passed. Additional clean-checkout probes
+  confirmed full-SHA acceptance, rejection of tag-only, container tag and
+  digest references, and the read-only inherited-job case.
+
+Independent clean-checkout gate: detached worktree at the exact code head on
+macOS arm64, using Python 3.12.14. `uv lock --check` and locked sync passed;
+the action audit passed; Ruff, format check (129 files), and strict mypy (38
+source files) passed; pytest passed 861 tests with 9 skipped and 2 upstream
+deprecation warnings. Frontend ESLint, Prettier, Vitest (186 tests in 22
+files), Vite build (1,852 modules; existing 534.07 kB chunk advisory), and
+`npm audit --omit=dev` (0 vulnerabilities) passed. Strict Sphinx HTML and
+linkcheck passed; responsive/axe checks passed for 8 pages at 375 px and 1440
+px. `npm ci` reported 7 moderate findings in the full dependency tree; the
+production-only audit was clean, and dependency files were outside this PR's
+diff.
+
+Hosted checks passed on code head `e90b8c2`: Python, frontend, and all three
+clean-install platform jobs in Actions run `45372003546`; strict docs in run
+`45372003326`; Pages deployment was skipped as expected. Plan-evidence head
+`2bb77fa` changes only `docs/implementation-plan.md` and was checked to record
+the hosted evidence, six focused tests, and only the verified Step 10 leaf.
+The final review-record head still requires its hosted checks to pass before
+merge. This disposition approves only the action-pin and permission guard; it
+does not approve the Step 10 parent, scientific methods, or any EEG
+certification.
