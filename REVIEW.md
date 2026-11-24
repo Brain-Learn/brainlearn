@@ -2247,3 +2247,60 @@ reproducibility/privacy gates. The Nov 9 consultation remains provisional and
 does not constitute independent scientific methods review. No pinned human
 cohort was replayed by the exported standalone project. Keep Step 7, Step 8,
 and Step 9 parent and scientific-certification gates unchecked; do not merge.
+
+## Step 10 cross-platform clean-install smoke — PR #78
+
+Review date: 2026-11-24
+
+Scope: implementation head `78c52fa99c6a66e22e048ddd61362d2b86b28072` and
+plan evidence head `90c565203ae36c390a844924109daaa9d5da4664`, compared with
+`main` at `1072511903fc961f23c670080e12da5d6466b16d`.
+
+Status: **approved for the Step 10 platform-smoke subitem only**. The final
+diff is limited to `.github/workflows/ci.yml` and the implementation plan. The
+plan checks only “Add Linux, macOS, and Windows clean-install smoke tests”; the
+Step 10 parent and its remaining subitems stay unchecked.
+
+Workflow review:
+
+- The matrix labels are `ubuntu-24.04`, `macos-15`, and `windows-2025`. GitHub's
+  [hosted-runner documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job)
+  identifies these as x64 Linux, arm64 Apple Silicon macOS, and x64 Windows
+  runners, respectively.
+- All four actions are pinned to full commit SHAs. I independently resolved
+  each public tag with `git ls-remote`: checkout `v7.0.1` →
+  `3d3c42e5aac5ba805825da76410c181273ba90b1`; setup-python `v7.0.0` →
+  `5fda3b95a4ea91299a34e894583c3862153e4b97`; setup-uv `v10.1.0` →
+  `bec219d24cd3e171d82865faccec33120bb574f4`; setup-node `v7.0.0` →
+  `820762786026740c76f36085b0efc47a31fe5020`. Each matches its workflow pin
+  and version comment.
+- Workflow permissions are limited to `contents: read`; the matrix adds no
+  job-level permission, secrets, privileged environment, or data upload.
+- Each runner sets up Python 3.12 and uv 0.12.5, installs the locked workspace
+  with the EEG group, runs the API and CLI test modules, invokes the installed
+  `brainlearn-cohort --help`, sets up Node 22, runs `npm ci`, and builds the
+  frontend. `fail-fast: false` allows all platform results to be reported.
+
+Independent clean-checkout reproduction: in a detached worktree at the exact
+implementation head on macOS 27.2 arm64, a Python 3.12.14 environment synced
+the locked workspace and EEG dependencies; the exact API/CLI test command
+passed 16 tests with 2 upstream deprecation warnings; the installed CLI help
+command succeeded; a clean `npm ci` completed; and the frontend build passed
+under Node 22.23.5 (1,852 modules; existing 534.07 kB chunk advisory). The
+workflow's test behavior is bounded: API coverage uses FastAPI's in-process
+`TestClient`, and the CLI module exercises its validation/helpers plus the
+installed `--help` entry point. It is not a live local-server/GUI cohort replay
+or cross-platform scientific-equivalence test.
+
+Hosted verification passed on the implementation head: Linux, macOS, and
+Windows smoke jobs plus Python and frontend checks in Actions run
+`45367997816`; documentation in `45367997736`; Pages deployment was skipped
+as expected. The parent then recorded those results on head `90c5652`; all
+three smoke jobs and the Python/frontend checks passed in run `45368679848`,
+and documentation passed in run `45368679920` (Pages skipped). No workflow
+defect remains for this bounded subitem.
+
+This review does not approve the Step 10 parent, full platform certification,
+cross-platform numerical equivalence, or any EEG scientific method. Keep all
+Step 7/8/9 scientific-certification gates and the Step 10 parent unchecked; do
+not merge until this review record is pushed and its final-head checks pass.
