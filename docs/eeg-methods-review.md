@@ -4,15 +4,18 @@
 
 **Deferred by product-owner decision (2026-10-28); not scientifically approved.**
 Partial email feedback from Arnaud Delorme is recorded below.
-Kay Robbins declined due to availability, and Makoto Miyakoshi offered a
-one-to-one online discussion. After checking availability, we said the first
-week of November was unavailable and asked for options after November 8 or a
-brief written critique. On 2026-10-28 the product owner directed the project
-to stop waiting for reviewer availability and continue to Step 8. This is a
-sequencing waiver only: no independent methods decision has been received,
-Step 7 remains unchecked, and the bounded workflow is not scientifically
-certified. Keep method settings explicit and provisional; the review can be
-resumed if an independent reviewer becomes available.
+Kay Robbins declined due to availability. Makoto Miyakoshi and the product
+owner held a one-to-one discussion on 2026-11-09. A local machine transcript
+was generated from the owner's recording on 2026-11-24; the transcript and the
+notes below have not been checked by the owner or meeting participant. Treat
+them as provisional consultation notes, not a verified transcript or a methods
+decision. Miyakoshi said he had not used MNE's ICA implementation or EEGPrep
+and did not review a BrainLearn code commit. On 2026-10-28 the product owner
+directed the project to stop waiting for reviewer availability and continue to
+Step 8. This is a sequencing waiver only: Step 7 remains unchecked, and the
+bounded workflow is not scientifically certified. Keep method settings
+explicit and provisional; the review can be resumed if an independent reviewer
+becomes available.
 
 ## Review scope
 
@@ -375,8 +378,55 @@ comparison leaf. No reviewer has approved the scientific assumptions yet.
   requested possible times (reply `1a182ab4ba35b6d4`). After checking
   availability, we followed up on 2026-10-28 to say the first week of November
   was unavailable and ask for options after November 8 or a brief written
-  critique (reply `1a182b73e2050e4c`). Scheduling and the methods review remain
-  pending; no scientific decision is inferred.
+  critique (reply `1a182b73e2050e4c`). A one-to-one discussion took place on
+  2026-11-09. The project-relevant, provisional notes are below; no code commit
+  was reviewed and no overall methods decision or scientific approval was
+  given.
+- 2026-11-09 consultation notes (provisional): The owner-supplied recording
+  was transcribed locally with whisper.cpp 1.9.5 and the `small.en` model on
+  2026-11-24. There is no speaker diarization, and neither the transcript nor
+  this paraphrase has been verified by a meeting participant. The audio and
+  raw transcript are not included in this repository.
+  - For ICA, Miyakoshi emphasized that strong outliers and nonstationary spans
+    can dominate the fit; his general advice was to keep such spans out of ICA
+    fitting and make the treatment explicit. The discussion did not establish
+    a recording-specific rule for rejecting epochs that overlap the annotated
+    terminal segment.
+  - He said bad-channel handling has no universal threshold. He described the
+    decision as depending on the contaminated duration, channel count and
+    location, and downstream analysis. He cautioned that interpolation is less
+    reliable near the montage edge than for a well-surrounded central sensor.
+    This supports explicit, per-recording human decisions; it does not define
+    an automatic drop/interpolate rule.
+  - For unknown reference metadata, he said ICA is generally less dependent on
+    the reference than on the data's mean/DC level, and discussed average
+    reference for denser montages and REST for sparse montages. This is
+    reviewer guidance, not a BrainLearn default; its fit to the pinned
+    recording and workflow remains unverified.
+  - He said he had not used MNE's ICA implementation or EEGPrep and builds
+    project-specific preprocessing. He therefore did not endorse either
+    implementation or specify BrainLearn's filter, ICA, or component-rejection
+    settings. He noted that component count should be interpreted alongside
+    variance explained.
+  - He treated ambiguous event labels as a data-validity problem separate from
+    signal processing. For artifact handling, he described preferring to
+    preserve continuous data and using ASR rather than rejecting time windows;
+    this is not a request or validation to add ASR to the current workflow.
+  - For ERP and PSD summaries, he recommended comparing conventional mean/SD
+    with robust summaries such as median, trimmed mean, and median absolute
+    deviation, rather than treating one estimator as the only truth. The
+    current milestone's mean/SD outputs remain unchanged; robust summaries are
+    a possible later sensitivity analysis. A 2016 PSD paper was mentioned in
+    the call, but its exact citation is not available in the recording and is
+    not added to the citation list.
+  - He encouraged comprehensive, automatically drafted methods reporting
+    followed by human review. This is consistent with the existing report
+    design but is not an independent validation of its contents.
+- Disposition: this was a useful scientific consultation with partial,
+  general guidance. It did not assess the exact implementation, approve
+  parameters, request a specific code change, or close the independent
+  scientific-review gate. No processing method or default changes from these
+  notes. Step 8 remains experimental and its certification gates stay open.
 - Additional independent-review request: Dr. Robert Oostenveld, Associate
   Principal Investigator in the Donders Institute's MEG Methods group, whose
   work develops EEG/MEG analysis methods and the FieldTrip toolbox ([Radboud
