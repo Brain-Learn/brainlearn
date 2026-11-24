@@ -2205,3 +2205,45 @@ Independent verification on the exact head:
 Reopen the Step 9 subitem for preventing unintended absolute personal paths
 until the path-guard defect is repaired and verified. Keep Step 7, Step 8, and
 Step 9 parent/scientific-certification gates unchecked. Do not merge PR #74.
+
+## Combined Step 8/9 final monitoring review — PR #74
+
+Review date: 2026-11-24
+
+Scope: final code head `5f6cbb5bc1ffc630abc5019daceddf3e69fb90d9`, compared with
+`main` at `ccb7a3b67f25cb497b8d6571ca1a7a8a8a843436`.
+
+Status: **approved for the engineering review gate**. The remaining path
+redaction defect from the first review is fixed. Independent probes confirm
+that `/root`, `/root/`, `/srv`, `/opt`, and nested private paths are redacted
+from failure text and rejected when unredacted in serialized provenance.
+Relative paths such as `./dataset` remain accepted. Path scanning applies to
+data-bearing metadata members; secret scanning still applies to every archive
+member, including static scripts, notebook templates, and the lockfile. The
+generated README examples are `./dataset`, `./brainlearn-project`, and
+`datasets/your-bids-dataset`, with no `/path/to/...` placeholders. The
+failed-cohort export integration test passes.
+
+The exact-head local gate passed: `uv lock --check`; Ruff; format check (127
+files); strict mypy (38 source files); pytest (855 passed, 9 skipped, 2
+upstream deprecation warnings); the pinned `ds005284` direct-MNE reference (5
+passed, with unchanged source checksums); focused export probes; frontend
+ESLint/Prettier, Vitest (186 tests in 22 files), production build (1,852
+modules; existing 534.07 kB chunk advisory), and production audit (0
+vulnerabilities); strict Sphinx HTML/linkcheck; responsive/axe checks (8 pages
+at 375 px and 1440 px); docs audit (0 vulnerabilities); server wheel build
+with all 5 required export resources; generated workflow/replay script lint;
+and `git diff --check`.
+
+Hosted checks passed on this exact head: Python and frontend in Actions run
+`45364976598`; documentation in `45364976606`; GitHub Pages deployment was
+skipped as expected. PR #74 remains open. The connected review/comment APIs
+returned HTTP 403; the final status is recorded here and will also be posted
+as a PR conversation comment through `gh`, under the PR-author identity. That
+comment is not a separate GitHub reviewer approval.
+
+This approval covers only the Step 8/9 engineering implementation and its
+reproducibility/privacy gates. The Nov 9 consultation remains provisional and
+does not constitute independent scientific methods review. No pinned human
+cohort was replayed by the exported standalone project. Keep Step 7, Step 8,
+and Step 9 parent and scientific-certification gates unchecked; do not merge.
