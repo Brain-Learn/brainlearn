@@ -32,6 +32,19 @@ The generated `uv.lock` and `apps/web/package-lock.json` should remain committed
 
 ## Run
 
+For the source-checkout launcher, start both services from one terminal:
+
+```bash
+uv run --locked --all-packages --group eeg brainlearn-launch
+```
+
+The launcher waits for the API health endpoint and the Vite page, then opens
+the browser. It keeps both services on loopback and stops them together on
+Ctrl-C. `--check` starts both and exits after the readiness check; `--no-browser`
+keeps the browser closed. See [the launcher spike](launcher-spike.md) for its
+limits.
+
+The original two-terminal path remains useful during frontend development.
 Start the API in one terminal:
 
 ```bash

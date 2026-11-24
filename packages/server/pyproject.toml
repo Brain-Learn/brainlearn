@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 brainlearn-server = "brainlearn_server.app:run"
+brainlearn-launch = "brainlearn_server.launcher:main"
 brainlearn-cohort = "brainlearn_server.cohort_cli:run_cohort_cli"
 
 [tool.uv.sources]
