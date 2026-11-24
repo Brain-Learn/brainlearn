@@ -34,7 +34,7 @@ approves QC automatically.
 uv venv --python 3.12
 uv pip sync --python .venv/bin/python environment.lock
 .venv/bin/python workflow.py \
-  --dataset-root /path/to/local/bids \
+  --dataset-root ./dataset \
   --reuse-recorded-bad-channel-qc
 ```
 
@@ -51,7 +51,7 @@ local service:
 
 ```bash
 python replay_brainlearn.py \
-  --project /path/to/your/brainlearn-project \
+  --project ./brainlearn-project \
   --dataset-root datasets/your-bids-dataset
 ```
 

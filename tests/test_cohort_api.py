@@ -24,6 +24,7 @@ from brainlearn_server.auth import reset_session_token_for_tests
 from brainlearn_server.cohort_export import (
     CohortExportError,
     _check_no_secrets,
+    _redact_failure,
     _relative_path,
     _runner_script,
     _workflow_script,
@@ -235,6 +236,16 @@ def test_cohort_export_rejects_secrets_and_unsafe_paths() -> None:
         _check_no_secrets(
             {"notes.json": json.dumps({"note": r"\\lab-files\users\alice\study\raw.edf"}).encode()}
         )
+    for path in (
+        "/root/mohammad/private/study/raw.bdf",
+        "/srv/lab/studies/private/raw.bdf",
+        "/opt/research/private/raw.bdf",
+    ):
+        redacted = _redact_failure(f"could not read {path}")
+        assert redacted == "could not read [local path]"
+        _check_no_secrets({"provenance.json": json.dumps({"failure_reason": redacted}).encode()})
+        with pytest.raises(CohortExportError, match="absolute personal path"):
+            _check_no_secrets({"provenance.json": json.dumps({"failure_reason": path}).encode()})
     with pytest.raises(CohortExportError, match="project-relative"):
         _relative_path("../outside/dataset", "Dataset path")
 

@@ -18,8 +18,17 @@ class CohortExportError(ValueError):
 
 
 _ABSOLUTE_PATH = re.compile(
-    r"(?<![:\w])(?:(?:\\\\|//)[^\s\"']+|(?:/Users/|/home/|/private/|/Volumes/|/var/folders/|"
-    r"/tmp/|/mnt/|/media/|/workspace/|[A-Za-z]:[\\/])[^\s\"']+)"
+    r"(?<![:\w/<])(?:(?:\\\\|//)[^\s\"']+|/(?:[^/\s\"'<>]+/)+[^/\s\"'<>]+|"
+    r"[A-Za-z]:[\\/][^\s\"']+)"
+)
+_PATH_SCAN_EXEMPT_FILES = frozenset(
+    {
+        "workflow.py",
+        "replay_brainlearn.py",
+        "analysis.ipynb",
+        "environment.lock",
+        "expected_outputs.md",
+    }
 )
 _SECRET = re.compile(
     r"(?i)(?:BRAINLEARN_SESSION_TOKEN\s*[=:]\s*\S+|"
@@ -316,7 +325,9 @@ def _check_no_secrets(files_by_name: dict[str, bytes]) -> None:
                 f"The exported {name} appears to contain a secret or session token; "
                 "remove it before export."
             )
-        if _ABSOLUTE_PATH.search(value):
+        # These members are fixed templates or a pinned lockfile. Path checks
+        # apply to files that contain exported run, workflow, or user metadata.
+        if name not in _PATH_SCAN_EXEMPT_FILES and _ABSOLUTE_PATH.search(value):
             raise CohortExportError(
                 f"The exported {name} contains an absolute personal path; "
                 "replace it with a relative path before export."
