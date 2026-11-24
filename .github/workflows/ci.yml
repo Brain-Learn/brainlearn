@@ -39,6 +39,9 @@ jobs:
       - name: Install locked Python environment
         run: uv sync --locked --all-packages --group eeg
 
+      - name: Verify GitHub Actions pins and permissions
+        run: uv run --frozen python scripts/check_action_security.py
+
       - name: Lint Python
         run: uv run --frozen ruff check .
 
