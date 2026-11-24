@@ -54,6 +54,75 @@ jobs:
       - name: Test Python
         run: uv run --frozen pytest -q
 
+  schema-compatibility:
+    name: Persisted schema compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python environment
+        run: uv sync --locked --all-packages --group eeg
+
+      - name: Test persisted schema migrations and round trips
+        run: >-
+          uv run --locked pytest -q
+          tests/test_schema.py
+          tests/test_projects.py
+          tests/test_execution_contracts.py
+          tests/test_run_store.py
+          tests/test_datasets.py
+          tests/test_dataset_downloads.py
+          tests/test_download_records.py
+          tests/test_cohort.py
+          tests/test_presentation.py
+          tests/test_researcher_decisions.py
+
+  generated-code-integration:
+    name: Generated EEG code integration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python environment
+        run: uv sync --locked --all-packages --group eeg
+
+      - name: Execute generated EEG workflows on the synthetic BIDS fixture
+        run: >-
+          uv run --locked pytest -q
+          tests/test_eeg_filter.py::test_adapter_direct_mne_and_generated_script_agree_and_preserve_source
+          tests/test_eeg_ica.py::test_ica_pauses_persists_review_and_matches_direct_mne_and_export
+          tests/test_cohort_api.py::test_exported_direct_mne_replay_matches_separate_synthetic_reference
+
   frontend:
     name: Frontend quality, tests, and build
     runs-on: ubuntu-24.04
