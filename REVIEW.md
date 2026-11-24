@@ -2513,3 +2513,21 @@ rejection settings, PSD settings, clinical use, or any EEG method. Keep the
 Step 10 parent and Step 7/8/9 scientific-certification gates unchecked. The
 final review-record head must pass its hosted checks before the parent merges;
 I did not merge PR #81.
+
+## Step 10 dependency-license inventory and production vulnerability audit — PR #82
+
+Review date: 2026-11-24
+
+Scope: repaired code head `9af82b2b9a0cba43cfb0b0891489963e430c7bb4` against main `89f140ea3cca5c47532fb11ab3d318f638752571`, following the extras-closure finding recorded in the PR conversation.
+
+Status: **approved for the Step 10 dependency-license inventory and production-vulnerability-scanning leaf only**. The repair now carries requested extras on each uv.lock dependency edge into traversal of that package's `optional-dependencies`. The closure tracks `(package, active extras)` states so a package reached through multiple paths is revisited for additional extras. Focused regressions exercise `uvicorn[standard]`, `pip-audit -> cachecontrol[filecache]`, and the overlapping runtime/docs membership for PyYAML. On the regenerated current-target inventory, `httptools`, `python-dotenv`, `uvloop`, `watchfiles`, and `websockets` are runtime dependencies; PyYAML is both runtime and docs; and filelock is in the audit group. The implementation no longer leaves these packages unassigned or under-attributed.
+
+The runtime vulnerability audit remains separately scoped and correct. In a clean locked Python 3.12.14 environment, `uv export --locked --all-packages --no-default-groups --group eeg --no-emit-workspace --no-hashes` emitted workspace runtime plus EEG dependencies, including the `uvicorn[standard]` extras, while excluding the audit, development, and documentation groups. Local `pip-audit` found no known vulnerabilities in the 48 packages installed for this macOS target; `npm audit --omit=dev` found none for either application or documentation site. The full lock-linked inventory regenerates byte-for-byte identically and contains 106 Python and 322 npm package records; 55 Python license declarations require legacy-metadata review and one package is unobserved on this target. Missing, invalid, declared-unlicensed, version-mismatched, legacy, and target-unobserved metadata remain explicit review states.
+
+I verified the Dependabot API still lists alerts #60 and #61 as open. Alert #60 (`soupsieve`) is a docs-group dependency from `uv.lock`; alert #61 (`minimatch`) is marked development-only in `apps/web/package-lock.json`. The plan accurately excludes both from production-only checks and records them for separate maintenance follow-up. `npm ci` on the unchanged frontend development tree reports 7 moderate advisories; the production audit is clean.
+
+Independent clean-checkout gate: on macOS 27.2 arm64 with Python 3.12.14, `uv lock --check` and locked sync passed; Ruff and action-pin/permission audit passed; format check passed (132 files); strict mypy passed (38 package source files plus the generator); and the full Python suite passed (870 passed, 9 skipped, 2 upstream deprecation warnings). Frontend lint/format passed, Vitest passed (186 tests in 22 files), and Vite production build passed (1,852 modules; existing 534.07 kB chunk advisory). Strict Sphinx HTML and linkcheck passed, and responsive/axe checks passed for 9 pages at 375 px and 1440 px. Both production npm audits and the Python runtime+EEG audit passed, and `git diff --check` passed.
+
+Hosted CI passed on code head `9af82b2b9a0cba43cfb0b0891489963e430c7bb4` in run `45394188777`, including Python, frontend, schema, generated-code, Linux/macOS/Windows smoke, inventory generation, and the Python production audit on all three platforms. Documentation passed in run `45394188749`; Pages deployment was skipped as expected. The review-record commit still needs the required hosted checks.
+
+The Step 10 dependency-scanning leaf is approved and checked. Step 10's parent and Step 7/8/9 scientific-certification gates remain unchecked. No scientific method, default, or claim changed. The next assignment advances to the Step 10 launcher/installer spike. I did not merge PR #82.

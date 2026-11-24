@@ -249,7 +249,7 @@ Completion gate: a second clean environment runs the exported Python project wit
 - [x] Pin third-party actions to commit SHAs and minimize permissions.
 - [x] Add schema compatibility and generated-code integration jobs.
 - [x] Add scheduled scientific reference tests.
-- [ ] Add dependency-license inventory and production vulnerability scanning.
+- [x] Add dependency-license inventory and production vulnerability scanning.
 - [ ] Build a launcher/installer spike without changing the core architecture.
 - [ ] Publish an explicit OS/architecture/backend support matrix.
 - [ ] Define release candidates, signing/checksum procedure, rollback, and changelog generation.
@@ -707,23 +707,14 @@ Add one row whenever a task or top-level step changes state. Do not rewrite prio
 
 | 2026-11-24 | Step 10 dependency inventory extras review finding | Reopened for repair; no approval inferred | Independent monitoring on PR #82 found that the Python group closure did not traverse uv.lock optional-dependency edges activated by extras. This omitted runtime group attribution for packages from uvicorn[standard] and audit attribution for filelock from cachecontrol[filecache]; the production requirements export did include these packages. The monitor requested changes and posted details at https://github.com/Brain-Learn/brainlearn/pull/82#issuecomment-7131395043. The inventory leaf checkbox is reopened pending code repair, regression coverage, full local verification, and independent re-review. | PR #82 |
 | 2026-11-24 | Step 10 dependency inventory extras repair | Repaired and locally verified; independent re-review pending | Python group-closure traversal now carries each lock dependency edge's requested extras and visits the selected package optional-dependency lists, processing a package again if another path activates additional extras. Added focused regression coverage for uvicorn[standard] runtime packages, cachecontrol[filecache], and overlapping PyYAML runtime/docs groups; the inventory now assigns httptools, python-dotenv, uvloop, watchfiles, and websockets to runtime, PyYAML to runtime and docs, and filelock to audit. The generated inventory remains 106 Python and 322 npm packages with 56 metadata-review items. Full repair gate: uv lock --check, action-pin/permission audit, Ruff, formatting (132 files), strict mypy (44 configured files plus standalone generator), full pytest (870 passed, 9 skipped, 2 upstream warnings), frontend lint/format, Vitest (186/22), production build (1,852 modules; existing ~534 kB advisory), strict Sphinx HTML/linkcheck, responsive/axe (9 pages × 375/1440 px), Python production audit (48 packages, 0 findings), both npm production audits (0), and git diff --check passed. No package versions, workflow methods, or scientific claims changed. The inventory leaf is checked pending monitor re-review; Step 10 parent and Step 7/8/9 scientific-certification gates remain unchecked. | PR #82 repair |
+| 2026-11-24 | PR #82 independent monitoring review — Step 10 dependency inventory and production vulnerability scanning | Approved for this Step 10 leaf only; final review-record CI pending | Independently re-reviewed repaired code head `9af82b2b9a0cba43cfb0b0891489963e430c7bb4` against main `89f140ea3cca5c47532fb11ab3d318f638752571`. In a clean detached macOS 27.2 arm64 checkout with Python 3.12.14, the extras-aware closure and regressions passed: uvicorn[standard] packages map to runtime, PyYAML maps to runtime and docs, and filelock maps to audit. The inventory generated twice byte-identically with 106 Python/322 npm records, 55 legacy Python metadata entries, and one target-unobserved entry. `uv lock --check`, locked sync, action audit, Ruff, format (132 files), strict mypy (38 source files plus generator), full pytest (870 passed, 9 skipped, 2 upstream warnings), frontend lint/format, Vitest (186/22), build (1,852 modules; existing 534.07 kB advisory), strict Sphinx HTML/linkcheck, responsive/axe (9 pages × 375/1440 px), production pip-audit (48 target-installed packages, 0 findings), both npm production audits (0), and `git diff --check` passed. The runtime+EEG export includes the runtime extras and excludes docs/dev/audit groups. Dependabot API confirms open alert #60 soupsieve is docs-only and #61 minimatch is frontend-dev-only; the plan records their separate follow-up. Hosted CI passed on code head in run `45394188777`, including Python production audit on Linux/macOS/Windows; docs passed in `45394188749` and Pages was skipped. The inventory leaf is checked; Step 10 parent and Step 7/8/9 scientific-certification gates remain unchecked. No science status changed. | PR #82 |
 
 ## Next assignment
 
 Read `AGENTS.md`, `REVIEW.md`, `PROPOSAL.md`, and this plan before acting.
 Preserve every completion-log row.
 
-### Step 10 — Add dependency-license inventory and production vulnerability scanning
+### Step 10 — Build a launcher/installer spike
 
-Add a reproducible inventory of Python and frontend dependency licenses and
-production-dependency vulnerability checks. Keep dependency versions pinned,
-report unsupported or unknown licenses explicitly, and avoid automatic
-upgrades. This engineering work does not certify EEG methods; Step 7/8/9
-scientific-certification gates remain unchecked, and the Step 10 parent remains
-open.
-
-- [x] Generate a deterministic JSON inventory tied to `uv.lock` and both npm
-  lockfiles, retaining exact versions and explicitly flagging missing, legacy,
-  invalid, and target-unobserved license metadata.
-- [x] Fail CI for known production vulnerabilities in Python runtime plus EEG
-  dependencies and npm production dependencies, without automatic upgrades.
+Build a minimal launcher or installer proof of concept for the existing React
+interface and Python service while preserving the current architecture.
