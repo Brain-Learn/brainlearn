@@ -56,6 +56,7 @@ const routes = [
   "/api.html",
   "/status.html",
   "/installation.html",
+  "/dependency-licenses.html",
 ];
 const viewports = [
   { name: "mobile", width: 375, height: 812 },

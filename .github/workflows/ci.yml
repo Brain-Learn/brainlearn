@@ -161,6 +161,107 @@ jobs:
       - name: Audit production dependencies
         run: npm audit --omit=dev
 
+      - name: Audit documentation-site production dependencies
+        run: npm --prefix ../../website audit --omit=dev
+
+  dependency-license-inventory:
+    name: Dependency license inventory
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+
+      - name: Install all locked Python dependency groups
+        run: uv sync --locked --all-packages --all-groups
+
+      - name: Generate lockfile-linked inventory
+        run: >-
+          uv run --locked python scripts/generate_dependency_license_inventory.py
+          --output "${{ runner.temp }}/dependency-license-inventory.json"
+
+      - name: Upload inventory artifact
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: dependency-license-inventory-linux-x86_64
+          path: ${{ runner.temp }}/dependency-license-inventory.json
+          if-no-files-found: error
+          retention-days: 30
+
+  python-production-vulnerability-audit:
+    name: Python production vulnerability audit (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Linux x86-64
+            os: ubuntu-24.04
+          - platform: macOS Apple Silicon
+            os: macos-15
+          - platform: Windows x86-64
+            os: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.5"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install only production and audit dependency groups
+        run: uv sync --locked --all-packages --no-default-groups --group eeg --group audit
+
+      - name: Export locked runtime and EEG dependencies
+        run: >-
+          uv export --locked --all-packages --no-default-groups --group eeg
+          --no-emit-workspace --no-hashes --format requirements.txt
+          --output-file "${{ runner.temp }}/brainlearn-production-requirements.txt"
+
+      - name: Audit Python production dependencies
+        run: >-
+          uv run --locked --no-sync pip-audit
+          --requirement "${{ runner.temp }}/brainlearn-production-requirements.txt"
+          --format json
+          --output "${{ runner.temp }}/pip-audit-${{ runner.os }}.json"
+
+      - name: Upload Python vulnerability report
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: python-production-vulnerability-audit-${{ runner.os }}
+          path: ${{ runner.temp }}/pip-audit-${{ runner.os }}.json
+          if-no-files-found: ignore
+          retention-days: 30
+
   platform-smoke:
     name: Clean install smoke (${{ matrix.platform }})
     strategy:
