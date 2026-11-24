@@ -2149,3 +2149,59 @@ PR #74 remains open for an independent reviewer. Step 7, Step 8, and Step 9
 parent and scientific-certification gates remain unchecked. The EEG methods
 decision remains pending; this engineering review does not certify the
 workflow.
+
+## Combined Step 8/9 independent monitoring review — PR #74
+
+Review date: 2026-11-24
+
+Scope: exact PR #74 head `88690c81deb4a0f4b9fc41d25af59a2b6f7d379b`, compared
+with `main` at `ccb7a3b67f25cb497b8d6571ca1a7a8a8a843436`, including the cohort
+workflow, portable Python/notebook export, and the provisional Nov 9 meeting
+notes.
+
+Status: **changes requested**. The core clean local and hosted gates pass, but
+the export's absolute-path protection is incomplete:
+
+1. **[P2] Reject and redact arbitrary POSIX absolute paths in exported text.**
+   `cohort_export.py` only recognizes enumerated POSIX prefixes such as
+   `/Users/`, `/home/`, and `/tmp/`. On this Linux environment,
+   `_redact_failure("/root/mohammad/private/study/raw.bdf")` returned the
+   original path and `_check_no_secrets` accepted it. QC notes, node/child
+   failure messages, and cohort failure reasons flow through these helpers
+   into the exported provenance, so a valid local path under `/root`, `/data`,
+   `/srv`, or `/opt` can escape into the archive. Replace the incomplete
+   allowlist with a robust absolute-path redaction/rejection strategy and add
+   regressions for non-enumerated POSIX roots, including a serialized export
+   field.
+
+The meeting-notes change is appropriately labeled provisional and
+transcript-derived. It says that no code commit, BrainLearn-specific settings,
+or overall methods decision were reviewed, and does not change processing
+defaults or imply scientific approval. No scientific certification is inferred
+from this consultation.
+
+Independent verification on the exact head:
+
+- Locked Python 3.12 sync, Ruff, formatting (127 files), and strict mypy (44
+  source files) passed.
+- `uv run --locked pytest`: 855 passed, 9 skipped, 2 upstream warnings.
+- The pinned `ds005284` direct-MNE reference suite passed all 5 cases after
+  independently retrieving the five pinned BDFs to `/tmp` and verifying their
+  manifest sizes and SHA-256 values; the tests also checked unchanged source
+  checksums.
+- Frontend ESLint, Prettier, Vitest (186 tests in 22 files), Vite build, and
+  production audit passed (0 vulnerabilities). The build retains the existing
+  ~534 kB chunk advisory.
+- Strict Sphinx HTML build and linkcheck passed; the responsive/axe check
+  passed for 8 pages at 375 px and 1440 px; docs audit found 0 vulnerabilities.
+- Hosted Python, frontend, and documentation checks passed on this head in
+  Actions runs `45359348686` and `45359348738`; GitHub Pages deployment was
+  skipped as expected. `git diff --check` passed.
+- PR #74 remains open. GitHub reports no review decision; the six existing
+  review submissions are `COMMENTED` by the PR author, and the three existing
+  inline threads are resolved. They do not constitute an independent GitHub
+  approval.
+
+Reopen the Step 9 subitem for preventing unintended absolute personal paths
+until the path-guard defect is repaired and verified. Keep Step 7, Step 8, and
+Step 9 parent/scientific-certification gates unchecked. Do not merge PR #74.
