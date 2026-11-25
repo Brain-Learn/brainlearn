@@ -534,11 +534,14 @@ def test_environment_change_invalidates(
     assert _by_id(finished_second)["writer"]["state"] == "cache_reused"
 
     real_environment = worker_module.service_environment()
-    altered = real_environment.model_copy(update={"accelerator": "gpu-test"})
+    changed_packages = dict(real_environment.packages)
+    changed_packages["test-method-package"] = "9.9.9"
+    altered = real_environment.model_copy(update={"packages": changed_packages})
     monkeypatch.setattr(worker_module, "service_environment", lambda: altered)
     third = _start(client, project, _copy_workflow("env-bytes"))
     finished_third = _wait_for_state(client, project, third["run_id"], {"succeeded"})
     assert _by_id(finished_third)["writer"]["state"] == "succeeded"
+    assert finished_third["environment"]["packages"]["test-method-package"] == "9.9.9"
 
 
 def test_seed_change_invalidates(client: TestClient, tmp_path: Path) -> None:
