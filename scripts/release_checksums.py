@@ -15,6 +15,7 @@ _MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)\Z")
 _WINDOWS_RESERVED_STEMS = {"CON", "PRN", "AUX", "NUL"}
 _WINDOWS_NUMBERED_DEVICE = re.compile(r"(?:COM|LPT)[1-9]\Z", re.IGNORECASE)
 _METADATA_NAMES = {MANIFEST_NAME, SIGNATURE_BUNDLE_NAME}
+_METADATA_NAMES_CASEFOLDED = {name.casefold() for name in _METADATA_NAMES}
 _CHUNK_SIZE = 1024 * 1024
 
 
@@ -27,6 +28,19 @@ def _is_portable_filename(name: str) -> bool:
         return False
     stem = name.split(".", maxsplit=1)[0].upper()
     return stem not in _WINDOWS_RESERVED_STEMS and not _WINDOWS_NUMBERED_DEVICE.fullmatch(stem)
+
+
+def _check_case_insensitive_collisions(names: list[str]) -> None:
+    seen: dict[str, str] = {}
+    for name in names:
+        key = name.casefold()
+        previous = seen.get(key)
+        if previous is not None:
+            raise ChecksumError(
+                f"artifact filenames collide on case-insensitive filesystems: "
+                f"{previous!r} and {name!r}"
+            )
+        seen[key] = name
 
 
 def _validate_directory(directory: Path) -> Path:
@@ -55,7 +69,11 @@ def _artifact_files(root: Path, *, allow_empty: bool = False) -> list[Path]:
     for entry in sorted(root.iterdir(), key=lambda item: item.name):
         if entry.is_symlink():
             raise ChecksumError(f"symlinks are not allowed in the artifact directory: {entry.name}")
-        if entry.name in _METADATA_NAMES:
+        if entry.name.casefold() in _METADATA_NAMES_CASEFOLDED:
+            if entry.name not in _METADATA_NAMES:
+                raise ChecksumError(
+                    f"artifact filename collides with release metadata: {entry.name}"
+                )
             if not entry.is_file():
                 raise ChecksumError(f"release metadata must be regular files: {entry.name}")
             continue
@@ -66,6 +84,7 @@ def _artifact_files(root: Path, *, allow_empty: bool = False) -> list[Path]:
         if not entry.is_file():
             raise ChecksumError(f"artifact directory must contain only regular files: {entry.name}")
         artifacts.append(entry)
+    _check_case_insensitive_collisions([path.name for path in artifacts])
     if not artifacts and not allow_empty:
         raise ChecksumError("artifact directory contains no release files")
     return artifacts
@@ -89,11 +108,12 @@ def _manifest_entries(manifest: Path) -> dict[str, str]:
             raise ChecksumError(
                 f"non-portable artifact filename in {MANIFEST_NAME} line {line_number}: {name}"
             )
-        if name in _METADATA_NAMES:
+        if name.casefold() in _METADATA_NAMES_CASEFOLDED:
             raise ChecksumError(f"release metadata cannot hash itself: {name}")
         if name in entries:
             raise ChecksumError(f"duplicate artifact in {MANIFEST_NAME}: {name}")
         entries[name] = digest
+    _check_case_insensitive_collisions(list(entries))
     if not entries:
         raise ChecksumError(f"{MANIFEST_NAME} contains no entries")
     return entries

@@ -130,6 +130,42 @@ def test_release_checksum_verification_rejects_reserved_names_in_manifest(tmp_pa
         _CHECKSUMS.verify_manifest(tmp_path)
 
 
+def test_release_checksum_rejects_case_insensitive_collisions_in_manifests(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "SHA256SUMS"
+    digest = "0" * 64
+    manifest.write_text(f"{digest}  BrainLearn.whl\n{digest}  brainlearn.WHL\n", encoding="utf-8")
+
+    with pytest.raises(_CHECKSUMS.ChecksumError, match="case-insensitive filesystems"):
+        _CHECKSUMS.verify_manifest(tmp_path)
+
+
+@pytest.mark.parametrize("filename", ["sha256sums", "sha256sums.sigstore.json"])
+def test_release_checksum_creation_rejects_case_variants_of_metadata(
+    tmp_path: Path, filename: str
+) -> None:
+    (tmp_path / filename).write_bytes(b"artifact")
+
+    with pytest.raises(_CHECKSUMS.ChecksumError, match="collides with release metadata"):
+        _CHECKSUMS.create_manifest(tmp_path)
+
+
+def test_release_checksum_creation_rejects_case_only_files_when_filesystem_allows(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "BrainLearn.whl").write_bytes(b"first")
+    try:
+        (tmp_path / "brainlearn.WHL").write_bytes(b"second")
+    except OSError as exc:
+        pytest.skip(f"filesystem prevents case-only names: {exc}")
+    if len(list(tmp_path.iterdir())) != 2:
+        pytest.skip("filesystem aliases case-only names")
+
+    with pytest.raises(_CHECKSUMS.ChecksumError, match="case-insensitive filesystems"):
+        _CHECKSUMS.create_manifest(tmp_path)
+
+
 def test_release_checksum_cli_creates_and_verifies_a_manifest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

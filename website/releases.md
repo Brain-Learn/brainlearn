@@ -38,7 +38,7 @@ The command writes a draft to standard output and never edits `CHANGELOG.md`. Fo
 
 ## Checksums and signatures
 
-Place the final release files in a flat `dist/` directory, excluding temporary files, research data, credentials, and build logs. The checksum helper accepts only regular files with portable ASCII names, rejects Windows-reserved device names and trailing dots, writes a sorted UTF-8 `SHA256SUMS` file atomically, and verifies that no file is missing, changed, or unlisted:
+Place the final release files in a flat `dist/` directory, excluding temporary files, research data, credentials, and build logs. The checksum helper accepts only regular files with portable ASCII names, rejects Windows-reserved device names, trailing dots, and names that collide on case-insensitive filesystems, writes a sorted UTF-8 `SHA256SUMS` file atomically, and verifies that no file is missing, changed, or unlisted:
 
 ```sh
 uv run --frozen python scripts/release_checksums.py create --directory dist
