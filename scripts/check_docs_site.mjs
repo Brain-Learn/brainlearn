@@ -57,6 +57,7 @@ const routes = [
   "/status.html",
   "/installation.html",
   "/platform-support.html",
+  "/releases.html",
   "/dependency-licenses.html",
 ];
 const viewports = [

@@ -2652,3 +2652,52 @@ This approval checks only the Step 10 support-matrix subitem. Step 10's parent
 and all Step 7/8/9 scientific-certification gates remain unchecked. The next
 assignment is the first remaining Step 10 leaf: release candidates, signing
 and checksums, rollback, and changelog generation. I did not merge PR #85.
+
+## Step 10 release candidates, signing/checksums, rollback, and changelog — PR #86
+
+Review date: 2026-11-25
+
+Scope: final code head `49bc84dae31cf3f6fbc10e3db83625b915305b33` against main
+`aa14015e5c2de6c6e8d5263d09f0325d5471c17d`.
+
+Status: **approved for the release-procedure subitem only**. The initial finding
+on nonportable checksum filenames is resolved. The helper now rejects Windows
+reserved device names and trailing dots both in artifact directories and
+manifest entries, rejects case-insensitive name collisions and metadata aliases,
+and has regressions for these cases. The only focused-test skip is the case-only
+directory fixture because this APFS filesystem aliases those names; the
+cross-platform manifest-collision regression ran locally, and the Linux hosted
+suite exercises creation from distinct case-only files.
+
+The release runbook accurately describes the repository state: GitHub has no
+published releases or tags, no release workflow exists, and the docs workflow
+publishes only from `main`. It keeps stable scientific claims gated on the open
+Step 7/8/9 reviews and distinguishes release procedure from implemented release
+automation. The documented Cosign bundle-signing and verification commands
+match the official Sigstore blob-signing and verification guidance.
+
+Independent clean-checkout verification on macOS arm64 with Python 3.13.13:
+`uv lock --check` and locked EEG+docs sync passed; the focused release tests
+passed 22 with 1 filesystem-dependent skip; full pytest passed 904, 10 skipped,
+and 2 upstream deprecation warnings in 102.15 seconds. Ruff, formatting (140
+files), strict mypy (40 source files), action-pin/permission audit, and
+`git diff --check` passed. Frontend lint and format passed; Vitest passed 186
+tests in 22 files; Vite build passed with 1,852 modules (existing 534.07 kB
+chunk-size advisory); both production npm audits and Python production
+`pip-audit` found 0 vulnerabilities. Strict Sphinx HTML and linkcheck passed;
+responsive/axe checks passed for 11 pages at 375 px and 1440 px; and
+`node --check scripts/check_docs_site.mjs` passed. Full frontend `npm ci`
+reported 7 moderate advisories in the unchanged development dependency tree.
+
+Hosted CI run `45585878895` passed Python quality/tests, schema compatibility,
+generated-code integration, frontend quality/tests/build, dependency inventory,
+production audits on Linux/macOS/Windows, and clean-install smoke on
+Linux/macOS/Windows. Documentation run `45585878898` passed; Pages deployment
+was skipped for the PR. The final review-record commit must pass its own hosted
+checks before merge.
+
+This approval checks only the Step 10 release-procedure subitem. Step 10's
+parent and Step 7/8/9 scientific-certification gates remain unchecked. No
+scientific method, default, or certification status changed. The next
+assignment is to verify that old projects keep their recorded environment
+rather than silently upgrading. I did not merge PR #86.
