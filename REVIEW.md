@@ -2531,3 +2531,55 @@ Independent clean-checkout gate: on macOS 27.2 arm64 with Python 3.12.14, `uv lo
 Hosted CI passed on code head `9af82b2b9a0cba43cfb0b0891489963e430c7bb4` in run `45394188777`, including Python, frontend, schema, generated-code, Linux/macOS/Windows smoke, inventory generation, and the Python production audit on all three platforms. Documentation passed in run `45394188749`; Pages deployment was skipped as expected. The review-record commit still needs the required hosted checks.
 
 The Step 10 dependency-scanning leaf is approved and checked. Step 10's parent and Step 7/8/9 scientific-certification gates remain unchecked. No scientific method, default, or claim changed. The next assignment advances to the Step 10 launcher/installer spike. I did not merge PR #82.
+
+## Step 10 launcher/installer spike — PR #83
+
+Review date: 2026-11-25
+
+Scope: final code head `002051ca264d5b78853500eb7cc70e76a88ab45e`, compared
+with main `90493766da6299968c5a967009ad07249689c9d2`.
+
+Status: **approved for the launcher/installer spike subitem only**. The initial
+false-readiness finding is resolved. The launcher preflights both fixed
+loopback ports before spawning either service, uses a fresh per-launch
+instance ID for readiness, and confirms that the child remains alive after the
+matching response. The API health response and Vite development response
+expose that marker only for the launched processes. Added live-HTTP regressions
+reject stale and missing markers while accepting the current marker; a
+`main(--check)` conflict test proves a busy UI port fails before a child
+process starts.
+
+I reproduced the repaired cases with real local servers on both fixed ports.
+An unrelated HTTP 200 server on `127.0.0.1:8000` made `--check` exit 1 with an
+actionable API port conflict. The same probe on `127.0.0.1:5173` made it exit 1
+before starting the API; no API listener remained. With both ports free,
+`brainlearn-launch --check` started the API and Vite, passed the two
+instance-bound readiness checks, and shut both children down; a second run
+with a sentinel session token also passed and did not print the token. The
+existing architecture remains loopback-only: the API runs on `127.0.0.1:8000`
+and Vite is started with `--host 127.0.0.1 --strictPort`. The documentation
+accurately describes the source-checkout requirements, strict-port errors,
+token handling, and limits of this spike; it does not claim a packaged or
+signed installer or cross-platform scientific certification.
+
+Independent clean-checkout verification on macOS arm64 with Python 3.12.14:
+`uv lock --check` and locked sync passed; focused API/launcher tests passed 23;
+the complete Python suite passed 882 tests with 9 skipped and 2 upstream
+deprecation warnings. Ruff, format (136 files), strict mypy (40 core/server
+files), action policy audit, and `git diff --check` passed. Frontend lint and
+format passed, Vitest passed 186 tests in 22 files, Vite build passed with
+1,852 modules (existing 534.07 kB chunk-size advisory), and the production
+audit found 0 vulnerabilities. Strict Sphinx HTML/linkcheck passed; responsive
+and axe checks passed on 9 pages at 375 px and 1440 px; the documentation
+production audit found 0 vulnerabilities.
+
+Hosted checks passed on the exact code head: Python, schema compatibility,
+generated-code integration, frontend, dependency license inventory, all three
+production audit platforms, and Linux/macOS/Windows clean-install launcher
+smokes in Actions run `45571955880`. Documentation passed in run
+`45571955877`; Pages deployment was skipped as expected. The review-record
+commit must pass its own hosted checks before merge.
+
+This approves only the Step 10 launcher/installer spike leaf. Step 10's parent
+and all Step 7/8/9 scientific-certification gates remain unchecked. No
+scientific method, default, or claim changed. I did not merge PR #83.
