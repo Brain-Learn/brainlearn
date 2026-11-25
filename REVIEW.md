@@ -2701,3 +2701,55 @@ parent and Step 7/8/9 scientific-certification gates remain unchecked. No
 scientific method, default, or certification status changed. The next
 assignment is to verify that old projects keep their recorded environment
 rather than silently upgrading. I did not merge PR #86.
+
+## Step 10 existing-project environment preservation — PR #87
+
+Review date: 2026-11-25
+
+Scope: repaired code head `80543c97bae3bffa468b5ee66d24bf0f3dcd7d61`
+against main `fee503ffee75a6789540871aec4d93593b7e4e1d`.
+
+Status: **approved for the existing-project environment subitem only**. The
+two initial findings are resolved. The runtime inventory now fails with
+actionable guidance when any installed distribution lacks a name or version,
+normalizes and sorts package keys, and rejects conflicting versions that
+normalize to the same key. Tests cover complete MNE/MNE-BIDS capture, malformed
+metadata, normalized-name conflicts, and an API run-start response. The full
+environment identity invalidates cache reuse when a package version changes.
+
+Both resume paths stop unfinished work before any further node executes when
+the active environment differs, preserve the run's original environment,
+record an `environment_mismatch`, clear review pauses, and leave every node in
+a terminal state. Recovery re-reads the persisted run after reconciliation;
+when interrupted records reveal that all nodes had already succeeded, both
+automatic recovery and explicit resume finalize and preserve that success
+instead of replacing immutable terminal history. The legacy recovery test now
+checks that an older partial environment snapshot fails safely. A project
+open/save regression confirms the older manifest version and historical run
+JSON bytes remain unchanged. The preflight failure lifecycle exception is
+limited to `environment_mismatch` and permits `started_at` to remain absent.
+
+Independent clean detached-checkout verification on macOS arm64 with Python
+3.13.13: locked EEG+docs sync and `uv lock --check` passed; Ruff and formatting
+passed (140 files); strict mypy passed (40 source files); the action
+pin/permissions audit passed; focused worker, run-store, project, and cache
+tests passed 144 with 2 upstream deprecation warnings; full pytest passed 914,
+10 skipped, and 2 upstream deprecation warnings in 101.72 seconds. Frontend
+lint and format passed; Vitest passed 186 tests in 22 files; Vite build passed
+with 1,852 modules and the existing 534.07 kB chunk-size advisory. Both
+production npm audits found 0 vulnerabilities. Strict Sphinx HTML and
+linkcheck passed; responsive/axe checks passed for 11 pages at 375 px and
+1440 px; `git diff --check` passed. The frontend development dependency install
+reports 7 moderate findings in the unchanged dependency tree.
+
+Hosted CI run `45594400007` passed Python quality/tests, schema compatibility,
+generated-code integration, frontend quality/tests/build, dependency
+inventory, Python production audits on Linux/macOS/Windows, and clean-install
+smokes on Linux/macOS/Windows. Docs run `45594400184` passed; Pages deployment
+was skipped for the PR. Review-record changes still require fresh hosted
+checks.
+
+This approval checks only the Step 10 existing-project environment subitem.
+Step 10's parent and all Step 7/8/9 scientific-certification gates remain
+unchecked. No scientific method, default, or certification status changed. I
+did not merge PR #87.
