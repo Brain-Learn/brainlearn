@@ -12,7 +12,7 @@ scheduler, cache, or UI run control is built. The contracts live in
 | `RunRecord` | One workflow run: workflow identity, state, environment, node runs, ordered events, optional failure. |
 | `NodeRunRecord` | One node's execution attempt: replay inputs, state, timestamps, artifacts, optional failure or review pause. |
 | `ArtifactRecord` | Reference to one output file by project-relative path plus content hash. Never embeds bytes. |
-| `EnvironmentRecord` | OS, architecture, Python version, pinned packages, accelerator label. |
+| `EnvironmentRecord` | OS, architecture, Python version, installed Python distribution versions, accelerator label. |
 | `RunEvent` | One ordered (`seq` 0..n-1), timestamped fact in the run's event stream, with an optional structured `attempt` naming the execution attempt it describes. |
 | `FailureRecord` | Machine-readable `code`, human-readable `message`, optional node-run link, timestamp. |
 | `ReviewPauseRecord` | Human-review checkpoint bound to the reviewed data via `input_identity`. |
@@ -41,9 +41,10 @@ the terminal sets (`RUN_TERMINAL_STATES`, `NODE_TERMINAL_STATES`).
 
 - **Timestamps** are ISO-8601 strings with a timezone offset; naive
   timestamps are rejected. `queued` carries none; `running` and
-  `waiting_for_review` carry `started_at` only; `succeeded` and `failed`
-  carry both; `cancelled` always carries `finished_at`; `dependency_skipped`
-  and `cache_reused` carry none. Chronology is enforced wherever both
+  `waiting_for_review` carry `started_at` only; `succeeded` carries both;
+  `failed` carries both except for an `environment_mismatch` preflight failure,
+  which occurs before `started_at`; `cancelled` always carries `finished_at`;
+  `dependency_skipped` and `cache_reused` carry none. Chronology is enforced wherever both
   endpoints exist: `created_at <= started_at <= finished_at` for runs and
   node runs, `requested_at <= decided_at` for reviews. Equal instants pass,
   so equivalent offsets (`+00:00`, `Z`) compare correctly.
@@ -125,6 +126,27 @@ must change the hash and therefore invalidate dependent work.
   once recorded, applies only to the matching `input_identity`.
 - Cancellation resumes only from an explicit valid checkpoint (defined with
   the training/checkpoint contracts in later slices).
+
+## Project and environment version behavior
+
+Opening or saving a project does not install or update its recorded BrainLearn
+version or rewrite its run records. A new run uses the Python
+environment currently running the local service and snapshots every installed
+Python distribution version, along with the OS, architecture, Python version,
+and accelerator label. The full environment snapshot participates in the node
+content identity, so a package-version change makes prior cached work miss
+instead of being reused silently. Completed runs remain available as immutable
+history. If an unfinished run is resumed or recovered under a different
+environment, BrainLearn fails it before further node execution, records an
+`environment_mismatch` failure, and retains the run's original environment
+snapshot. Start a new run to execute under the current environment.
+
+The repository's `uv.lock` pins the environment for clean BrainLearn checkouts;
+it is a workspace lock, not a project-local environment lock. Opening an older
+project does not recreate its historical Python environment. To repeat an old
+run under the same software, use a BrainLearn checkout and locked dependencies
+matching that run's recorded environment. A rerun under a newer installation
+creates a new run record with the newer environment snapshot.
 
 ## Run store and scheduling (Step 4B)
 

@@ -5,6 +5,7 @@ import json
 import shutil
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,17 +19,125 @@ from brainlearn_core import (
     Workflow,
 )
 from brainlearn_server import project_store as store_module
-from brainlearn_server.app import app, runs, store
+from brainlearn_server.app import app, runs, store, workers
 from brainlearn_server.auth import reset_session_token_for_tests
 from brainlearn_server.bids_eeg import BidsEegDiscoveryService, BidsEegSignalInspection
 from brainlearn_server.registry import instantiate_registered_node
-from brainlearn_server.worker import _worker_manifest, build_run_record
+from brainlearn_server.worker import _worker_manifest, build_run_record, service_environment
 from fastapi.testclient import TestClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 TEST_TOKEN = "step4c-test-token-0123456789"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_TOKEN}"}
+
+
+def test_service_environment_records_all_installed_package_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib.metadata
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distributions",
+        lambda: [
+            SimpleNamespace(metadata={"Name": "BrainLearn_Core"}, version="0.2.0"),
+            SimpleNamespace(metadata={"Name": "MNE-BIDS"}, version="0.20.0"),
+            SimpleNamespace(metadata={"Name": "MNE"}, version="1.13.2"),
+        ],
+    )
+
+    environment = service_environment()
+
+    assert environment.packages == {
+        "brainlearn-core": "0.2.0",
+        "mne": "1.13.2",
+        "mne-bids": "0.20.0",
+    }
+
+
+def test_existing_run_stops_before_execution_when_environment_changed(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brainlearn_server import worker as worker_module
+
+    project = _make_project(client, tmp_path, "environment-change")
+    workflow = _workflow([_node("slow", "demo.delay", {"seconds": 0.01})], [])
+    record = build_run_record(Workflow.model_validate(workflow))
+    runs.create_run(str(project), record)
+
+    changed_packages = dict(record.environment.packages)
+    changed_packages["test-method-package"] = "9.9.9"
+    changed_environment = record.environment.model_copy(update={"packages": changed_packages})
+    monkeypatch.setattr(worker_module, "service_environment", lambda: changed_environment)
+
+    stopped = workers.start_existing(str(project), record.id)
+
+    assert stopped.state == RunState.FAILED
+    assert stopped.started_at is None
+    assert stopped.environment == record.environment
+    assert stopped.failure is not None
+    assert stopped.failure.code == "environment_mismatch"
+    assert all(node.state == NodeRunState.DEPENDENCY_SKIPPED for node in stopped.node_runs)
+    assert any(event.kind == RunEventKind.RUN_FAILED for event in stopped.events)
+
+
+def test_recovery_stops_interrupted_run_when_environment_changed(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brainlearn_server import worker as worker_module
+
+    project = _make_project(client, tmp_path, "interrupted-environment-change")
+    workflow = _workflow([_node("slow", "demo.delay", {"seconds": 0.01})], [])
+    record = build_run_record(Workflow.model_validate(workflow))
+    created = record.created_at
+    node = record.node_runs[0].model_copy(
+        update={"state": NodeRunState.RUNNING, "started_at": created, "attempt": 1}
+    )
+    running = RunRecord.model_validate(
+        record.model_copy(
+            update={
+                "state": RunState.RUNNING,
+                "started_at": created,
+                "node_runs": [node],
+                "events": [
+                    RunEvent(
+                        schema_version="1.0",
+                        seq=0,
+                        at=created,
+                        kind=RunEventKind.RUN_STARTED,
+                        node_run_id=None,
+                        message="Run started.",
+                    ),
+                    RunEvent(
+                        schema_version="1.0",
+                        seq=1,
+                        at=created,
+                        kind=RunEventKind.NODE_STARTED,
+                        node_run_id=node.id,
+                        attempt=1,
+                        message="Attempt 1 started.",
+                    ),
+                ],
+            }
+        ).model_dump(mode="json")
+    )
+    runs.create_run(str(project), running)
+
+    changed_packages = dict(running.environment.packages)
+    changed_packages["test-method-package"] = "9.9.9"
+    changed_environment = running.environment.model_copy(update={"packages": changed_packages})
+    monkeypatch.setattr(worker_module, "service_environment", lambda: changed_environment)
+
+    recovered = workers.recover_project(str(project))
+
+    assert len(recovered) == 1
+    assert recovered[0].state == RunState.FAILED
+    assert recovered[0].environment == running.environment
+    assert recovered[0].failure is not None
+    assert recovered[0].failure.code == "environment_mismatch"
+    assert recovered[0].node_runs[0].state == NodeRunState.DEPENDENCY_SKIPPED
+    assert any(event.kind == RunEventKind.RUN_FAILED for event in recovered[0].events)
 
 
 @pytest.fixture(autouse=True)

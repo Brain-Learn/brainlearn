@@ -295,29 +295,118 @@ class ReviewConflictError(ValueError):
     """A review decision was requested for a node that is not awaiting one."""
 
 
+ENVIRONMENT_MISMATCH_FAILURE_CODE = "environment_mismatch"
+
+
 def service_environment() -> EnvironmentRecord:
-    """Describe the environment workers execute in."""
+    """Describe the complete installed Python environment workers execute in."""
 
     import importlib.metadata
     import platform
+    import re
 
-    def _version(distribution: str) -> str:
-        try:
-            return importlib.metadata.version(distribution)
-        except importlib.metadata.PackageNotFoundError:
-            return "unknown"
+    packages: dict[str, str] = {}
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata.get("Name")
+        version = distribution.version
+        if not name or not version:
+            continue
+        normalized_name = re.sub(r"[-_.]+", "-", name).lower()
+        previous_version = packages.get(normalized_name)
+        if previous_version is not None and previous_version != version:
+            raise RuntimeError(
+                "Cannot record the execution environment: multiple installed "
+                f"versions of {normalized_name!r} were found. Repair the Python "
+                "environment before starting a run."
+            )
+        packages[normalized_name] = version
 
     return EnvironmentRecord(
         schema_version="1.0",
         operating_system=platform.system(),
         architecture=platform.machine(),
         python_version=platform.python_version(),
-        packages={
-            "brainlearn-core": _version("brainlearn-core"),
-            "brainlearn-server": _version("brainlearn-server"),
-        },
+        packages=dict(sorted(packages.items())),
         accelerator="cpu",
     )
+
+
+def _run_environment_matches(record: RunRecord, current: EnvironmentRecord) -> bool:
+    recorded_identity = environment_identity(record.environment.model_dump(mode="json"))
+    current_identity = environment_identity(current.model_dump(mode="json"))
+    return recorded_identity == current_identity
+
+
+def _fail_for_environment_mismatch(record: RunRecord, timestamp: str | None = None) -> RunRecord:
+    """Stop an old run before any node can execute in a different environment."""
+
+    at = timestamp or utc_now_iso()
+    message = (
+        "This run was stopped before further execution because its recorded Python, "
+        "package, platform, or accelerator environment differs from the active service. "
+        "Open a matching pinned BrainLearn environment to resume it, or start a new "
+        "workflow run to use the active environment."
+    )
+    events = list(record.events)
+    nodes: list[NodeRunRecord] = []
+    for node in record.node_runs:
+        if node.state in NODE_TERMINAL_STATES:
+            nodes.append(node)
+            continue
+        nodes.append(
+            node.model_copy(
+                update={
+                    "state": NodeRunState.DEPENDENCY_SKIPPED,
+                    "attempt": 0,
+                    "started_at": None,
+                    "finished_at": None,
+                    "artifacts": [],
+                    "failure": None,
+                    "review_pause": None,
+                }
+            )
+        )
+        events.append(
+            RunEvent(
+                schema_version="1.0",
+                seq=len(events),
+                at=at,
+                kind=RunEventKind.NODE_SKIPPED,
+                node_run_id=node.id,
+                attempt=node.attempt,
+                message=(
+                    "Node was not resumed because the active service environment "
+                    "does not match the run record."
+                ),
+            )
+        )
+    failure = FailureRecord(
+        schema_version="1.0",
+        code=ENVIRONMENT_MISMATCH_FAILURE_CODE,
+        message=message,
+        node_run_id=None,
+        at=at,
+    )
+    events.append(
+        RunEvent(
+            schema_version="1.0",
+            seq=len(events),
+            at=at,
+            kind=RunEventKind.RUN_FAILED,
+            node_run_id=None,
+            message=message,
+        )
+    )
+    stopped = record.model_copy(
+        update={
+            "state": RunState.FAILED,
+            "finished_at": at,
+            "node_runs": nodes,
+            "events": events,
+            "failure": failure,
+        }
+    )
+    return RunRecord.model_validate(stopped.model_dump(mode="json"))
 
 
 def workflow_identity(workflow: Workflow) -> str:
@@ -611,6 +700,11 @@ class WorkerService:
             thread = self._threads.get((project, run_id))
             if thread is not None and thread.is_alive():
                 return record
+            current_environment = service_environment()
+            if not _run_environment_matches(record, current_environment):
+                failed = _fail_for_environment_mismatch(record)
+                self.runs.save_run(project, failed)
+                return failed
             worker = threading.Thread(target=self._drive, args=(project, run_id), daemon=True)
             self._threads[(project, run_id)] = worker
             self._cancel.setdefault((project, run_id), threading.Event())
@@ -632,6 +726,7 @@ class WorkerService:
         from brainlearn_core.scheduler import ready_node_ids
 
         timestamp = now or utc_now_iso()
+        current_environment = service_environment()
         self._recover_cache_staging(project)
         recovered: list[RunRecord] = []
         for record in self.runs.find_nonterminal_runs(project):
@@ -642,8 +737,14 @@ class WorkerService:
             self._quarantine_leftover_staging(project, record.id)
             repaired = self.runs.recover_run(project, record.id, now=timestamp)
             self._quarantine_orphaned_attempts(project, record.id)
+            fresh = self.runs.get_run(project, record.id)
+            if not _run_environment_matches(fresh, current_environment):
+                failed = _fail_for_environment_mismatch(fresh, timestamp=timestamp)
+                self.runs.save_run(project, failed)
+                recovered.append(failed)
+                continue
             if repaired is not None:
-                recovered.append(repaired)
+                recovered.append(fresh)
         resumed: list[RunRecord] = []
         for record in recovered:
             fresh = self.runs.get_run(project, record.id)

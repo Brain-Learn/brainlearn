@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from brainlearn_core import (
     ProjectManifest,
+    RunRecord,
     Workflow,
     migrate_project_dict,
     migrate_workflow_dict,
@@ -216,6 +217,52 @@ def test_create_open_save_round_trip_and_survives_restart(
     recent = client.get("/api/projects/recent", headers=AUTH_HEADERS)
     assert recent.status_code == 200
     assert any(entry["path"] == str(project_dir) for entry in recent.json())
+
+
+def test_opening_and_saving_old_project_preserves_recorded_environment(
+    client: TestClient, tmp_path: Path
+) -> None:
+    project_dir = tmp_path / "old-project"
+    created = client.post(
+        "/api/projects/create",
+        json={"path": str(project_dir), "name": "Old project", "workflow": _current_workflow()},
+        headers=AUTH_HEADERS,
+    )
+    assert created.status_code == 200, created.text
+
+    manifest_path = project_dir / PROJECT_MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["brainlearn_version"] = "0.0.9"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    historical_run = json.loads((FIXTURES / "run-1.0.json").read_text(encoding="utf-8"))
+    historical_environment = historical_run["environment"]
+    run_path = project_dir / "runs" / historical_run["id"] / "run.json"
+    run_path.parent.mkdir(parents=True)
+    run_path.write_text(json.dumps(historical_run), encoding="utf-8")
+    historical_run_bytes = run_path.read_bytes()
+
+    opened = client.post(
+        "/api/projects/open", json={"path": str(project_dir)}, headers=AUTH_HEADERS
+    )
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["manifest"]["brainlearn_version"] == "0.0.9"
+
+    saved = client.post(
+        "/api/projects/save",
+        json={"path": str(project_dir), "workflow": opened.json()["workflow"]},
+        headers=AUTH_HEADERS,
+    )
+    assert saved.status_code == 200, saved.text
+
+    reopened = client.post(
+        "/api/projects/open", json={"path": str(project_dir)}, headers=AUTH_HEADERS
+    )
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["manifest"]["brainlearn_version"] == "0.0.9"
+    assert run_path.read_bytes() == historical_run_bytes
+    persisted_run = RunRecord.model_validate_json(run_path.read_text(encoding="utf-8"))
+    assert persisted_run.environment.model_dump(mode="json") == historical_environment
 
 
 def test_previous_recovery_keeps_last_valid_workflow(client: TestClient, tmp_path: Path) -> None:

@@ -707,9 +707,19 @@ class RunRecord(BaseModel):
                 raise ValueError(f"A {state.value} run must record started_at.")
             if self.finished_at is not None:
                 raise ValueError(f"A {state.value} run must not record finished_at.")
-        elif state in {RunState.SUCCEEDED, RunState.FAILED}:
+        elif state == RunState.SUCCEEDED:
             if self.started_at is None or self.finished_at is None:
-                raise ValueError(f"A {state.value} run must record started_at.")
+                raise ValueError("A succeeded run must record started_at and finished_at.")
+        elif state == RunState.FAILED:
+            if self.finished_at is None:
+                raise ValueError("A failed run must record finished_at.")
+            if self.started_at is None and (
+                self.failure is None or self.failure.code != "environment_mismatch"
+            ):
+                raise ValueError(
+                    "A failed run must record started_at unless it was stopped by "
+                    "an environment mismatch before execution."
+                )
         elif state == RunState.CANCELLED and self.finished_at is None:
             raise ValueError("A cancelled run must record finished_at.")
         _require_chronology(self.created_at, self.started_at, "created_at", "started_at")

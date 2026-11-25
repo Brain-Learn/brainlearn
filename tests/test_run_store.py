@@ -617,7 +617,10 @@ def test_run_endpoints_create_open_list_recover(client: TestClient, tmp_path: Pa
 
     recovered = client.post("/api/runs/recover", json={"path": str(project)}, headers=AUTH_HEADERS)
     assert recovered.status_code == 200, recovered.text
-    assert recovered.json()[0]["run"]["state"] == "running"
+    recovered_run = recovered.json()[0]["run"]
+    assert recovered_run["state"] == "failed"
+    assert recovered_run["failure"]["code"] == "environment_mismatch"
+    assert recovered_run["environment"] == _load_run("run-running-1.0.json")["environment"]
 
     forbidden = client.post(
         "/api/runs/create",
