@@ -197,8 +197,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     child_environment = os.environ.copy()
     child_environment[INSTANCE_ID_ENV] = instance_id
     try:
+        # Check the complete fixed-port set before launching either child, so a
+        # conflict on the UI port cannot leave a needless API process running.
         for service in services:
             _assert_port_available(service)
+
+        for service in services:
             service_stdout = (
                 subprocess.DEVNULL if args.check and service.name == "Python API" else None
             )

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import http.server
 import socket
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,79 @@ def test_build_services_explains_missing_frontend_dependencies(tmp_path: Path) -
     (tmp_path / "apps" / "web").mkdir(parents=True)
     with pytest.raises(launcher.LauncherError, match="npm --prefix apps/web ci"):
         launcher._build_services(tmp_path, "/usr/bin/node")
+
+
+@pytest.mark.parametrize(
+    ("served_instance", "expected"),
+    [("stale-instance", False), (None, False), ("current-instance", True)],
+)
+def test_http_ready_requires_the_current_launcher_instance(
+    served_instance: str | None,
+    expected: bool,
+) -> None:
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(200)
+            if served_instance is not None:
+                self.send_header(launcher.INSTANCE_ID_HEADER, served_instance)
+            self.end_headers()
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/health"
+        assert launcher._http_ready(url, "current-instance") is expected
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_launcher_reports_ui_port_conflict_before_spawning_services(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path
+    started: list[tuple[str, ...]] = []
+    api = launcher._Service(
+        name="Python API",
+        command=("python", "-m", "brainlearn_server"),
+        cwd=root,
+        ready_url="http://127.0.0.1:8000/api/health",
+        port=0,
+    )
+
+    def fake_popen(command: tuple[str, ...], **_kwargs: object) -> object:
+        started.append(command)
+        return object()
+
+    monkeypatch.setattr(launcher, "_find_checkout_root", lambda _path: root)
+    monkeypatch.setattr(launcher.shutil, "which", lambda _program: "/usr/bin/node")
+    monkeypatch.setattr(launcher.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(launcher, "_wait_until_ready", lambda *_args: None)
+    monkeypatch.setattr(launcher, "_stop_processes", lambda _processes: None)
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        ui_port = listener.getsockname()[1]
+        ui = launcher._Service(
+            name="React interface",
+            command=("node", "vite.js"),
+            cwd=root / "apps" / "web",
+            ready_url=f"http://127.0.0.1:{ui_port}",
+            port=ui_port,
+        )
+        monkeypatch.setattr(launcher, "_build_services", lambda _root, _node: (api, ui))
+
+        assert launcher.main(["--check"]) == 1
+
+    assert started == []
+    error = capsys.readouterr().err
+    assert "React interface" in error
+    assert f"127.0.0.1:{ui_port} is already in use" in error
 
 
 def test_launcher_check_starts_both_services_and_stops_without_opening_browser(
