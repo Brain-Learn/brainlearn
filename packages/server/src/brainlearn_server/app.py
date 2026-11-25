@@ -1,6 +1,7 @@
 """FastAPI application serving the local BrainLearn user interface."""
 
 import json
+import os
 import re
 import time
 import unicodedata
@@ -288,7 +289,10 @@ app.add_middleware(ErrorLoggingMiddleware)
 
 
 @app.get("/api/health", response_model=HealthResponse)
-def health() -> HealthResponse:
+def health(response: Response) -> HealthResponse:
+    launcher_instance = os.environ.get("BRAINLEARN_LAUNCH_INSTANCE_ID")
+    if launcher_instance:
+        response.headers["X-BrainLearn-Launcher-Instance"] = launcher_instance
     return HealthResponse()
 
 

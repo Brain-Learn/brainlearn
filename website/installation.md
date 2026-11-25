@@ -14,7 +14,7 @@ BrainLearn does not yet provide a stable desktop installer or supported release 
 ```sh
 git clone https://github.com/Brain-Learn/brainlearn.git
 cd brainlearn
-uv sync --all-packages --group eeg
+uv sync --locked --all-packages --group eeg
 npm --prefix apps/web ci
 ```
 
@@ -23,13 +23,20 @@ The optional EEG group installs MNE-Python and MNE-BIDS at the versions used by 
 ## Start the local app
 
 ```sh
-# Terminal 1 (prints the per-process session token)
-uv run brainlearn-server
-
-# Terminal 2
-npm --prefix apps/web run dev
+uv run --locked --all-packages --group eeg brainlearn-launch
 ```
 
-Open the frontend URL printed by Vite. The API stays on loopback. Do not expose it to a public network.
+The source-checkout launcher starts the API and React interface, waits for
+both, then opens the browser. The API prints the per-process session token in
+the terminal; paste it into the Local project panel when needed. Press Ctrl-C
+in that terminal to stop both services. The API and UI stay on loopback. Do not
+expose them to a public network.
+
+This is a launcher proof of concept, not a packaged desktop installer. It still
+requires Python, `uv`, Node.js, npm, and the installed source-checkout
+dependencies. Pass `--no-browser` to keep the browser closed, or `--check` to
+start both services, verify readiness, and stop them automatically. The
+previous two-terminal development commands remain available for frontend
+development.
 
 For a guided first run, continue to {doc}`quickstart`.

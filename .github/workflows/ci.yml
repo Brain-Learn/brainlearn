@@ -313,3 +313,6 @@ jobs:
 
       - name: Smoke-build frontend
         run: npm --prefix apps/web run build
+
+      - name: Smoke-test integrated local launcher
+        run: uv run --locked brainlearn-launch --check

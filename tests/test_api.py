@@ -1,3 +1,4 @@
+import pytest
 from brainlearn_server.app import app
 from brainlearn_server.registry import NODE_REGISTRY
 from fastapi.testclient import TestClient
@@ -9,6 +10,18 @@ def test_health_endpoint() -> None:
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "brainlearn-server"}
+    assert "X-BrainLearn-Launcher-Instance" not in response.headers
+
+
+def test_health_endpoint_echoes_only_the_configured_launcher_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BRAINLEARN_LAUNCH_INSTANCE_ID", "test-launch-instance")
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.headers["X-BrainLearn-Launcher-Instance"] == "test-launch-instance"
 
 
 def test_capability_response_shape() -> None:
