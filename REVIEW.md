@@ -2600,3 +2600,55 @@ run `45573442271` passed. Documentation run `45573442314` passed, including
 the GitHub Pages deployment. The Step 10 launcher/installer leaf is complete;
 Step 10's parent and Step 7/8/9 scientific-certification gates remain open.
 The next assignment is the explicit OS/architecture/backend support matrix.
+
+## Step 10 OS/architecture/backend support matrix — PR #85
+
+Review date: 2026-11-25
+
+Scope: code head `3e5d5c1e0c36badbc85f34d3371969e660e965b7` against main
+`e8b7ad775f738931171f3a7972fdcfb4e5650529`.
+
+Status: **approved for the support-matrix subitem only**. The published v0.1
+matrix names the tested source-checkout configurations and separates their
+install/startup evidence from scientific validation. It makes no scientific
+certification claim. Its unsupported/unverified labels for CUDA, MPS,
+containers, WSL, Linux ARM64, Intel macOS, Windows ARM64, FSL, and other
+untested platforms accurately reflect the absence of corresponding runtime or
+workflow validation.
+
+Runner and dependency evidence: the official
+[GitHub-hosted runners reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+lists `ubuntu-24.04` and `windows-2025` as x64 and `macos-15` as Apple
+Silicon arm64. The workflow uses those exact labels, sets Python 3.12, uv
+0.12.5, and Node 22, syncs the locked EEG group, runs API/cohort CLI tests and
+the local launcher check, and builds the frontend. The Linux Python quality
+job runs the full test suite. `uv.lock` pins MNE-Python 1.13.2 and MNE-BIDS
+0.20.0.
+
+The cited cross-platform CI evidence, run `45574914100`, completed successfully
+on exact evidence revision `e8b7ad775f738931171f3a7972fdcfb4e5650529` and
+passed all three clean-install smoke jobs. The matrix separately identifies
+Dataset Smoke run `45382882213` on code head
+`a1c02487ca5871a1ee7e9367f9474ebcf005685e`. That `workflow_dispatch` run used
+`ubuntu-24.04`; its five-participant epoch, ERP, and PSD comparison with direct
+MNE passed all five subject cases. This is engineering/reference parity
+evidence and does not independently approve the methods or certify a platform.
+
+Independent clean-checkout documentation gate on Python 3.13.13: locked docs
+and EEG sync plus `uv lock --check` passed; strict Sphinx HTML and linkcheck
+passed, including the runner and Actions evidence links; website `npm ci` and
+production audit found 0 vulnerabilities; `node --check
+scripts/check_docs_site.mjs` passed; responsive and axe checks passed for 10
+pages at 375 px and 1440 px, including `platform-support.html`; and
+`git diff --check` passed.
+
+Hosted checks passed on PR #85 code head: CI run `45577337619` passed Python,
+schema, generated-code, frontend, dependency inventory, all three production
+audits, and Linux/macOS/Windows clean-install smoke; docs run `45577337610`
+passed and Pages deployment was skipped as expected. The final review-record
+head must pass its hosted checks before merge.
+
+This approval checks only the Step 10 support-matrix subitem. Step 10's parent
+and all Step 7/8/9 scientific-certification gates remain unchecked. The next
+assignment is the first remaining Step 10 leaf: release candidates, signing
+and checksums, rollback, and changelog generation. I did not merge PR #85.
