@@ -56,6 +56,68 @@ def test_service_environment_records_all_installed_package_versions(
     }
 
 
+@pytest.mark.parametrize(
+    ("metadata", "version"),
+    [({}, "1.0.0"), ({"Name": "broken-distribution"}, "")],
+)
+def test_service_environment_rejects_incomplete_distribution_metadata(
+    monkeypatch: pytest.MonkeyPatch, metadata: dict[str, str], version: str
+) -> None:
+    import importlib.metadata
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distributions",
+        lambda: [SimpleNamespace(metadata=metadata, version=version)],
+    )
+
+    with pytest.raises(ValueError, match="incomplete name or version metadata"):
+        service_environment()
+
+
+def test_service_environment_rejects_conflicting_normalized_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import importlib.metadata
+
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distributions",
+        lambda: [
+            SimpleNamespace(metadata={"Name": "Foo_Bar"}, version="1.0.0"),
+            SimpleNamespace(metadata={"Name": "foo-bar"}, version="2.0.0"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="multiple installed versions of 'foo-bar'"):
+        service_environment()
+
+
+def test_run_start_reports_incomplete_environment_metadata_actionably(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.metadata
+
+    project = _make_project(client, tmp_path, "incomplete-environment")
+    monkeypatch.setattr(
+        importlib.metadata,
+        "distributions",
+        lambda: [SimpleNamespace(metadata={}, version="1.0.0")],
+    )
+
+    response = client.post(
+        "/api/runs/start",
+        json={
+            "path": str(project),
+            "workflow": _workflow([_node("slow", "demo.delay", {"seconds": 0.01})], []),
+        },
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 400
+    assert "incomplete name or version metadata" in response.json()["detail"]
+
+
 def test_existing_run_stops_before_execution_when_environment_changed(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -138,6 +200,49 @@ def test_recovery_stops_interrupted_run_when_environment_changed(
     assert recovered[0].failure.code == "environment_mismatch"
     assert recovered[0].node_runs[0].state == NodeRunState.DEPENDENCY_SKIPPED
     assert any(event.kind == RunEventKind.RUN_FAILED for event in recovered[0].events)
+
+
+def test_recovery_preserves_completed_run_under_changed_environment(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brainlearn_server import worker as worker_module
+
+    project = _make_project(client, tmp_path, "completed-during-recovery")
+    record = _completed_but_running_record()
+    runs.create_run(str(project), record)
+    changed_packages = dict(record.environment.packages)
+    changed_packages["test-method-package"] = "9.9.9"
+    changed_environment = record.environment.model_copy(update={"packages": changed_packages})
+    monkeypatch.setattr(worker_module, "service_environment", lambda: changed_environment)
+
+    recovered = workers.recover_project(str(project))
+
+    assert len(recovered) == 1
+    assert recovered[0].state == RunState.SUCCEEDED
+    assert recovered[0].failure is None
+    assert recovered[0].environment == record.environment
+    assert recovered[0].node_runs[0].state == NodeRunState.SUCCEEDED
+
+
+def test_explicit_resume_preserves_completed_run_under_changed_environment(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from brainlearn_server import worker as worker_module
+
+    project = _make_project(client, tmp_path, "completed-before-resume")
+    record = _completed_but_running_record()
+    runs.create_run(str(project), record)
+    changed_packages = dict(record.environment.packages)
+    changed_packages["test-method-package"] = "9.9.9"
+    changed_environment = record.environment.model_copy(update={"packages": changed_packages})
+    monkeypatch.setattr(worker_module, "service_environment", lambda: changed_environment)
+
+    resumed = workers.start_existing(str(project), record.id)
+
+    assert resumed.state == RunState.SUCCEEDED
+    assert resumed.failure is None
+    assert resumed.environment == record.environment
+    assert resumed.node_runs[0].state == NodeRunState.SUCCEEDED
 
 
 @pytest.fixture(autouse=True)
@@ -229,6 +334,58 @@ def _chain_workflow() -> dict[str, Any]:
             _node("second", "demo.copy", {"text": "hello-runs"}, inputs=True, out_port="output"),
         ],
         [_edge("e1", "first", "second")],
+    )
+
+
+def _completed_but_running_record() -> RunRecord:
+    workflow = _workflow([_node("slow", "demo.delay", {"seconds": 0.01})], [])
+    record = build_run_record(Workflow.model_validate(workflow))
+    timestamp = record.created_at
+    node = record.node_runs[0].model_copy(
+        update={
+            "state": NodeRunState.SUCCEEDED,
+            "started_at": timestamp,
+            "finished_at": timestamp,
+            "attempt": 1,
+        }
+    )
+    events = [
+        RunEvent(
+            schema_version="1.0",
+            seq=0,
+            at=timestamp,
+            kind=RunEventKind.RUN_STARTED,
+            node_run_id=None,
+            message="Run started.",
+        ),
+        RunEvent(
+            schema_version="1.0",
+            seq=1,
+            at=timestamp,
+            kind=RunEventKind.NODE_STARTED,
+            node_run_id=node.id,
+            attempt=1,
+            message="Attempt 1 started.",
+        ),
+        RunEvent(
+            schema_version="1.0",
+            seq=2,
+            at=timestamp,
+            kind=RunEventKind.NODE_SUCCEEDED,
+            node_run_id=node.id,
+            attempt=1,
+            message="Node succeeded.",
+        ),
+    ]
+    return RunRecord.model_validate(
+        record.model_copy(
+            update={
+                "state": RunState.RUNNING,
+                "started_at": timestamp,
+                "node_runs": [node],
+                "events": events,
+            }
+        ).model_dump(mode="json")
     )
 
 

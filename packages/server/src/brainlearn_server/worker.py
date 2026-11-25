@@ -310,11 +310,15 @@ def service_environment() -> EnvironmentRecord:
         name = distribution.metadata.get("Name")
         version = distribution.version
         if not name or not version:
-            continue
+            raise ValueError(
+                "Cannot record the execution environment: an installed Python "
+                "distribution has incomplete name or version metadata. Repair the "
+                "Python environment before starting a run."
+            )
         normalized_name = re.sub(r"[-_.]+", "-", name).lower()
         previous_version = packages.get(normalized_name)
         if previous_version is not None and previous_version != version:
-            raise RuntimeError(
+            raise ValueError(
                 "Cannot record the execution environment: multiple installed "
                 f"versions of {normalized_name!r} were found. Repair the Python "
                 "environment before starting a run."
@@ -700,6 +704,12 @@ class WorkerService:
             thread = self._threads.get((project, run_id))
             if thread is not None and thread.is_alive():
                 return record
+            if record.node_runs and all(
+                node.state in {NodeRunState.SUCCEEDED, NodeRunState.CACHE_REUSED}
+                for node in record.node_runs
+            ):
+                repaired = self.runs.recover_run(project, run_id)
+                return repaired or record
             current_environment = service_environment()
             if not _run_environment_matches(record, current_environment):
                 failed = _fail_for_environment_mismatch(record)
@@ -738,6 +748,10 @@ class WorkerService:
             repaired = self.runs.recover_run(project, record.id, now=timestamp)
             self._quarantine_orphaned_attempts(project, record.id)
             fresh = self.runs.get_run(project, record.id)
+            if fresh.state in RUN_TERMINAL_STATES:
+                if repaired is not None:
+                    recovered.append(fresh)
+                continue
             if not _run_environment_matches(fresh, current_environment):
                 failed = _fail_for_environment_mismatch(fresh, timestamp=timestamp)
                 self.runs.save_run(project, failed)

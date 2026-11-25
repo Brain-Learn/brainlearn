@@ -133,13 +133,17 @@ Opening or saving a project does not install or update its recorded BrainLearn
 version or rewrite its run records. A new run uses the Python
 environment currently running the local service and snapshots every installed
 Python distribution version, along with the OS, architecture, Python version,
-and accelerator label. The full environment snapshot participates in the node
+and accelerator label. Missing distribution names or versions and conflicting
+normalized names with different versions stop run creation rather than silently
+producing an incomplete inventory. The full environment snapshot participates in the node
 content identity, so a package-version change makes prior cached work miss
 instead of being reused silently. Completed runs remain available as immutable
 history. If an unfinished run is resumed or recovered under a different
 environment, BrainLearn fails it before further node execution, records an
 `environment_mismatch` failure, and retains the run's original environment
-snapshot. Start a new run to execute under the current environment.
+snapshot. If recovery discovers that every node had already finished, it
+finalizes and preserves that completed run regardless of the current
+environment. Start a new run to execute under the current environment.
 
 The repository's `uv.lock` pins the environment for clean BrainLearn checkouts;
 it is a workspace lock, not a project-local environment lock. Opening an older
