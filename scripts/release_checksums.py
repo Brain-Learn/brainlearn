@@ -12,12 +12,21 @@ MANIFEST_NAME = "SHA256SUMS"
 SIGNATURE_BUNDLE_NAME = "SHA256SUMS.sigstore.json"
 _ALLOWED_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+-]*\Z")
 _MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)\Z")
+_WINDOWS_RESERVED_STEMS = {"CON", "PRN", "AUX", "NUL"}
+_WINDOWS_NUMBERED_DEVICE = re.compile(r"(?:COM|LPT)[1-9]\Z", re.IGNORECASE)
 _METADATA_NAMES = {MANIFEST_NAME, SIGNATURE_BUNDLE_NAME}
 _CHUNK_SIZE = 1024 * 1024
 
 
 class ChecksumError(ValueError):
     """Raised when the release directory or manifest is unsafe or inconsistent."""
+
+
+def _is_portable_filename(name: str) -> bool:
+    if not _ALLOWED_NAME.fullmatch(name) or name.endswith("."):
+        return False
+    stem = name.split(".", maxsplit=1)[0].upper()
+    return stem not in _WINDOWS_RESERVED_STEMS and not _WINDOWS_NUMBERED_DEVICE.fullmatch(stem)
 
 
 def _validate_directory(directory: Path) -> Path:
@@ -50,7 +59,7 @@ def _artifact_files(root: Path, *, allow_empty: bool = False) -> list[Path]:
             if not entry.is_file():
                 raise ChecksumError(f"release metadata must be regular files: {entry.name}")
             continue
-        if not _ALLOWED_NAME.fullmatch(entry.name):
+        if not _is_portable_filename(entry.name):
             raise ChecksumError(
                 f"artifact filename must use portable ASCII characters: {entry.name!r}"
             )
@@ -76,6 +85,10 @@ def _manifest_entries(manifest: Path) -> dict[str, str]:
         if match is None:
             raise ChecksumError(f"invalid {MANIFEST_NAME} line {line_number}")
         digest, name = match.groups()
+        if not _is_portable_filename(name):
+            raise ChecksumError(
+                f"non-portable artifact filename in {MANIFEST_NAME} line {line_number}: {name}"
+            )
         if name in _METADATA_NAMES:
             raise ChecksumError(f"release metadata cannot hash itself: {name}")
         if name in entries:

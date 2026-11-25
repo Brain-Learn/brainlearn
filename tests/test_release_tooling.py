@@ -98,6 +98,38 @@ def test_release_checksum_creation_requires_portable_flat_artifacts(tmp_path: Pa
         _CHECKSUMS.create_manifest(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "CON",
+        "con.txt",
+        "PRN.txt",
+        "NUL.tar.gz",
+        "AUX.whl",
+        "COM1.bin",
+        "com9.tar.gz",
+        "LPT1.txt",
+        "lpt9.whl",
+        "artifact.",
+    ],
+)
+def test_release_checksum_creation_rejects_windows_reserved_or_unportable_names(
+    tmp_path: Path, filename: str
+) -> None:
+    (tmp_path / filename).write_bytes(b"artifact")
+
+    with pytest.raises(_CHECKSUMS.ChecksumError, match="portable ASCII characters"):
+        _CHECKSUMS.create_manifest(tmp_path)
+
+
+def test_release_checksum_verification_rejects_reserved_names_in_manifest(tmp_path: Path) -> None:
+    manifest = tmp_path / "SHA256SUMS"
+    manifest.write_text(f"{'0' * 64}  PRN.txt\n", encoding="utf-8")
+
+    with pytest.raises(_CHECKSUMS.ChecksumError, match="non-portable artifact filename"):
+        _CHECKSUMS.verify_manifest(tmp_path)
+
+
 def test_release_checksum_cli_creates_and_verifies_a_manifest(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
