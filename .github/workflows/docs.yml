@@ -29,6 +29,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -64,10 +65,21 @@ jobs:
             echo "BRAINLEARN_DOCS_STATUS=Development" >> "$GITHUB_ENV"
           fi
 
+      - name: Prepare version switcher manifest
+        run: python scripts/prepare_docs_version_manifest.py
+
       - name: Install locked Python environment
         run: uv sync --locked --all-packages --group docs --group eeg
 
-      - name: Build HTML documentation with warnings as errors
+      - name: Build development site and tagged archive preview
+        if: github.ref_type != 'tag'
+        run: >-
+          uv run --locked --group docs --group eeg python
+          scripts/build_versioned_docs.py
+          --output "${RUNNER_TEMP}/brainlearn-docs/html"
+
+      - name: Build release-tag documentation with warnings as errors
+        if: github.ref_type == 'tag'
         run: >-
           uv run --locked --group docs --group eeg sphinx-build -E -a -n -W
           --keep-going -b html website "${RUNNER_TEMP}/brainlearn-docs/html"
@@ -87,7 +99,9 @@ jobs:
         run: npm --prefix website run check -- "${RUNNER_TEMP}/brainlearn-docs/html"
 
       - name: Upload static Pages artifact
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+        if: >-
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: "${{ runner.temp }}/brainlearn-docs/html"
@@ -102,6 +116,9 @@ jobs:
     permissions:
       pages: write
       id-token: write
+    concurrency:
+      group: brainlearn-pages-deploy
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

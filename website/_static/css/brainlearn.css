@@ -111,6 +111,12 @@ h2,
   color: #17653b;
 }
 
+.bl-status--pre-release {
+  border-color: #9eb6db;
+  background: #edf3ff;
+  color: #294f86;
+}
+
 .bl-status--archived {
   border-color: #c5d0d4;
   background: #edf2f3;

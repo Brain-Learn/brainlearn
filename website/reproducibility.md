@@ -10,8 +10,13 @@ Reproducibility has levels. Re-running the same code in the same environment is 
 - Node and scientific-library versions.
 - Environment and execution settings, including seeds where relevant.
 - Output artifact identities and citations.
+- BrainLearn package versions and, when available, the exact source or release identity.
 
 Large arrays and recordings remain files. Run records store references and identity metadata. The filter demo also checks that source BIDS files remain unchanged and writes results outside the source dataset.
+
+## Match documentation to a saved run
+
+The documentation selector lists the current development site and available release snapshots. Use an archived or release snapshot only when the run provenance or release record identifies the matching source tag. Each archived snapshot is visibly labeled and preserves the status page from that source revision. Some older or development records may not identify an exact release tag; do not infer a match from a package version alone. In that case, use the recorded software environment and available source revision, and treat the current site as current-development guidance only.
 
 ## Replaying the EEG filter example
 
