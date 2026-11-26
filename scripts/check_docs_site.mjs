@@ -78,6 +78,7 @@ const baseUrl = `http://127.0.0.1:${address.port}`;
 const browser = await chromium.launch({ headless: true });
 const routes = [
   "/index.html",
+  "/add-a-node.html",
   "/quickstart.html",
   "/eeg-cohort.html",
   "/auto_examples/index.html",

@@ -16,7 +16,7 @@ All implementation work goes through a scoped branch and pull request. The repos
 
 ## Add or change a node
 
-Define scientific port types and parameter constraints first. Keep algorithms in a domain adapter, report required capabilities and citations, handle large artifacts as file references, and persist QC decisions explicitly. Follow the [node dependency metadata contract](https://github.com/Brain-Learn/brainlearn/blob/main/docs/node-dependency-metadata.md) and the relevant existing MNE adapter. A dedicated worked tutorial will be added as contributor coverage matures.
+Define scientific port types and parameter constraints first. Keep algorithms in a domain adapter, report required capabilities and citations, handle large artifacts as file references, and persist QC decisions explicitly. Follow the [node dependency metadata contract](https://github.com/Brain-Learn/brainlearn/blob/main/docs/node-dependency-metadata.md) and the relevant existing MNE adapter. The [worked in-tree node tutorial](add-a-node.md) walks through manifests, adapters, validation, tests, citations, and errors. It does not define a supported third-party plugin API.
 
 ## Report an issue
 
