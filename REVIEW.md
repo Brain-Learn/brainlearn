@@ -2753,3 +2753,51 @@ This approval checks only the Step 10 existing-project environment subitem.
 Step 10's parent and all Step 7/8/9 scientific-certification gates remain
 unchecked. No scientific method, default, or certification status changed. I
 did not merge PR #87.
+
+## Step 10A versioned documentation — PR #88
+
+Review date: 2026-11-26
+
+Scope: repaired code head `5cd2648028413d3573477e9f61e9381b66b7c030` against main
+`d297b9698ff179e3ec97bffbac25c333d834cb35`.
+
+Status: **approved for the versioned-documentation leaf only**. The initial
+blocker was that an archived status link to a different version could pass when
+its path started with the expected tag. The repair adds
+`matchesExactStatusPage`, which resolves the actual and expected URLs and
+requires exact equality. Six Node tests pass: exact absolute and relative
+version-specific links are accepted; tag-prefix collisions, another origin,
+query/fragment changes, and missing or malformed values are rejected.
+
+Independent clean-checkout reproduction on macOS arm64: the valid tagged site
+built from a temporary repository with `v0.1.0a1`, `v0.1.0`, and
+`v0.2.0rc1` tags passes the updated browser/axe check. The manifest labels the
+newer `v0.2.0rc1` as Pre-release, `v0.1.0` as Stable/preferred, and the older
+`v0.1.0a1` as Archived while retaining its original stage. All three archive
+routes and all 11 development pages pass accessibility and responsive checks
+at 375 px and 1440 px. Changing the archived announcement URL to
+`/versions/v0.1.0a1-evil/status.html` now fails with the expected
+version-specific-link diagnostic. Removing a manifest-listed archive also
+fails. Malformed `v*` tags and a tag whose commit is outside reviewed HEAD
+history are rejected. The docs workflow runs the six Node tests after setting
+up Node and deploys only the checked main artifact with least-privilege Pages
+permissions.
+
+The full clean-checkout local gate was reproduced on implementation head
+`fdb5668`: Ruff; format (144 files); strict mypy (40 source files); pytest
+929 passed, 10 skipped, and 2 upstream deprecation warnings; frontend lint and
+Prettier; Vitest 186 tests in 22 files; frontend build (1,852 modules, existing
+534.07 kB advisory); both production npm audits; strict Sphinx linkcheck;
+and the tagged documentation build. The repaired head's six Node tests and
+valid/malicious browser checks passed independently. Hosted CI on exact repaired
+head passed Python quality/tests, schema compatibility, generated-code
+integration, frontend quality/tests/build, dependency inventory, Linux/macOS/
+Windows production audits, and Linux/macOS/Windows clean-install smoke
+(`45772967502`). Documentation checks passed (`45772967475`); Pages deployment
+was skipped for the PR. The review-record commit must pass fresh hosted checks
+before merge.
+
+This approval checks only the Step 10A versioned-documentation leaf. Step 10A's
+parent and all Step 7/8/9 scientific-certification gates remain unchecked. No
+scientific method, default, or certification status changed. I did not merge
+PR #88.

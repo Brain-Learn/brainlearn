@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { matchesExactStatusPage } from "./docs_version_links.mjs";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const siteRoot = resolve(process.argv[2] ?? join(repositoryRoot, "_build", "html"));
@@ -21,6 +22,34 @@ const mimeTypes = new Map([
 ]);
 
 await stat(join(siteRoot, "index.html"));
+const versionManifest = JSON.parse(
+  await readFile(join(siteRoot, "_static", "docs-versions.json"), "utf8"),
+);
+if (
+  !Array.isArray(versionManifest) ||
+  versionManifest.length === 0 ||
+  versionManifest.some(
+    (item) =>
+      !item ||
+      typeof item.version !== "string" ||
+      !(/^(development|v\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?)$/).test(item.version) ||
+      typeof item.name !== "string" ||
+      typeof item.url !== "string",
+  )
+) {
+  throw new Error(
+    "The documentation version switcher manifest must contain at least one valid version entry.",
+  );
+}
+const stubVersionManifest = async (page) => {
+  await page.route("**/docs-versions.json", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(versionManifest),
+    }),
+  );
+};
 
 const server = createServer(async (request, response) => {
   try {
@@ -68,6 +97,7 @@ const failures = [];
 
 try {
   const statusPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await stubVersionManifest(statusPage);
   await statusPage.goto(`${baseUrl}/index.html`, { waitUntil: "domcontentloaded" });
   const logoAssets = await statusPage.locator(".navbar-brand .logo__image").evaluateAll((images) =>
     images.map((image) => ({
@@ -91,9 +121,29 @@ try {
   }
   process.stdout.write("Checked light and dark documentation logo variants\n");
   const expectedStatus = process.env.BRAINLEARN_DOCS_STATUS ?? "Development";
+  const expectedVersion = process.env.BRAINLEARN_DOCS_VERSION ?? "development";
+  const switcherEntry = versionManifest.find((item) => item.version === expectedVersion);
+  if (!switcherEntry || !switcherEntry.name.includes(expectedStatus)) {
+    failures.push(
+      `version manifest: expected ${expectedStatus} ${expectedVersion}, received ${JSON.stringify(switcherEntry)}`,
+    );
+  }
   const statusText = await statusPage.locator(".bd-header-announcement .bl-status").innerText();
   if (!statusText.includes(expectedStatus) || !statusText.includes("docs")) {
     failures.push(`version label: expected ${expectedStatus} documentation status, received "${statusText}"`);
+  }
+  const versionSwitcher = statusPage.locator(".version-switcher__button").first();
+  await versionSwitcher.waitFor();
+  await statusPage.waitForFunction(() => {
+    const menu = document.querySelector(".version-switcher__menu");
+    return Boolean(menu?.querySelector("a"));
+  });
+  await versionSwitcher.click();
+  const switcherOptions = await statusPage.locator(".version-switcher__menu a").allTextContents();
+  if (!switcherOptions.some((option) => option.includes(expectedStatus) && option.includes(expectedVersion))) {
+    failures.push(
+      `version selector: expected ${expectedStatus} ${expectedVersion} option, received ${JSON.stringify(switcherOptions)}`,
+    );
   }
   await statusPage.locator('button[aria-label="Search"]').first().click();
   const searchInput = statusPage.getByPlaceholder("Search the docs ...");
@@ -105,11 +155,65 @@ try {
     failures.push("site search: expected the quality-control guide in results for 'quality control'");
   }
   await statusPage.close();
-  process.stdout.write(`Checked search and ${expectedStatus.toLowerCase()} version label\n`);
+  process.stdout.write(
+    `Checked search and ${expectedStatus.toLowerCase()} version selector (${expectedVersion})\n`,
+  );
+
+  for (const entry of versionManifest) {
+    if (entry.version === "development") continue;
+    const archiveIndex = join(siteRoot, "versions", entry.version, "index.html");
+    try {
+      await stat(archiveIndex);
+    } catch {
+      failures.push(`version manifest ${entry.version}: missing ${archiveIndex}`);
+      continue;
+    }
+    const archiveStatus = entry.name.includes("Archived")
+      ? "Archived"
+      : entry.name.includes("Pre-release")
+        ? "Pre-release"
+        : "Stable";
+    const archivePage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await stubVersionManifest(archivePage);
+    await archivePage.goto(`${baseUrl}/versions/${encodeURIComponent(entry.version)}/index.html`, {
+      waitUntil: "load",
+    });
+    const archiveLabel = await archivePage.locator(".bd-header-announcement .bl-status").innerText();
+    if (!archiveLabel.includes(archiveStatus) || !archiveLabel.includes(entry.version)) {
+      failures.push(
+        `archived route ${entry.version}: expected ${archiveStatus}, received "${archiveLabel}"`,
+      );
+    }
+    if (archiveStatus === "Archived") {
+      const historicalNotice = await archivePage.locator(".bd-header-announcement").innerText();
+      const statusLink = await archivePage
+        .locator('.bd-header-announcement a[href$="/status.html"]')
+        .getAttribute("href");
+      if (
+        !historicalNotice.includes("may differ from current BrainLearn") ||
+        !matchesExactStatusPage(statusLink, entry.url)
+      ) {
+        failures.push(`archived route ${entry.version}: missing historical warning or version-specific status link`);
+      }
+    }
+    await archivePage.addScriptTag({ path: axeScript });
+    const archiveAccessibility = await archivePage.evaluate(async () => {
+      const results = await window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"] },
+      });
+      return results.violations.map((violation) => `${violation.impact} ${violation.id}`);
+    });
+    if (archiveAccessibility.length > 0) {
+      failures.push(`archived route ${entry.version}: axe ${archiveAccessibility.join(", ")}`);
+    }
+    await archivePage.close();
+    process.stdout.write(`Checked ${archiveStatus.toLowerCase()} archive ${entry.version}\n`);
+  }
 
   for (const route of routes) {
     for (const viewport of viewports) {
       const page = await browser.newPage({ viewport: { width: viewport.width, height: viewport.height } });
+      await stubVersionManifest(page);
       await page.goto(`${baseUrl}${route}`, { waitUntil: "load" });
       await page.locator("main").waitFor();
       const layout = await page.evaluate(() => ({
