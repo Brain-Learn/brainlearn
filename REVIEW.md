@@ -2840,3 +2840,60 @@ scientific-certification gates remain unchecked. No scientific method, default,
 or certification claim changed. The next assignment is Step 11, Public beta
 and contributor readiness. The plan and review-record updates are delivered as
 a separate documentation-only PR; no Step 11 implementation is included.
+
+## Step 11 community and citation baseline — PR #90
+
+Review date: 2026-11-26
+
+Scope: complete PR #90 diff at code head
+029ad8dfd992028f6be173a6c0b95be26fd90ae7 against main
+957f055192e939bdf378be0cb70207d7299c0b9c, reviewed in a clean detached
+checkout. The final branch head also contains the plan evidence update; hosted
+checks passed on that head.
+
+Status: **approved for the first Step 11 repository-policy and citation
+subitem only**. The seven-file diff matches the assignment. It adds repository
+policies and CFF metadata, links them from the README, corrects the README's
+description of the existing experimental cohort workflow, and records the next
+assignment. It does not implement the worked node tutorial or alter workflow
+code, methods, parameters, or scientific claims. The Step 11 parent and all
+Step 7/8/9 scientific-certification gates remain unchecked.
+
+CFF metadata validates against schema 1.2.0. Its development version matches
+the workspace version, and the author name matches the public maintainer
+profile. The README's BIDS cohort selection, per-recording QC, epochs, ERP,
+PSD, reports, and Python/notebook export descriptions match the current
+implementation and documentation. The Code of Conduct, Governance, and
+Security documents accurately describe a small maintainer-led project, its
+research-only scope, lack of stable releases, experimental EEG path, and
+absence of scientific approval. GitHub's repository API confirms private
+vulnerability reporting is enabled.
+
+The missing independent confidential conduct contact is real: the maintainer
+profile publishes no email and there is no independent contact. The Code of
+Conduct states this plainly, and the implementation plan tracks establishing
+an independent confidential route before external beta recruitment. This is a
+pre-beta blocker, but not a blocker to this limited policy-baseline subitem.
+The existing Dependabot alerts named in the PR remain outside this
+documentation-only review and are not treated as resolved.
+
+Clean-checkout local verification on macOS arm64 with Python 3.13.13, using the
+substantive code head e194090 (the later review-head change only updates plan
+evidence): locked docs/EEG sync and lock check; Ruff; formatting (148 files);
+strict mypy (40 files); pytest (929 passed, 10 skipped, 2 upstream
+deprecation warnings); frontend lint and format; Vitest (186 tests in 22
+files); Vite build (1,852 modules, existing 534.07 kB advisory); Python
+production pip-audit and both npm production audits (no known vulnerabilities);
+CFF validation; all six docs-version link tests; strict versioned Sphinx HTML
+build and external linkcheck; responsive/axe checks on 11 pages at 375 px and
+1440 px; Actions security-policy audit; and git diff check. Hosted CI run
+45779764564 and docs run 45779764530 passed on final evidence head
+029ad8dfd992028f6be173a6c0b95be26fd90ae7. The Pages deployment job was skipped
+as expected for a pull request.
+
+GitHub does not permit a formal review by the PR author. An ordinary monitoring
+summary was posted in PR comment
+https://github.com/Brain-Learn/brainlearn/pull/90#issuecomment-7186187984.
+This monitor-owned record update is part of PR #90; its hosted checks must pass
+before merge. The next assignment remains Step 11.2, the worked add-a-node
+contributor tutorial.
