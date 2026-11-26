@@ -83,7 +83,7 @@ When a method paper applies, the registry field has this shape (replace every
 placeholder with a reference verified for the implemented operation):
 
 ```python
-citations=[
+citations = [
     CitationMetadata(
         title="Verified paper title for this operation",
         doi="10.xxxx/verified-doi",
@@ -96,7 +96,7 @@ When the adapter itself calls MNE, its dependency metadata can use the pinned
 MNE record already defined in `registry.py`:
 
 ```python
-software_dependencies=_software_dependencies(_MNE_DEPENDENCY)
+software_dependencies = _software_dependencies(_MNE_DEPENDENCY)
 ```
 
 That record supplies the MNE distribution name, version, license, software
