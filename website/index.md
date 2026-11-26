@@ -106,6 +106,7 @@ releases
 status
 dependency-licenses
 contributing
+add-a-node
 governance
 decisions/0001-documentation-stack
 deployment
