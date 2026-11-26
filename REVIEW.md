@@ -2897,3 +2897,62 @@ https://github.com/Brain-Learn/brainlearn/pull/90#issuecomment-7186187984.
 This monitor-owned record update is part of PR #90; its hosted checks must pass
 before merge. The next assignment remains Step 11.2, the worked add-a-node
 contributor tutorial.
+
+## Step 11.2 worked add-a-node tutorial — PR #91
+
+Review date: 2026-11-26
+
+Scope: complete PR #91 diff at implementation head
+`67b6e1441d339976f37450ff6dfd68d5a8893aec` against main
+`e39d1d91b42c006a65f49313e958d344a4e4ee99`, reviewed in a clean detached
+checkout.
+
+Status: **approved for the Step 11.2 tutorial leaf only**. The five-file diff
+adds a worked in-tree example for a descriptive `report → report` metadata
+summary, links it from contributor documentation, and adds its route to the
+responsive/accessibility site check. It does not implement a node, change an
+EEG operation, alter a scientific default, or make a scientific certification
+claim. The example clearly says repository internals are not a supported
+third-party plugin API and does not promise isolation or arbitrary plugin
+execution.
+
+I verified the tutorial's contract and code fragments against the current
+source. `eeg.inspect` writes the documented JSON fields and channel-type map;
+the typed `NodeManifest`, `DemoNodeManifest` allowlist, `NodeContext`,
+`StagedOutput`, private copy/work-directory helpers, and deterministic JSON
+writer exist with the described responsibilities. The worker validates the
+declared output contract and promotes staged artifacts after successful
+execution. `NodeRunRecord` stores node version, parameters, input identities,
+environment identity, seed, and artifact identities; the report layer obtains
+citations from executed node manifests and software-dependency metadata. The
+tutorial correctly distinguishes method references from software citations
+and explicitly labels the shown internal helpers as private. I found no
+material mismatch or blocking omission for this documentation assignment.
+
+Clean-checkout verification on macOS arm64 with Python 3.13.13: locked
+docs/EEG/workspace sync; Ruff; formatting (149 files); strict mypy (40 source
+files); pytest (929 passed, 10 skipped, 2 upstream deprecation warnings);
+frontend lint and format; Vitest (186 tests in 22 files); Vite build (1,852
+modules, existing 534.07 kB chunk advisory); production npm audit (0
+vulnerabilities); strict Sphinx HTML build and linkcheck; website npm install
+and audit (0 vulnerabilities); responsive/axe checks passed for all 12
+selected routes at 375 px and 1440 px; `uv lock --check`; and
+`git diff --check`. `npm ci` for the existing frontend development tree
+reported 7 moderate advisories; the production-only audit passed with 0
+vulnerabilities. Sphinx HTML and linkcheck were run serially because parallel
+Sphinx Gallery builds contend for a shared generated cost file.
+
+Hosted checks on the exact implementation head passed: CI run `45784929261`
+including Python, schema compatibility, generated-code, frontend, dependency
+inventory, three-platform production audits, and three-platform clean-install
+smoke; docs run `45784929658` passed, with the Pages deployment skipped as
+expected for a pull request. This review record is being added to PR #91 and
+requires the repository's hosted checks on the resulting review head before
+merge. GitHub does not permit a formal review by the PR author, so an ordinary
+monitoring summary comment will record the disposition.
+
+Only the Step 11.2 leaf is approved. The Step 11 parent and Step 7/8/9
+scientific-certification gates remain unchecked. No scientific method,
+parameter, default, or claim changed. The next assignment is Step 11.3,
+documenting scientific-review and plugin-ownership expectations. I did not
+merge PR #91.
