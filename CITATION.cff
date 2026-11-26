@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+message: >-
+  For reproducible work, cite the exact BrainLearn version and commit used in
+  the analysis. This metadata describes the in-development software; it is not
+  a release or archival DOI.
+type: software
+title: >-
+  BrainLearn: local-first visual workflows for reproducible neuroscience
+  research
+authors:
+  - family-names: Sadeghi
+    given-names: Mohammad
+version: "0.1.0"
+license: BSD-3-Clause
+repository-code: https://github.com/Brain-Learn/brainlearn
+url: https://brain-learn.github.io/brainlearn/
+keywords:
+  - neuroscience
+  - EEG
+  - reproducible research
+  - workflow builder
+abstract: >-
+  BrainLearn is a local-first visual workflow builder for reproducible
+  neuroscience research. Its current EEG workflow is experimental and has not
+  received independent scientific methods approval.
