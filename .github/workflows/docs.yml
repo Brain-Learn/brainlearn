@@ -68,6 +68,9 @@ jobs:
       - name: Prepare version switcher manifest
         run: python scripts/prepare_docs_version_manifest.py
 
+      - name: Test version-specific status links
+        run: node --test tests/test_docs_version_links.mjs
+
       - name: Install locked Python environment
         run: uv sync --locked --all-packages --group docs --group eeg
 

@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { matchesExactStatusPage } from "./docs_version_links.mjs";
 
 const repositoryRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const siteRoot = resolve(process.argv[2] ?? join(repositoryRoot, "_build", "html"));
@@ -188,7 +189,10 @@ try {
       const statusLink = await archivePage
         .locator('.bd-header-announcement a[href$="/status.html"]')
         .getAttribute("href");
-      if (!historicalNotice.includes("may differ from current BrainLearn") || !statusLink?.includes(entry.version)) {
+      if (
+        !historicalNotice.includes("may differ from current BrainLearn") ||
+        !matchesExactStatusPage(statusLink, entry.url)
+      ) {
         failures.push(`archived route ${entry.version}: missing historical warning or version-specific status link`);
       }
     }
