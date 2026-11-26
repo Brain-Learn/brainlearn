@@ -2801,3 +2801,42 @@ This approval checks only the Step 10A versioned-documentation leaf. Step 10A's
 parent and all Step 7/8/9 scientific-certification gates remain unchecked. No
 scientific method, default, or certification status changed. I did not merge
 PR #88.
+
+## Step 10A public-site completion gate — post-merge
+
+Review date: 2026-11-26
+
+Scope: merged main commit f2ef197c5aa91f3c4bd6d0530d4f78e9fe22dc9e,
+including the versioned-documentation work in PR #88 and the live GitHub Pages
+site at <https://brain-learn.github.io/brainlearn/>.
+
+Status: **approved; the Step 10A completion gate is met**. Post-merge CI run
+45773995650 and documentation/Pages run 45773995646 both passed on the
+merge SHA. The docs workflow completed its build/check and Pages deployment.
+The repository uses GitHub Actions for Pages, and the protected
+github-pages environment permits deployments only from main.
+
+In a clean browser, the live homepage, Quickstart, EEG cohort walkthrough,
+status, releases, platform-support, and version-manifest routes returned HTTP
+200. Playwright checks passed for 11 representative site routes at 375 px and
+1440 px: no horizontal overflow or broken images; the Development banner and
+version selector work; search returns the quality-control guide; Quickstart and
+the EEG walkthrough load; and axe reports no WCAG A/AA violations. The live
+manifest contains only Development because no release tags have been created.
+The live status and platform matrix accurately state early development,
+pending independent EEG methods review, and experimental workflow status.
+
+The independent clean-checkout review reproduced versioned builds with an
+isolated tag fixture. The published main workflow deploys only the checked
+artifact under the main-only Pages environment. The documented maintainer
+procedure covers clean rebuild, deployment, and rollback through a reviewed
+source change followed by the normal main deployment; the post-merge deployment
+completed successfully. The live release documentation also explains that no
+stable release exists. These checks satisfy the Step 10A gate without implying
+scientific validation or a release.
+
+This record checks only the Step 10A parent. Step 10 and all Step 7/8/9
+scientific-certification gates remain unchecked. No scientific method, default,
+or certification claim changed. The next assignment is Step 11, Public beta
+and contributor readiness. The plan and review-record updates are delivered as
+a separate documentation-only PR; no Step 11 implementation is included.
